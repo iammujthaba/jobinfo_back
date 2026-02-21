@@ -17,7 +17,7 @@ settings = get_settings()
 def recruiter_welcome_components(recruiter: Recruiter) -> list[dict]:
     """
     Utility template: shows recruiter info + 2 buttons.
-    Template name (on Meta): jobinfo_recruiter_welcome
+    Template name (on Meta): jobinfo_welcome_recruiter
     Variables: {{1}} = recruiter name, {{2}} = company, {{3}} = location
     """
     return [

@@ -60,6 +60,17 @@ async def dispatch(payload: dict, db: Session) -> None:
                 doc = message["document"]
                 await _handle_document(wa_number, doc, db)
 
+            elif msg_type == "button":
+                # Catch button clicks from pre-approved Meta Templates
+                button_payload = message["button"]["payload"]
+                
+                if button_payload == "Post Vacancy":
+                    button_payload = "btn_post_vacancy"
+                elif button_payload == "My Vacancies":
+                    button_payload = "btn_my_vacancies"
+                    
+                await _handle_button(wa_number, button_payload, db)
+
         # ── Status updates (read receipts, delivered, etc.) – skip ──────────
         elif "statuses" in value:
             status = value["statuses"][0]
@@ -163,40 +174,37 @@ async def _handle_list_reply(wa_number: str, row_id: str, db: Session) -> None:
 
 async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> None:
     """
-    Route WhatsApp Flow completion callbacks.
-    flow_data["name"] = the flow ID the user completed.
-    flow_data["response_json"] = the submitted data as a JSON string.
+    Route WhatsApp Flow completion callbacks by inspecting the payload keys.
     """
     import json
     from app.handlers import recruiter as recruiter_handler
     from app.handlers import seeker as seeker_handler
-    from app.handlers.recruiter import (
-        FLOW_ID_RECRUITER_REGISTER, FLOW_ID_POST_VACANCY
-    )
-    from app.handlers.seeker import FLOW_ID_SEEKER_REGISTER, FLOW_ID_CV_UPDATE
 
-    flow_id = flow_data.get("name", "")
     raw_json = flow_data.get("response_json", "{}")
     try:
         submitted: dict = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
     except json.JSONDecodeError:
         submitted = {}
 
-    if flow_id == FLOW_ID_RECRUITER_REGISTER:
-        await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
-
-    elif flow_id == FLOW_ID_POST_VACANCY:
+    # Inspect the submitted data keys to determine which form was filled out
+    if "title" in submitted and "description" in submitted:
+        # Post Vacancy Flow
         await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
 
-    elif flow_id == FLOW_ID_SEEKER_REGISTER:
+    elif "skills" in submitted:
+        # Seeker Registration Flow
         await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
 
-    elif flow_id == FLOW_ID_CV_UPDATE:
+    elif "media_id" in submitted and "skills" not in submitted:
+        # CV Update Flow
         await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
 
-    else:
-        logger.warning("Unhandled flow_id '%s' from %s", flow_id, wa_number)
+    elif "company" in submitted and "location" in submitted:
+        # Recruiter Registration Flow
+        await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
 
+    else:
+        logger.warning("Could not identify flow from payload: %s from %s", submitted, wa_number)
 
 async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
     """Handle a raw document upload (CV sent directly in chat)."""

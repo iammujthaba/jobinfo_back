@@ -158,7 +158,10 @@ class WhatsAppClient:
         interactive: dict[str, Any] = {
             "type": "flow",
             "body": {"text": body_text},
-            "action": action_payload,
+            "action": {
+                "name": "flow",
+                "parameters": action_payload
+            },
         }
         if header_text:
             interactive["header"] = {"type": "text", "text": header_text}

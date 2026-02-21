@@ -76,7 +76,7 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
             to=wa_number,
             body=(
                 "🔍 To apply for a job, tap any job apply link from our WhatsApp Channel.\n\n"
-                "📢 Join: https://whatsapp.com/channel/jobinfo\n\n"
+                "📢 Join: https://whatsapp.com/channel/0029VawvIr34yltJoSTKit3Z"
                 "Already have a link? Tap it and we'll guide you through!"
             ),
         )
