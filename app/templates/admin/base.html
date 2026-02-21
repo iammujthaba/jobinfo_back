@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}JobInfo Admin{% endblock %}</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; display: flex; min-height: 100vh; }
+
+        /* Sidebar */
+        .sidebar { width: 240px; background: #1a1a2e; color: #fff; padding: 24px 0; flex-shrink: 0; position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; }
+        .sidebar-brand { padding: 0 24px 24px; border-bottom: 1px solid #2d2d4a; }
+        .sidebar-brand h1 { font-size: 1.4rem; font-weight: 700; color: #25d366; }
+        .sidebar-brand p { font-size: 0.75rem; color: #888; margin-top: 2px; }
+        .sidebar-nav { padding: 16px 0; }
+        .sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 12px 24px; color: #cdd5f3; text-decoration: none; font-size: 0.9rem; transition: all .2s; }
+        .sidebar-nav a:hover, .sidebar-nav a.active { background: #25d366; color: #fff; }
+        .sidebar-nav .badge { background: #e74c3c; color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 0.7rem; margin-left: auto; }
+
+        /* Main */
+        .main { margin-left: 240px; flex: 1; display: flex; flex-direction: column; }
+        .topbar { background: #fff; padding: 16px 32px; border-bottom: 1px solid #e4e8f0; display: flex; align-items: center; justify-content: space-between; }
+        .topbar h2 { font-size: 1.1rem; font-weight: 600; }
+        .content { padding: 32px; flex: 1; }
+
+        /* Cards */
+        .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 24px; }
+        .card-title { font-size: 0.8rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+        .stat-value { font-size: 2rem; font-weight: 700; color: #1a1a2e; }
+
+        /* Stats row */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-size: 0.78rem; font-weight: 600; color: #888; text-transform: uppercase; padding: 10px 12px; border-bottom: 2px solid #f0f2f5; }
+        td { padding: 12px; border-bottom: 1px solid #f0f2f5; font-size: 0.88rem; vertical-align: middle; }
+        tr:hover td { background: #f9fafb; }
+
+        /* Badges */
+        .badge-status { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-approved { background: #d1f2eb; color: #1e8449; }
+        .badge-rejected { background: #fadbd8; color: #922b21; }
+
+        /* Buttons */
+        .btn { display: inline-block; padding: 7px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 600; text-decoration: none; transition: all .2s; }
+        .btn-green { background: #25d366; color: #fff; }
+        .btn-green:hover { background: #1ebe5d; }
+        .btn-red { background: #e74c3c; color: #fff; }
+        .btn-red:hover { background: #c0392b; }
+        .btn-gray { background: #ecf0f1; color: #555; }
+        .btn-gray:hover { background: #dde1e7; }
+
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 999; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #fff; border-radius: 12px; padding: 28px; width: 420px; max-width: 95%; }
+        .modal h3 { margin-bottom: 16px; }
+        .modal textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; resize: vertical; min-height: 80px; font-size: 0.9rem; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+    </style>
+</head>
+<body>
+<aside class="sidebar">
+    <div class="sidebar-brand">
+        <h1>JobInfo</h1>
+        <p>Admin Panel</p>
+    </div>
+    <nav class="sidebar-nav">
+        <a href="/admin" {% if request.url.path == '/admin' %}class="active"{% endif %}>🏠 Dashboard</a>
+        <a href="/admin/vacancies?status_filter=pending" {% if 'vacancies' in request.url.path %}class="active"{% endif %}>
+            📋 Vacancies
+        </a>
+        <a href="/admin/callbacks" {% if 'callbacks' in request.url.path %}class="active"{% endif %}>📞 Callbacks</a>
+        <a href="/admin/abandoned" {% if 'abandoned' in request.url.path %}class="active"{% endif %}>⚠️ Abandoned</a>
+        <a href="/docs" target="_blank">📖 API Docs</a>
+    </nav>
+</aside>
+
+<div class="main">
+    <div class="topbar">
+        <h2>{% block page_title %}Dashboard{% endblock %}</h2>
+        <span style="color:#888;font-size:.85rem">Logged in as Admin</span>
+    </div>
+    <div class="content">
+        {% block content %}{% endblock %}
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-overlay" id="rejectModal">
+    <div class="modal">
+        <h3>Reject Vacancy</h3>
+        <form method="POST" id="rejectForm">
+            <label style="font-size:.85rem;color:#555;display:block;margin-bottom:6px">Reason for rejection (sent to recruiter via WhatsApp):</label>
+            <textarea name="reason" required placeholder="e.g. Incomplete job description, missing contact info..."></textarea>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-gray" onclick="closeRejectModal()">Cancel</button>
+                <button type="submit" class="btn btn-red">Reject & Notify</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openRejectModal(vacancyId) {
+    document.getElementById('rejectForm').action = '/admin/vacancies/' + vacancyId + '/reject';
+    document.getElementById('rejectModal').classList.add('open');
+}
+function closeRejectModal() {
+    document.getElementById('rejectModal').classList.remove('open');
+}
+document.getElementById('rejectModal').addEventListener('click', function(e) {
+    if (e.target === this) closeRejectModal();
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% block title %}Abandoned Signups – JobInfo Admin{% endblock %}
+{% block page_title %}Abandoned Signups{% endblock %}
+
+{% block content %}
+<p style="margin-bottom:16px;color:#555;font-size:.9rem">
+    These candidates started registration but left before choosing a subscription plan.
+    Contact them via WhatsApp to encourage them to complete signup.
+</p>
+
+<div class="card" style="padding:0;overflow:hidden">
+    {% if candidates %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>WhatsApp Number</th>
+                <th>Location</th>
+                <th>Registered At</th>
+                <th>Contact</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in candidates %}
+            <tr>
+                <td><strong>{{ c.name }}</strong></td>
+                <td>+{{ c.wa_number }}</td>
+                <td>{{ c.location or '—' }}</td>
+                <td>{{ c.created_at.strftime('%d %b %Y') }}</td>
+                <td>
+                    <a href="https://wa.me/{{ c.wa_number }}?text=Hi+{{ c.name | urlencode }}%2C+Complete+your+JobInfo+registration+to+start+applying+for+jobs!" target="_blank" class="btn btn-green">
+                        💬 Message
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding:40px;text-align:center;color:#888">No abandoned signups. 🎉</div>
+    {% endif %}
+</div>
+{% endblock %}

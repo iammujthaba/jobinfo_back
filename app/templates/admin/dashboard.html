@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard – JobInfo Admin{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="card">
+        <div class="card-title">⏳ Pending Vacancies</div>
+        <div class="stat-value">{{ pending_count }}</div>
+        <a href="/admin/vacancies?status_filter=pending" class="btn btn-gray" style="margin-top:12px;display:inline-block">Review</a>
+    </div>
+    <div class="card">
+        <div class="card-title">📞 Callback Requests</div>
+        <div class="stat-value">{{ callback_count }}</div>
+        <a href="/admin/callbacks" class="btn btn-gray" style="margin-top:12px;display:inline-block">View</a>
+    </div>
+    <div class="card">
+        <div class="card-title">⚠️ Abandoned Signups</div>
+        <div class="stat-value">{{ abandoned_count }}</div>
+        <a href="/admin/abandoned" class="btn btn-gray" style="margin-top:12px;display:inline-block">View</a>
+    </div>
+</div>
+<div class="card">
+    <p style="color:#888;font-size:.9rem">Welcome back! Use the sidebar to review vacancies, manage callbacks, and follow up with abandoned signups.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% block title %}Callbacks – JobInfo Admin{% endblock %}
+{% block page_title %}Callback Requests{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:0;overflow:hidden">
+    {% if callbacks %}
+    <table>
+        <thead>
+            <tr>
+                <th>WhatsApp Number</th>
+                <th>Requested At</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cb in callbacks %}
+            <tr>
+                <td>
+                    <a href="https://wa.me/{{ cb.wa_number }}" target="_blank" style="color:#25d366;font-weight:600">
+                        +{{ cb.wa_number }}
+                    </a>
+                </td>
+                <td>{{ cb.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+                <td>
+                    <form method="POST" action="/admin/callbacks/{{ cb.id }}/resolve" style="display:inline">
+                        <button class="btn btn-green" type="submit">✅ Mark Resolved</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding:40px;text-align:center;color:#888">No pending callback requests. 🎉</div>
+    {% endif %}
+</div>
+{% endblock %}

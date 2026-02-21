@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+{% block title %}Vacancies – JobInfo Admin{% endblock %}
+{% block page_title %}Vacancies{% endblock %}
+
+{% block content %}
+<!-- Filter tabs -->
+<div style="display:flex;gap:8px;margin-bottom:20px">
+    {% for status in ['pending', 'approved', 'rejected'] %}
+    <a href="/admin/vacancies?status_filter={{ status }}"
+       class="btn {% if current_filter == status %}btn-green{% else %}btn-gray{% endif %}">
+        {{ status | title }}
+    </a>
+    {% endfor %}
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+    {% if vacancies %}
+    <table>
+        <thead>
+            <tr>
+                <th>Job Code</th>
+                <th>Title</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>Recruiter (WA)</th>
+                <th>Submitted</th>
+                {% if current_filter == 'rejected' %}<th>Reason</th>{% endif %}
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in vacancies %}
+            <tr>
+                <td><code>{{ v.job_code }}</code></td>
+                <td><strong>{{ v.title }}</strong></td>
+                <td>{{ v.company or '—' }}</td>
+                <td>{{ v.location }}</td>
+                <td>{{ v.recruiter.name }}<br><small style="color:#888">{{ v.recruiter.wa_number }}</small></td>
+                <td style="white-space:nowrap">{{ v.created_at.strftime('%d %b %Y') }}</td>
+                {% if current_filter == 'rejected' %}
+                <td style="max-width:200px;font-size:.82rem;color:#922b21">{{ v.rejection_reason or '—' }}</td>
+                {% endif %}
+                <td>
+                    {% if current_filter != 'approved' %}
+                    <form method="POST" action="/admin/vacancies/{{ v.id }}/approve" style="display:inline">
+                        <button class="btn btn-green" type="submit">✅ Approve</button>
+                    </form>
+                    {% endif %}
+                    {% if current_filter != 'rejected' %}
+                    <button class="btn btn-red" onclick="openRejectModal({{ v.id }})">❌ Reject</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding:40px;text-align:center;color:#888">No {{ current_filter }} vacancies.</div>
+    {% endif %}
+</div>
+{% endblock %}
