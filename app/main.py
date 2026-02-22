@@ -1,12 +1,12 @@
 """
 FastAPI application entry point.
-Mounts all routers and initialises the database on startup.
+Mounts all routers, adds CORS, and initialises the database on startup.
 """
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db.base import init_db
@@ -34,6 +34,17 @@ app = FastAPI(
     description="Backend automation for JobInfo – Kerala's WhatsApp Job Platform",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Allow the website and localhost dev to call the API.
+# Tighten origins to ["https://jobinfo.club", "https://www.jobinfo.club"] in production.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────

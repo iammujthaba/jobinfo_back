@@ -174,10 +174,15 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
             "Takes less than 2 minutes!"
         ),
         header_text="JobInfo – Job Seeker Registration",
-        flow_action_payload={"pending_job_code": job_code},
+        # 👇 We wrapped the variable in 'data' and added a 'screen' name
+        flow_action_payload={
+            "screen": "SEEKER_REGISTRATION_SCREEN", 
+            "data": {
+                "pending_job_code": job_code
+            }
+        },
     )
     _set_state(wa_number, "seeker_registering", {"pending_job_code": job_code}, db)
-
 
 async def handle_registration_flow_completion(
     wa_number: str, flow_data: dict, db: Session
@@ -189,13 +194,23 @@ async def handle_registration_flow_completion(
     """
     # Save CV
     cv_path = None
-    if flow_data.get("media_id"):
-        cv_path = await save_cv_from_whatsapp(
-            wa_number=wa_number,
-            media_id=flow_data["media_id"],
-            mime_type=flow_data.get("mime_type", "application/pdf"),
-        )
-
+    raw_media = flow_data.get("media_id")
+    
+    if raw_media:
+        # Meta's File Upload returns a list of dictionaries
+        if isinstance(raw_media, list) and len(raw_media) > 0:
+            actual_media_id = raw_media[0].get("id")
+            actual_mime = raw_media[0].get("mime_type", "application/pdf")
+        else:
+            actual_media_id = raw_media
+            actual_mime = flow_data.get("mime_type", "application/pdf")
+            
+        if actual_media_id:
+            cv_path = await save_cv_from_whatsapp(
+                wa_number=wa_number,
+                media_id=actual_media_id,
+                mime_type=actual_mime,
+            )
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     if not candidate:
         candidate = Candidate(
@@ -357,7 +372,13 @@ async def handle_update_cv_button(
             "Upload your latest CV (PDF or CSV) in the form below."
         ),
         header_text="JobInfo – Update CV",
-        flow_action_payload={"return_vacancy_id": vacancy_id},
+        # 👇 Wrapped in 'data' and added 'screen' name here too
+        flow_action_payload={
+            "screen": "DETAILS",
+            "data": {
+                "return_vacancy_id": vacancy_id
+            }
+        },
     )
     _set_state(wa_number, "seeker_updating_cv", {"vacancy_id": vacancy_id}, db)
 
@@ -366,14 +387,21 @@ async def handle_cv_update_flow_completion(
     wa_number: str, flow_data: dict, db: Session
 ) -> None:
     """Process CV update from WhatsApp Flow."""
-    media_id = flow_data.get("media_id")
-    mime_type = flow_data.get("mime_type", "application/pdf")
+    raw_media = flow_data.get("media_id")
 
-    if not media_id:
+    if not raw_media:
         await wa_client.send_text(to=wa_number, body="⚠️ No file received. Please try again.")
         return
 
-    cv_path = await save_cv_from_whatsapp(wa_number, media_id, mime_type)
+    # Extract ID from Meta's list structure
+    if isinstance(raw_media, list) and len(raw_media) > 0:
+        actual_media_id = raw_media[0].get("id")
+        actual_mime = raw_media[0].get("mime_type", "application/pdf")
+    else:
+        actual_media_id = raw_media
+        actual_mime = flow_data.get("mime_type", "application/pdf")
+
+    cv_path = await save_cv_from_whatsapp(wa_number, actual_media_id, actual_mime)
     if not cv_path:
         await wa_client.send_text(
             to=wa_number,

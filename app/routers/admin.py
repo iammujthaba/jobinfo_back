@@ -166,3 +166,71 @@ async def list_abandoned(
         "admin/abandoned.html",
         {"request": request, "candidates": abandoned},
     )
+
+
+# ─── JSON API (for the frontend admin.html panel) ─────────────────────────────
+
+
+@router.get("/api/vacancies")
+async def api_list_vacancies(
+    status_filter: str = "pending",
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns vacancies as JSON (used by admin.html frontend panel)."""
+    valid = {s.value for s in VacancyStatus}
+    status_enum = VacancyStatus(status_filter) if status_filter in valid else VacancyStatus.pending
+
+    vacancies = (
+        db.query(JobVacancy)
+        .filter_by(status=status_enum)
+        .order_by(JobVacancy.created_at.desc())
+        .all()
+    )
+
+    results = []
+    for v in vacancies:
+        results.append({
+            "id": v.id,
+            "job_code": v.job_code,
+            "title": v.title,
+            "company": v.company or "",
+            "location": v.location,
+            "description": v.description or "",
+            "salary_range": v.salary_range,
+            "experience_required": v.experience_required,
+            "status": v.status.value,
+            "rejection_reason": v.rejection_reason,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "recruiter": {
+                "name": v.recruiter.name,
+                "wa_number": v.recruiter.wa_number,
+                "company": v.recruiter.company,
+            } if v.recruiter else None,
+        })
+
+    return {"total": len(results), "results": results}
+
+
+@router.post("/api/vacancies/{vacancy_id}/approve")
+async def api_approve_vacancy(
+    vacancy_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Approve a vacancy and notify the recruiter via WhatsApp."""
+    await recruiter_handler.notify_recruiter_approval(vacancy_id, db)
+    return {"success": True, "vacancy_id": vacancy_id}
+
+
+@router.post("/api/vacancies/{vacancy_id}/reject")
+async def api_reject_vacancy(
+    vacancy_id: int,
+    reason: str = Form(...),
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Reject a vacancy with a reason and notify the recruiter via WhatsApp."""
+    await recruiter_handler.notify_recruiter_rejection(vacancy_id, reason, db)
+    return {"success": True, "vacancy_id": vacancy_id}
+
