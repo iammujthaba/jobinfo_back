@@ -1,0 +1,27 @@
+# Secrets & Environment Variables
+.env
+.env.*
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Python Cache (Junk files Python creates automatically)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Databases (Prevents overwriting your live database)
+*.sqlite3
+*.db
+
+# Logs
+*.log
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
