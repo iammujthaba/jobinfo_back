@@ -68,27 +68,41 @@ async def root():
 # ── File Serving Route ────────────────────────────────────────────────────────
 # NEW: This entire block handles the CV download requests from the recruiter dashboard
 @app.get("/files/cv/{file_path:path}", include_in_schema=False)
-async def serve_cv(file_path: str):
+async def serve_cv(
+    file_path: str,
+    candidate_name: str | None = None,
+    job_code: str | None = None,
+):
     """
-    Intercepts the CV download requests, cleans up Windows paths, 
-    and serves the PDF file directly to the browser.
+    Serves a candidate CV file as a download.
+    Accepts optional query params to rename the file for the recruiter:
+      ?candidate_name=John+Doe&job_code=JC123
+    → downloads as  "John_Doe_JC123_CV.pdf"
     """
-    # 1. Normalize Windows backslashes (%5C) to standard forward slashes
+    import re
+
     clean_path = file_path.replace("\\", "/")
-    
-    # 2. Security check: prevent directory traversal
     if ".." in clean_path:
         raise HTTPException(status_code=403, detail="Invalid path")
-        
-    # 3. Check if the file actually exists on the hard drive
     if not os.path.exists(clean_path):
         raise HTTPException(status_code=404, detail="CV file not found on server")
-        
-    # 4. Serve the file as a downloadable attachment
-    filename = os.path.basename(clean_path)
+
+    # Build a meaningful filename when name/job_code are supplied
+    ext = os.path.splitext(clean_path)[1] or ".pdf"
+    if candidate_name and job_code:
+        # Slug-safe: keep alphanumeric + spaces, replace spaces with underscores
+        safe_name = re.sub(r"[^\w\s]", "", candidate_name).strip().replace(" ", "_")
+        safe_code = re.sub(r"[^\w]", "", job_code)
+        filename = f"{safe_name}_{safe_code}_CV{ext}"
+    elif candidate_name:
+        safe_name = re.sub(r"[^\w\s]", "", candidate_name).strip().replace(" ", "_")
+        filename = f"{safe_name}_CV{ext}"
+    else:
+        filename = os.path.basename(clean_path)
+
     return FileResponse(
-        path=clean_path, 
-        filename=filename, 
+        path=clean_path,
+        filename=filename,
         media_type="application/pdf",
-        content_disposition_type="attachment" # Forces browser to download the file
+        content_disposition_type="attachment",
     )
