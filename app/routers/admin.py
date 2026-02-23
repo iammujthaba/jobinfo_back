@@ -292,15 +292,10 @@ async def api_analytics(
     _: str = Depends(require_admin),
 ):
     """
-    Returns comprehensive platform analytics for the admin dashboard:
-    - Platform totals (vacancies, recruiters, candidates, applications)
-    - Vacancy status breakdown
-    - Daily vacancy submissions (last 30 days)
-    - Vacancies per recruiter (top 15)
-    - Applications per vacancy (top 15)
-    - Daily applications trend (last 30 days)
+    Returns comprehensive platform analytics for the admin dashboard.
     """
-    from sqlalchemy import func as sqlfunc, text as sqltext
+    # 👇 ADDED 'case' to this import
+    from sqlalchemy import func as sqlfunc, case
     from app.db.models import (
         Candidate, CandidateApplication, JobVacancy, Recruiter, VacancyStatus
     )
@@ -352,14 +347,15 @@ async def api_analytics(
     ]
 
     # ── Vacancies per recruiter (top 15) ─────────────────────────────────────
+    # 👇 FIXED: Used 'case()' instead of 'sqlfunc.case()'
     recruiter_vac_rows = (
         db.query(
             Recruiter.name.label("name"),
             Recruiter.company.label("company"),
             sqlfunc.count(JobVacancy.id).label("total"),
-            sqlfunc.sum(sqlfunc.case((JobVacancy.status == VacancyStatus.approved, 1), else_=0)).label("approved"),
-            sqlfunc.sum(sqlfunc.case((JobVacancy.status == VacancyStatus.pending, 1), else_=0)).label("pending"),
-            sqlfunc.sum(sqlfunc.case((JobVacancy.status == VacancyStatus.rejected, 1), else_=0)).label("rejected"),
+            sqlfunc.sum(case((JobVacancy.status == VacancyStatus.approved, 1), else_=0)).label("approved"),
+            sqlfunc.sum(case((JobVacancy.status == VacancyStatus.pending, 1), else_=0)).label("pending"),
+            sqlfunc.sum(case((JobVacancy.status == VacancyStatus.rejected, 1), else_=0)).label("rejected"),
         )
         .join(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
         .group_by(Recruiter.id)
@@ -370,8 +366,10 @@ async def api_analytics(
     vacancies_per_recruiter = [
         {
             "recruiter": f"{r.name}" + (f" ({r.company})" if r.company else ""),
-            "total": r.total, "approved": int(r.approved or 0),
-            "pending": int(r.pending or 0), "rejected": int(r.rejected or 0),
+            "total": r.total, 
+            "approved": int(r.approved or 0),
+            "pending": int(r.pending or 0), 
+            "rejected": int(r.rejected or 0),
         }
         for r in recruiter_vac_rows
     ]
