@@ -184,7 +184,11 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
     for v in vacancies:
         status_emoji = {"approved": "✅", "pending": "⏳", "rejected": "❌"}.get(v.status, "❓")
         lines.append(f"{status_emoji} *{v.title}* ({v.job_code}) – {v.status.value}")
-    lines.append("\n_Visit jobinfo.club for full details_")
+    lines.append(
+        "\n🖥️ *View your full dashboard:*\n"
+        "http://localhost:5500/recruiter-dashboard.html"
+    )
+
 
     await wa_client.send_text(to=wa_number, body="\n".join(lines))
 

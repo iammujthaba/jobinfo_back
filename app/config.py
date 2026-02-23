@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     # Admin
     admin_wa_number: str = ""      # personal number for vacancy alerts
     business_wa_number: str = ""   # the API-enabled number
+    wa_channel_id: str = ""        # WhatsApp Channel phone-number ID for broadcasts
     admin_username: str = "admin"
     admin_password: str = "admin"
+
 
     # Database
     database_url: str = "sqlite:///./jobinfo.db"

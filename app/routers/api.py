@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
-    Candidate, CandidateApplication, JobVacancy,
+    ApplicationStatus, Candidate, CandidateApplication, JobVacancy,
     Recruiter, SubscriptionPlan, VacancyStatus
 )
 from app.services import otp as otp_service
@@ -283,3 +283,235 @@ async def apply_for_vacancy_web(
         body=application_confirmation_body(candidate, vacancy),
     )
     return {"applied": True, "vacancy": vacancy.title}
+
+
+# ─── Recruiter Dashboard ──────────────────────────────────────────────────────
+
+class RecruiterDashboardRequest(BaseModel):
+    wa_number: str
+    session_token: str
+
+
+@router.post("/recruiters/dashboard")
+def recruiter_dashboard(
+    body: RecruiterDashboardRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the authenticated recruiter's profile, vacancy stats, and full vacancy list
+    including per-vacancy application counts.  Requires a valid OTP session token.
+    """
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found. Please register first.")
+
+    vacancies = (
+        db.query(JobVacancy)
+        .filter_by(recruiter_id=recruiter.id)
+        .order_by(JobVacancy.created_at.desc())
+        .all()
+    )
+
+    # Build full vacancy list with application counts
+    vacancy_list = []
+    for v in vacancies:
+        app_count = db.query(CandidateApplication).filter_by(vacancy_id=v.id).count()
+        vacancy_list.append({
+            "id": v.id,
+            "job_code": v.job_code,
+            "title": v.title,
+            "company": v.company or "",
+            "location": v.location,
+            "description": v.description or "",
+            "salary_range": v.salary_range,
+            "experience_required": v.experience_required,
+            "status": v.status.value,
+            "rejection_reason": v.rejection_reason,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "approved_at": v.approved_at.isoformat() if v.approved_at else None,
+            "application_count": app_count,
+        })
+
+    # Summary counts
+    counts = {"total": len(vacancy_list), "approved": 0, "pending": 0, "rejected": 0}
+    for v in vacancy_list:
+        counts[v["status"]] = counts.get(v["status"], 0) + 1
+
+    total_applications = sum(v["application_count"] for v in vacancy_list)
+
+    return {
+        "recruiter": {
+            "name": recruiter.name,
+            "company": recruiter.company or "",
+            "location": recruiter.location or "",
+            "email": recruiter.email or "",
+            "wa_number": recruiter.wa_number,
+        },
+        "summary": {**counts, "total_applications": total_applications},
+        "vacancies": vacancy_list,
+    }
+
+
+# ─── Application Management (Recruiter) ──────────────────────────────────────
+
+class VacancyApplicationsRequest(BaseModel):
+    wa_number: str
+    session_token: str
+    vacancy_id: int
+
+
+class UpdateApplicationStatusRequest(BaseModel):
+    wa_number: str
+    session_token: str
+    application_id: int
+    status: str   # "applied" | "shortlisted" | "rejected"
+
+
+@router.post("/recruiters/vacancy-applications")
+def list_vacancy_applications(
+    body: VacancyApplicationsRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns all applications for a specific vacancy the recruiter owns.
+    Includes full candidate profile: name, location, skills, WA number, CV availability.
+    Requires a valid OTP session token.
+    """
+    _require_session(body.wa_number, body.session_token)
+
+    # Verify recruiter owns this vacancy
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    vacancy = db.query(JobVacancy).filter_by(
+        id=body.vacancy_id, recruiter_id=recruiter.id
+    ).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found or access denied")
+
+    applications = (
+        db.query(CandidateApplication)
+        .filter_by(vacancy_id=vacancy.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .all()
+    )
+
+    results = []
+    for app in applications:
+        c = app.candidate
+        results.append({
+            "application_id": app.id,
+            "status": app.status.value,
+            "applied_at": app.applied_at.isoformat() if app.applied_at else None,
+            "candidate": {
+                "id": c.id,
+                "name": c.name,
+                "location": c.location or "",
+                "skills": c.skills or "",
+                "wa_number": c.wa_number,
+                "has_cv": bool(c.cv_path),
+                "cv_path": c.cv_path or None,
+            },
+        })
+
+    return {
+        "vacancy": {
+            "id": vacancy.id,
+            "job_code": vacancy.job_code,
+            "title": vacancy.title,
+            "location": vacancy.location,
+        },
+        "total": len(results),
+        "applications": results,
+    }
+
+
+@router.post("/recruiters/application/update-status")
+def update_application_status(
+    body: UpdateApplicationStatusRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Update the status of a candidate application (shortlist / reject / reset to applied).
+    Verifies the recruiter owns the vacancy the application belongs to.
+    """
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    app = db.query(CandidateApplication).filter_by(id=body.application_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Verify recruiter owns this vacancy
+    if app.vacancy.recruiter_id != recruiter.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Validate new status value
+    valid = {s.value for s in ApplicationStatus}
+    if body.status not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Use one of: {valid}")
+
+    app.status = ApplicationStatus(body.status)
+    db.commit()
+    return {"success": True, "application_id": app.id, "status": app.status.value}
+
+
+@router.post("/recruiters/vacancy-applications/export-csv")
+def export_applications_csv(
+    body: VacancyApplicationsRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Export applications for a vacancy as a CSV file download.
+    Includes candidate name, location, skills, WA number, status.
+    """
+    import csv, io
+    from fastapi.responses import StreamingResponse
+
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    vacancy = db.query(JobVacancy).filter_by(
+        id=body.vacancy_id, recruiter_id=recruiter.id
+    ).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found or access denied")
+
+    applications = (
+        db.query(CandidateApplication)
+        .filter_by(vacancy_id=vacancy.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["#", "Name", "Location", "Skills", "WhatsApp", "Status", "Applied On"])
+    for i, app in enumerate(applications, 1):
+        c = app.candidate
+        writer.writerow([
+            i,
+            c.name,
+            c.location or "",
+            c.skills or "",
+            f"+{c.wa_number}",
+            app.status.value,
+            app.applied_at.strftime("%d %b %Y") if app.applied_at else "",
+        ])
+
+    output.seek(0)
+    filename = f"applications_{vacancy.job_code}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

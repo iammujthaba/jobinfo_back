@@ -206,5 +206,23 @@ class WhatsAppClient:
         return hmac.compare_digest(expected, received)
 
 
+    # ─── Channel broadcast ───────────────────────────────────────────────────
+
+    async def send_to_channel(self, body: str) -> dict:
+        """
+        Send a text message to the WhatsApp Channel managed by this phone number.
+        The channel_id must be the channel's phone-number ID (set as WA_CHANNEL_ID in .env).
+        """
+        channel_id = settings.wa_channel_id if hasattr(settings, "wa_channel_id") else None
+        if not channel_id:
+            raise ValueError("WA_CHANNEL_ID is not configured in .env")
+        return await self._post({
+            "messaging_product": "whatsapp",
+            "to": channel_id,
+            "type": "text",
+            "text": {"body": body, "preview_url": True},
+        })
+
+
 # Singleton instance
 wa_client = WhatsAppClient()

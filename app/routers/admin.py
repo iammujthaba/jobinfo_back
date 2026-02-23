@@ -234,3 +234,206 @@ async def api_reject_vacancy(
     await recruiter_handler.notify_recruiter_rejection(vacancy_id, reason, db)
     return {"success": True, "vacancy_id": vacancy_id}
 
+
+@router.post("/api/vacancies/{vacancy_id}/share-to-channel")
+async def api_share_vacancy_to_channel(
+    vacancy_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Share an approved vacancy as a formatted broadcast to the WhatsApp Channel.
+    Formats vacancy details as a rich text message with an apply link.
+    """
+    from app.whatsapp.client import wa_client
+
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status=VacancyStatus.approved).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Approved vacancy not found")
+
+    apply_link = f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}"
+
+    lines = [
+        f"🚀 *New Job Alert – JobInfo*",
+        f"",
+        f"🏷️ *{vacancy.title}*",
+    ]
+    if vacancy.company:
+        lines.append(f"🏢 Company: {vacancy.company}")
+    lines.append(f"📍 Location: {vacancy.location}")
+    if vacancy.salary_range:
+        lines.append(f"💰 Salary: {vacancy.salary_range}")
+    if vacancy.experience_required:
+        lines.append(f"🎓 Experience: {vacancy.experience_required}")
+    if vacancy.description:
+        lines.append(f"")
+        lines.append(f"📋 *About the Role:*")
+        lines.append(vacancy.description[:400] + ("…" if len(vacancy.description) > 400 else ""))
+    lines += [
+        f"",
+        f"📲 *Apply now:* {apply_link}",
+        f"🔖 Job Code: {vacancy.job_code}",
+        f"",
+        f"_JobInfo – Kerala's WhatsApp Job Platform_",
+        f"🌐 jobinfo.club | 📢 Follow our channel for daily jobs",
+    ]
+
+    try:
+        await wa_client.send_to_channel(body="\n".join(lines))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"WhatsApp API error: {e}")
+
+    return {"success": True, "vacancy_id": vacancy_id, "job_code": vacancy.job_code}
+
+
+@router.get("/api/analytics")
+async def api_analytics(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Returns comprehensive platform analytics for the admin dashboard:
+    - Platform totals (vacancies, recruiters, candidates, applications)
+    - Vacancy status breakdown
+    - Daily vacancy submissions (last 30 days)
+    - Vacancies per recruiter (top 15)
+    - Applications per vacancy (top 15)
+    - Daily applications trend (last 30 days)
+    """
+    from sqlalchemy import func as sqlfunc, text as sqltext
+    from app.db.models import (
+        Candidate, CandidateApplication, JobVacancy, Recruiter, VacancyStatus
+    )
+    from datetime import date, timedelta
+
+    # ── Platform totals ──────────────────────────────────────────────────────
+    total_vacancies   = db.query(JobVacancy).count()
+    total_recruiters  = db.query(Recruiter).count()
+    total_candidates  = db.query(Candidate).count()
+    total_applications = db.query(CandidateApplication).count()
+
+    pending_count  = db.query(JobVacancy).filter_by(status=VacancyStatus.pending).count()
+    approved_count = db.query(JobVacancy).filter_by(status=VacancyStatus.approved).count()
+    rejected_count = db.query(JobVacancy).filter_by(status=VacancyStatus.rejected).count()
+
+    # ── Daily vacancy submissions – last 30 days ─────────────────────────────
+    today = date.today()
+    period_start = today - timedelta(days=29)
+
+    vacancy_daily_raw = (
+        db.query(
+            sqlfunc.date(JobVacancy.created_at).label("day"),
+            sqlfunc.count(JobVacancy.id).label("cnt")
+        )
+        .filter(JobVacancy.created_at >= period_start)
+        .group_by(sqlfunc.date(JobVacancy.created_at))
+        .all()
+    )
+    vac_by_day = {str(row.day): row.cnt for row in vacancy_daily_raw}
+    vacancy_daily = [
+        {"date": str(period_start + timedelta(days=i)), "count": vac_by_day.get(str(period_start + timedelta(days=i)), 0)}
+        for i in range(30)
+    ]
+
+    # ── Daily applications – last 30 days ────────────────────────────────────
+    app_daily_raw = (
+        db.query(
+            sqlfunc.date(CandidateApplication.applied_at).label("day"),
+            sqlfunc.count(CandidateApplication.id).label("cnt")
+        )
+        .filter(CandidateApplication.applied_at >= period_start)
+        .group_by(sqlfunc.date(CandidateApplication.applied_at))
+        .all()
+    )
+    app_by_day = {str(row.day): row.cnt for row in app_daily_raw}
+    applications_daily = [
+        {"date": str(period_start + timedelta(days=i)), "count": app_by_day.get(str(period_start + timedelta(days=i)), 0)}
+        for i in range(30)
+    ]
+
+    # ── Vacancies per recruiter (top 15) ─────────────────────────────────────
+    recruiter_vac_rows = (
+        db.query(
+            Recruiter.name.label("name"),
+            Recruiter.company.label("company"),
+            sqlfunc.count(JobVacancy.id).label("total"),
+            sqlfunc.sum(sqlfunc.case((JobVacancy.status == VacancyStatus.approved, 1), else_=0)).label("approved"),
+            sqlfunc.sum(sqlfunc.case((JobVacancy.status == VacancyStatus.pending, 1), else_=0)).label("pending"),
+            sqlfunc.sum(sqlfunc.case((JobVacancy.status == VacancyStatus.rejected, 1), else_=0)).label("rejected"),
+        )
+        .join(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
+        .group_by(Recruiter.id)
+        .order_by(sqlfunc.count(JobVacancy.id).desc())
+        .limit(15)
+        .all()
+    )
+    vacancies_per_recruiter = [
+        {
+            "recruiter": f"{r.name}" + (f" ({r.company})" if r.company else ""),
+            "total": r.total, "approved": int(r.approved or 0),
+            "pending": int(r.pending or 0), "rejected": int(r.rejected or 0),
+        }
+        for r in recruiter_vac_rows
+    ]
+
+    # ── Applications per vacancy (top 15 by apps) ────────────────────────────
+    top_jobs_rows = (
+        db.query(
+            JobVacancy.title.label("title"),
+            JobVacancy.job_code.label("job_code"),
+            JobVacancy.location.label("location"),
+            JobVacancy.status.label("status"),
+            sqlfunc.count(CandidateApplication.id).label("apps"),
+        )
+        .outerjoin(CandidateApplication, CandidateApplication.vacancy_id == JobVacancy.id)
+        .group_by(JobVacancy.id)
+        .order_by(sqlfunc.count(CandidateApplication.id).desc())
+        .limit(15)
+        .all()
+    )
+    top_jobs = [
+        {
+            "title": r.title,
+            "job_code": r.job_code,
+            "location": r.location,
+            "status": r.status.value if r.status else "",
+            "applications": r.apps,
+        }
+        for r in top_jobs_rows
+    ]
+
+    # ── Recruiter registration trend – last 30 days ──────────────────────────
+    rec_daily_raw = (
+        db.query(
+            sqlfunc.date(Recruiter.created_at).label("day"),
+            sqlfunc.count(Recruiter.id).label("cnt")
+        )
+        .filter(Recruiter.created_at >= period_start)
+        .group_by(sqlfunc.date(Recruiter.created_at))
+        .all()
+    )
+    rec_by_day = {str(row.day): row.cnt for row in rec_daily_raw}
+    recruiters_daily = [
+        {"date": str(period_start + timedelta(days=i)), "count": rec_by_day.get(str(period_start + timedelta(days=i)), 0)}
+        for i in range(30)
+    ]
+
+    return {
+        "totals": {
+            "vacancies": total_vacancies,
+            "recruiters": total_recruiters,
+            "candidates": total_candidates,
+            "applications": total_applications,
+        },
+        "vacancy_status": {
+            "pending": pending_count,
+            "approved": approved_count,
+            "rejected": rejected_count,
+        },
+        "vacancy_daily": vacancy_daily,
+        "applications_daily": applications_daily,
+        "recruiters_daily": recruiters_daily,
+        "vacancies_per_recruiter": vacancies_per_recruiter,
+        "top_jobs_by_applications": top_jobs,
+    }
+
