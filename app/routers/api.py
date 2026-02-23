@@ -515,3 +515,81 @@ def export_applications_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ─── Edit Rejected Vacancy ────────────────────────────────────────────────────
+
+class EditVacancyRequest(BaseModel):
+    wa_number: str
+    session_token: str
+    vacancy_id: int
+    title: str
+    company: str | None = None
+    location: str
+    description: str | None = None
+    salary_range: str | None = None
+    experience_required: str | None = None
+
+
+@router.post("/recruiters/vacancy/edit")
+def edit_rejected_vacancy(
+    body: EditVacancyRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Allows a recruiter to edit a rejected vacancy and resubmit it for review.
+    - Only works on vacancies with status=rejected
+    - Resets status to pending and marks is_edited=True
+    - Admin will see an 'Edited' badge to distinguish re-submissions
+    """
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    vacancy = db.query(JobVacancy).filter_by(
+        id=body.vacancy_id, recruiter_id=recruiter.id
+    ).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found or access denied")
+
+    if vacancy.status != VacancyStatus.rejected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only rejected vacancies can be edited. Current status: {vacancy.status.value}"
+        )
+
+    # Validate required fields
+    body.title = body.title.strip()
+    body.location = body.location.strip()
+    if not body.title:
+        raise HTTPException(status_code=422, detail="Title is required")
+    if not body.location:
+        raise HTTPException(status_code=422, detail="Location is required")
+
+    # Apply edits
+    vacancy.title = body.title
+    vacancy.company = (body.company or "").strip() or None
+    vacancy.location = body.location
+    vacancy.description = (body.description or "").strip() or None
+    vacancy.salary_range = (body.salary_range or "").strip() or None
+    vacancy.experience_required = (body.experience_required or "").strip() or None
+
+    # Reset to pending for re-review, clear rejection reason, mark as edited
+    vacancy.status = VacancyStatus.pending
+    vacancy.rejection_reason = None
+    vacancy.is_edited = True
+    vacancy.edited_at = datetime.now(timezone.utc)
+    vacancy.approved_at = None
+
+    db.commit()
+    db.refresh(vacancy)
+
+    return {
+        "success": True,
+        "vacancy_id": vacancy.id,
+        "job_code": vacancy.job_code,
+        "status": vacancy.status.value,
+        "message": "Vacancy resubmitted for review. You will be notified via WhatsApp once reviewed.",
+    }

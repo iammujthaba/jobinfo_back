@@ -75,11 +75,16 @@ class JobVacancy(Base):
     )
     rejection_reason = Column(Text)
 
+    # Edit tracking — set when recruiter edits a rejected vacancy and resubmits
+    is_edited = Column(Boolean, default=False, nullable=False)
+    edited_at = Column(DateTime(timezone=True))
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     approved_at = Column(DateTime(timezone=True))
 
     recruiter = relationship("Recruiter", back_populates="vacancies")
     applications = relationship("CandidateApplication", back_populates="vacancy")
+
 
 
 class SubscriptionPlan(Base):

@@ -374,7 +374,7 @@ async def handle_update_cv_button(
         header_text="JobInfo – Update CV",
         # 👇 Wrapped in 'data' and added 'screen' name here too
         flow_action_payload={
-            "screen": "DETAILS",
+            "screen": "CV_UPDATE_SCREEN",
             "data": {
                 "return_vacancy_id": vacancy_id
             }

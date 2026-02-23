@@ -201,6 +201,8 @@ async def api_list_vacancies(
             "experience_required": v.experience_required,
             "status": v.status.value,
             "rejection_reason": v.rejection_reason,
+            "is_edited": bool(getattr(v, "is_edited", False)),
+            "edited_at": v.edited_at.isoformat() if getattr(v, "edited_at", None) else None,
             "created_at": v.created_at.isoformat() if v.created_at else None,
             "recruiter": {
                 "name": v.recruiter.name,
@@ -208,6 +210,7 @@ async def api_list_vacancies(
                 "company": v.recruiter.company,
             } if v.recruiter else None,
         })
+
 
     return {"total": len(results), "results": results}
 
