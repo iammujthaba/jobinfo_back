@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
-    CallbackRequest, Candidate, JobVacancy, VacancyStatus
+    CallbackRequest, Candidate, JobVacancy, VacancyStatus, ConversationState
 )
 from app.handlers import recruiter as recruiter_handler
 
@@ -247,8 +247,33 @@ async def api_share_vacancy_to_channel(
     """
     Share an approved vacancy as a formatted broadcast to the WhatsApp Channel.
     Formats vacancy details as a rich text message with an apply link.
+    Checks if the channel phone number has interacted within the last 24 hours.
     """
     from app.whatsapp.client import wa_client
+
+    channel_wa_number = getattr(settings, "wa_channel_id", None)
+    if not channel_wa_number:
+        raise HTTPException(status_code=500, detail="WA_CHANNEL_ID is not configured in environment settings.")
+
+    conv_state = db.query(ConversationState).filter_by(wa_number=channel_wa_number).first()
+    
+    if not conv_state or not conv_state.last_user_message_at:
+        raise HTTPException(
+            status_code=400,
+            detail="The 24-hour free message window has expired. Please send a message from the designated channel number to the bot to reactivate it."
+        )
+
+    now_utc = datetime.now(timezone.utc)
+    last_msg_time = conv_state.last_user_message_at
+    if last_msg_time.tzinfo is None:
+        last_msg_time = last_msg_time.replace(tzinfo=timezone.utc)
+
+    time_diff = (now_utc - last_msg_time).total_seconds()
+    if time_diff > 86400:  # 24 hours in seconds
+        raise HTTPException(
+            status_code=400,
+            detail="The 24-hour free message window has expired. Please send a message from the designated channel number to the bot to reactivate it."
+        )
 
     vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status=VacancyStatus.approved).first()
     if not vacancy:
