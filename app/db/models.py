@@ -176,4 +176,5 @@ class ConversationState(Base):
     wa_number = Column(String(20), unique=True, nullable=False, index=True)
     state = Column(String(100), default="idle")   # e.g. 'recruiter_registration', 'seeker_apply'
     context = Column(JSON, default={})             # arbitrary data for the current step
+    last_user_message_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())

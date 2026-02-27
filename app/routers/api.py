@@ -96,16 +96,58 @@ def _require_session(wa_number: str, session_token: str):
 @router.post("/otp/send")
 async def send_otp(body: OTPSendRequest, db: Session = Depends(get_db)):
     """Generate OTP and send it via WhatsApp."""
-    otp_code = otp_service.create_otp(db, body.wa_number)
-    await wa_client.send_text(
-        to=body.wa_number,
-        body=(
-            f"🔐 *JobInfo OTP*\n\n"
-            f"Your verification code is: *{otp_code}*\n\n"
-            f"Valid for 5 minutes. Do not share this code with anyone.\n_JobInfo_"
-        ),
-    )
-    return {"message": "OTP sent"}
+    import httpx
+    try:
+        otp_code = otp_service.create_otp(db, body.wa_number)
+        
+        # Check 24-hour window
+        from app.db.models import ConversationState
+        state = db.query(ConversationState).filter_by(wa_number=body.wa_number).first()
+        
+        send_text = False
+        if state and state.last_user_message_at:
+            # Ensure last_user_message_at is offset-aware
+            last_msg_at = state.last_user_message_at
+            if last_msg_at.tzinfo is None:
+                last_msg_at = last_msg_at.replace(tzinfo=timezone.utc)
+            time_diff = datetime.now(timezone.utc) - last_msg_at
+            if time_diff.total_seconds() <= 24 * 3600:
+                send_text = True
+                
+        if send_text:
+            await wa_client.send_text(
+                to=body.wa_number,
+                body=(
+                    f"🔐 *JobInfo OTP*\n\n"
+                    f"Your verification code is: *{otp_code}*\n\n"
+                    f"Valid for 5 minutes. Do not share this code with anyone.\n_JobInfo_"
+                ),
+            )
+        else:
+            await wa_client.send_template(
+                to=body.wa_number,
+                template_name="jobinfo_otp_auth",
+                components=[
+                    {
+                        "type": "body",
+                        "parameters": [{"type": "text", "text": otp_code}]
+                    },
+                    {
+                        "type": "button",
+                        "sub_type": "url",
+                        "index": "0",
+                        "parameters": [{"type": "text", "text": otp_code}]
+                    }
+                ]
+            )
+            
+        return {"message": "OTP sent"}
+    except httpx.HTTPStatusError as e:
+        logger.error(f"WhatsApp API Error: {e.response.text}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"WhatsApp API Error: {e.response.json().get('error', {}).get('message', 'Unknown Error')}"
+        )
 
 
 @router.post("/otp/verify")

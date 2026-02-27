@@ -53,7 +53,7 @@ class WhatsAppClient:
         self,
         to: str,
         template_name: str,
-        language_code: str = "en",
+        language_code: str = "en_US",
         components: list[dict] | None = None,
     ) -> dict:
         """Send a pre-approved WhatsApp template message."""

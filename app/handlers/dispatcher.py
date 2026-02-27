@@ -9,6 +9,8 @@ appropriate handler.
 import logging
 import re
 
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.db.models import ConversationState
@@ -32,6 +34,8 @@ async def dispatch(payload: dict, db: Session) -> None:
             message = value["messages"][0]
             wa_number = message["from"]
             msg_type = message.get("type")
+
+            _track_user_message(wa_number, db)
 
             logger.info("Incoming %s from %s", msg_type, wa_number)
 
@@ -81,6 +85,16 @@ async def dispatch(payload: dict, db: Session) -> None:
 
 
 # ─── Routing helpers ──────────────────────────────────────────────────────────
+
+def _track_user_message(wa_number: str, db: Session) -> None:
+    """Updates the last_user_message_at timestamp for a given wa_number."""
+    state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    if not state:
+        state = ConversationState(wa_number=wa_number, state="idle")
+        db.add(state)
+    state.last_user_message_at = datetime.now(timezone.utc)
+    db.commit()
+
 
 async def _handle_text(wa_number: str, text: str, db: Session) -> None:
     """Route a plain text message."""
