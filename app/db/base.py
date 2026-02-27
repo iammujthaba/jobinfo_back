@@ -27,26 +27,6 @@ def get_db():
 
 
 def init_db():
-    """Create all tables then safely add any new columns that may not exist yet."""
+    """Create all tables. Migrations are now handled by Alembic."""
     Base.metadata.create_all(bind=engine)
-    _migrate_columns()
-
-
-def _migrate_columns():
-    """
-    Safe, idempotent column additions for SQLite (which doesn't support
-    IF NOT EXISTS in ALTER TABLE).  Each ALTER is wrapped in a try/except so
-    that re-running on an already-migrated DB is harmless.
-    """
-    migrations = [
-        "ALTER TABLE job_vacancies ADD COLUMN is_edited BOOLEAN NOT NULL DEFAULT 0",
-        "ALTER TABLE job_vacancies ADD COLUMN edited_at DATETIME",
-    ]
-    with engine.connect() as conn:
-        for sql in migrations:
-            try:
-                conn.execute(__import__("sqlalchemy").text(sql))
-                conn.commit()
-            except Exception:
-                pass  # column already exists – skip silently
 
