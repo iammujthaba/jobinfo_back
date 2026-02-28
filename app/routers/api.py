@@ -127,6 +127,7 @@ async def send_otp(body: OTPSendRequest, db: Session = Depends(get_db)):
             await wa_client.send_template(
                 to=body.wa_number,
                 template_name="jobinfo_otp_auth",
+                language_code="en",
                 components=[
                     {
                         "type": "body",
