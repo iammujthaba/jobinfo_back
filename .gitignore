@@ -25,3 +25,13 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Uploads
+uploads/
+!uploads/.gitkeep
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
