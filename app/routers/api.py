@@ -197,6 +197,44 @@ def list_vacancies(
     }
 
 
+@router.get("/vacancies/locations/suggest")
+def suggest_locations(
+    query: str,
+    db: Session = Depends(get_db),
+):
+    """Suggests locations based on current approved and active vacancies."""
+    if not query or len(query.strip()) < 1:
+        return {"results": []}
+    locations = (
+        db.query(JobVacancy.location)
+        .filter(JobVacancy.status == VacancyStatus.approved)
+        .filter(JobVacancy.location.ilike(f"{query.strip()}%"))
+        .distinct()
+        .limit(10)
+        .all()
+    )
+    return {"results": [loc[0] for loc in locations]}
+
+
+@router.get("/vacancies/titles/suggest")
+def suggest_titles(
+    query: str,
+    db: Session = Depends(get_db),
+):
+    """Suggests job titles based on current approved and active vacancies."""
+    if not query or len(query.strip()) < 1:
+        return {"results": []}
+    titles = (
+        db.query(JobVacancy.title)
+        .filter(JobVacancy.status == VacancyStatus.approved)
+        .filter(JobVacancy.title.ilike(f"{query.strip()}%"))
+        .distinct()
+        .limit(10)
+        .all()
+    )
+    return {"results": [t[0] for t in titles]}
+
+
 @router.get("/vacancies/{vacancy_id}")
 def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
     vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status=VacancyStatus.approved).first()
