@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
-    CallbackRequest, Candidate, JobVacancy, VacancyStatus, ConversationState
+    CallbackRequest, Candidate, JobVacancy, VacancyStatus, ConversationState, UserQuestion
 )
 from app.handlers import recruiter as recruiter_handler
 
@@ -463,3 +463,39 @@ async def api_analytics(
         "top_jobs_by_applications": top_jobs,
     }
 
+
+@router.get("/api/questions")
+async def api_list_questions(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns submitted user questions."""
+    questions = db.query(UserQuestion).order_by(UserQuestion.created_at.desc()).all()
+    results = [
+        {
+            "id": q.id,
+            "name": q.name,
+            "wa_number": q.wa_number,
+            "question": q.question,
+            "source": q.source,
+            "is_resolved": q.is_resolved,
+            "created_at": q.created_at.isoformat() if q.created_at else None,
+        }
+        for q in questions
+    ]
+    return {"total": len(results), "results": results}
+
+
+@router.post("/api/questions/{question_id}/resolve")
+async def api_resolve_question(
+    question_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Marks a user question as resolved."""
+    q = db.query(UserQuestion).filter_by(id=question_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    q.is_resolved = True
+    db.commit()
+    return {"success": True, "question_id": question_id}

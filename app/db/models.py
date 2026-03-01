@@ -178,3 +178,15 @@ class ConversationState(Base):
     context = Column(JSON, default={})             # arbitrary data for the current step
     last_user_message_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+
+class UserQuestion(Base):
+    __tablename__ = "user_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=True)
+    wa_number = Column(String(20), nullable=True)
+    question = Column(Text, nullable=False)
+    source = Column(String(50), nullable=True)
+    is_resolved = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
     ApplicationStatus, Candidate, CandidateApplication, JobVacancy,
-    Recruiter, SubscriptionPlan, VacancyStatus
+    Recruiter, SubscriptionPlan, UserQuestion, VacancyStatus
 )
 from app.services import otp as otp_service
 from app.services.job_code import generate_job_code
@@ -33,6 +33,14 @@ router = APIRouter(prefix="/api", tags=["api"])
 
 
 # ─── Pydantic schemas ─────────────────────────────────────────────────────────
+
+class UserQuestionRequest(BaseModel):
+    name: str | None = None
+    wa_number: str | None = None
+    question: str
+    source: str | None = None
+    website: str | None = None
+
 
 class OTPSendRequest(BaseModel):
     wa_number: str
@@ -251,6 +259,28 @@ def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
         "experience_required": vacancy.experience_required,
         "apply_link": f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
     }
+
+
+
+@router.post("/questions")
+def submit_question(body: UserQuestionRequest, db: Session = Depends(get_db)):
+    """Submit a user question. Uses an optional website field as a honeypot."""
+    if body.website:
+        logger.info("Spam bot detected via honeypot field during question submission")
+        return {"status": "success", "message": "Question submitted successfully"}
+    
+    if not body.question or not body.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+        
+    q = UserQuestion(
+        name=body.name.strip() if body.name else None,
+        wa_number=body.wa_number.strip() if body.wa_number else None,
+        question=body.question.strip(),
+        source=body.source.strip() if body.source else None
+    )
+    db.add(q)
+    db.commit()
+    return {"status": "success", "message": "Question submitted successfully"}
 
 
 # ─── Recruiter actions ────────────────────────────────────────────────────────
