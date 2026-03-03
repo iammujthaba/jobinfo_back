@@ -43,7 +43,7 @@ async def dispatch(payload: dict, db: Session) -> None:
                 await _handle_text(wa_number, message["text"]["body"], db)
 
             if msg_type == "interactive":
-                interactive = msg.get("interactive", {})
+                interactive = message.get("interactive", {})
                 inter_type = interactive.get("type")
                 
                 if inter_type == "nfm_reply": # <-- ADD THIS BLOCK
