@@ -102,7 +102,7 @@ async def handle_registration_flow_completion(
         to=wa_number,
         body_text=registration_confirmation_body(recruiter.name, "recruiter"),
         buttons=[
-            {"type": "reply", "reply": {"id": "btn_post_vacancy", "title": "Post Vacancy"}}
+            {"id": "btn_post_vacancy", "title": "Post Vacancy"}
         ]
     )
 
