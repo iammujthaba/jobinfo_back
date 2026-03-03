@@ -100,7 +100,7 @@ async def handle_registration_flow_completion(
     # Confirmation message with CTA button
     await wa_client.send_buttons(
         to=wa_number,
-        body=registration_confirmation_body(recruiter.name, "recruiter"),
+        body_text=registration_confirmation_body(recruiter.name, "recruiter"),
         buttons=[
             {"type": "reply", "reply": {"id": "btn_post_vacancy", "title": "Post Vacancy"}}
         ]
