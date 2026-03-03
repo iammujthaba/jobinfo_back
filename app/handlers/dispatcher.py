@@ -47,7 +47,7 @@ async def dispatch(payload: dict, db: Session) -> None:
                 inter_type = interactive.get("type")
                 
                 if inter_type == "nfm_reply":
-                    await _handle_flow_reply(wa_number, interactive, db)
+                    await _handle_flow_reply(wa_number, interactive["nfm_reply"], db)
                     return
                     
                 elif inter_type == "button_reply":
