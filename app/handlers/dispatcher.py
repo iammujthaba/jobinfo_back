@@ -42,22 +42,23 @@ async def dispatch(payload: dict, db: Session) -> None:
             if msg_type == "text":
                 await _handle_text(wa_number, message["text"]["body"], db)
 
-            elif msg_type == "interactive":
-                interactive = message["interactive"]
-                sub_type = interactive.get("type")
-
-                if sub_type == "button_reply":
+            if msg_type == "interactive":
+                interactive = msg.get("interactive", {})
+                inter_type = interactive.get("type")
+                
+                if inter_type == "nfm_reply": # <-- ADD THIS BLOCK
+                    response_json = interactive.get("nfm_reply", {}).get("response_json", "{}")
+                    import json
+                    flow_data = json.loads(response_json)
+                    await _handle_flow_reply(wa_number, flow_data, db)
+                    return
+                    
+                elif inter_type == "button_reply":
                     button_id = interactive["button_reply"]["id"]
                     await _handle_button(wa_number, button_id, db)
-
-                elif sub_type == "list_reply":
-                    row_id = interactive["list_reply"]["id"]
-                    await _handle_list_reply(wa_number, row_id, db)
-
-                elif sub_type == "nfm_reply":
-                    # WhatsApp Flow completion
-                    flow_data = interactive["nfm_reply"]
-                    await _handle_flow_reply(wa_number, flow_data, db)
+                elif inter_type == "list_reply":
+                    list_id = interactive["list_reply"]["id"]
+                    await _handle_list(wa_number, list_id, db)
 
             elif msg_type == "document":
                 # Direct document upload (CV)
