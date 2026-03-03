@@ -111,6 +111,7 @@ async def handle_registration_flow_completion(
         to=wa_number,
         template_name=TEMPLATE_RECRUITER_WELCOME,
         components=recruiter_welcome_components(recruiter),
+        language_code="en"
     )
     _set_state(wa_number, "recruiter_idle", {}, db)
 
