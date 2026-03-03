@@ -60,6 +60,7 @@ async def start(wa_number: str, db: Session) -> None:
             to=wa_number,
             template_name=TEMPLATE_RECRUITER_WELCOME,
             components=recruiter_welcome_components(recruiter),
+            language_code="en"
         )
         _set_state(wa_number, "recruiter_idle", {}, db)
     else:
@@ -96,10 +97,13 @@ async def handle_registration_flow_completion(
     db.commit()
     db.refresh(recruiter)
 
-    # Confirmation message
-    await wa_client.send_text(
+    # Confirmation message with CTA button
+    await wa_client.send_buttons(
         to=wa_number,
         body=registration_confirmation_body(recruiter.name, "recruiter"),
+        buttons=[
+            {"type": "reply", "reply": {"id": "btn_post_vacancy", "title": "Post Vacancy"}}
+        ]
     )
 
     # Follow up with the welcome template showing both buttons
