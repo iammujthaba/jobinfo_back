@@ -46,11 +46,8 @@ async def dispatch(payload: dict, db: Session) -> None:
                 interactive = message.get("interactive", {})
                 inter_type = interactive.get("type")
                 
-                if inter_type == "nfm_reply": # <-- ADD THIS BLOCK
-                    response_json = interactive.get("nfm_reply", {}).get("response_json", "{}")
-                    import json
-                    flow_data = json.loads(response_json)
-                    await _handle_flow_reply(wa_number, flow_data, db)
+                if inter_type == "nfm_reply":
+                    await _handle_flow_reply(wa_number, interactive, db)
                     return
                     
                 elif inter_type == "button_reply":
