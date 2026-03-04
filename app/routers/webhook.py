@@ -53,7 +53,25 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
-    # Respond 200 immediately so Meta doesn't retry
+
+    # --- START OF NEW ROUTING LOGIC ---
+    try:
+        # Safely drill down into Meta's nested JSON payload
+        entries = payload.get("entry", [])
+        if entries:
+            changes = entries[0].get("changes", [])
+            if changes:
+                metadata = changes[0].get("value", {}).get("metadata", {})
+                incoming_phone_id = metadata.get("phone_number_id")
+
+                # If an ID is found, check it against our local .env file
+                if incoming_phone_id and incoming_phone_id != settings.whatsapp_phone_id:
+                    logger.info(f"🛑 Ignored message meant for another bot (ID: {incoming_phone_id})")
+                    return {"status": "ignored", "reason": "Cross-environment webhook dropped"}
+    except Exception as e:
+        logger.warning(f"Error checking webhook phone ID: {e}")
+    # --- END OF NEW ROUTING LOGIC ---
+
     # Dispatch asynchronously
     try:
         await dispatch(payload, db)
