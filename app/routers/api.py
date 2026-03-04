@@ -427,8 +427,11 @@ def recruiter_dashboard(
 
     # Build full vacancy list with application counts
     vacancy_list = []
+    total_shortlisted = 0
     for v in vacancies:
         app_count = db.query(CandidateApplication).filter_by(vacancy_id=v.id).count()
+        shortlisted_count = db.query(CandidateApplication).filter_by(vacancy_id=v.id, status=ApplicationStatus.shortlisted).count()
+        total_shortlisted += shortlisted_count
         vacancy_list.append({
             "id": v.id,
             "job_code": v.job_code,
@@ -460,7 +463,7 @@ def recruiter_dashboard(
             "email": recruiter.email or "",
             "wa_number": recruiter.wa_number,
         },
-        "summary": {**counts, "total_applications": total_applications},
+        "summary": {**counts, "total_applications": total_applications, "total_shortlisted": total_shortlisted},
         "vacancies": vacancy_list,
     }
 
