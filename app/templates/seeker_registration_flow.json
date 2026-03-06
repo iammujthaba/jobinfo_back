@@ -1,0 +1,134 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SEEKER_REGISTRATION": ["SEEKER_LOCATION"],
+    "SEEKER_LOCATION": []
+  },
+  "screens": [
+    {
+      "id": "SEEKER_REGISTRATION",
+      "title": "Job Seeker Registration",
+      "terminal": false,
+      "data": {
+        "pending_job_code": {
+          "type": "string",
+          "__example__": "JC1001"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "registration_form",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "name",
+                "label": "Full Name",
+                "input-type": "text",
+                "required": true,
+                "helper-text": "Enter your full name"
+              },
+              {
+                "type": "TextInput",
+                "name": "pin_code",
+                "label": "PIN Code",
+                "input-type": "number",
+                "required": true,
+                "helper-text": "Your 6-digit area PIN code (e.g. 673014)",
+                "min-chars": 6,
+                "max-chars": 6
+              },
+              {
+                "type": "TextArea",
+                "name": "skills",
+                "label": "Skills",
+                "required": false,
+                "helper-text": "e.g. Driving, Cooking, Computer, Sales"
+              },
+              {
+                "type": "DocumentPicker",
+                "name": "cv_file",
+                "label": "Upload CV (PDF)",
+                "required": false,
+                "min-file-size": 1,
+                "max-file-size": 5242880,
+                "media-type": ["application/pdf"]
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Next",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "name": "${form.name}",
+                "pin_code": "${form.pin_code}",
+                "skills": "${form.skills}",
+                "cv_file": "${form.cv_file}",
+                "pending_job_code": "${data.pending_job_code}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "SEEKER_LOCATION",
+      "title": "Select Your Location",
+      "terminal": true,
+      "data": {
+        "post_offices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "Thondayad", "title": "Thondayad" },
+            { "id": "Kozhikode H.O", "title": "Kozhikode H.O" }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "location_form",
+            "children": [
+              {
+                "type": "Dropdown",
+                "name": "post_office",
+                "label": "Select Post Office",
+                "required": true,
+                "data-source": "${data.post_offices}"
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Submit Registration",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "post_office": "${form.post_office}",
+                "name": "${screen.SEEKER_REGISTRATION.form.name}",
+                "pin_code": "${screen.SEEKER_REGISTRATION.form.pin_code}",
+                "skills": "${screen.SEEKER_REGISTRATION.form.skills}",
+                "cv_file": "${screen.SEEKER_REGISTRATION.form.cv_file}",
+                "pending_job_code": "${data.pending_job_code}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

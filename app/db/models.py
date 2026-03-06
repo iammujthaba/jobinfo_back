@@ -111,7 +111,8 @@ class Candidate(Base):
     id = Column(Integer, primary_key=True, index=True)
     wa_number = Column(String(20), unique=True, nullable=False, index=True)
     name = Column(String(120), nullable=False)
-    location = Column(String(200))
+    pin_code = Column(String(6))
+    post_office = Column(String(200))
     skills = Column(Text)
     cv_path = Column(String(500))   # local path or object-storage URL
     cv_updates_used = Column(Integer, default=0)

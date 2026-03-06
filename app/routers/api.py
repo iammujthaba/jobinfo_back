@@ -66,7 +66,8 @@ class CandidateRegisterRequest(BaseModel):
     wa_number: str
     session_token: str
     name: str
-    location: str | None = None
+    pin_code: str | None = None
+    post_office: str | None = None
     skills: str | None = None
     # CV is uploaded as a separate multipart request (see /api/candidates/upload-cv)
 
@@ -345,14 +346,16 @@ async def register_candidate_web(
         candidate = Candidate(
             wa_number=body.wa_number,
             name=body.name,
-            location=body.location,
+            pin_code=body.pin_code,
+            post_office=body.post_office,
             skills=body.skills,
             registration_complete=not settings.subscription_enabled,
         )
         db.add(candidate)
     else:
         candidate.name = body.name
-        candidate.location = body.location
+        candidate.pin_code = body.pin_code
+        candidate.post_office = body.post_office
         candidate.skills = body.skills
     db.commit()
 
@@ -523,7 +526,8 @@ def list_vacancy_applications(
             "candidate": {
                 "id": c.id,
                 "name": c.name,
-                "location": c.location or "",
+                "pin_code": c.pin_code or "",
+                "post_office": c.post_office or "",
                 "skills": c.skills or "",
                 "wa_number": c.wa_number,
                 "has_cv": bool(c.cv_path),
@@ -609,13 +613,14 @@ def export_applications_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["#", "Name", "Location", "Skills", "WhatsApp", "Status", "Applied On"])
+    writer.writerow(["#", "Name", "PIN Code", "Post Office", "Skills", "WhatsApp", "Status", "Applied On"])
     for i, app in enumerate(applications, 1):
         c = app.candidate
         writer.writerow([
             i,
             c.name,
-            c.location or "",
+            c.pin_code or "",
+            c.post_office or "",
             c.skills or "",
             f"+{c.wa_number}",
             app.status.value,

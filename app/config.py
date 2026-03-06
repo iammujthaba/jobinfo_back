@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-key"
     app_base_url: str = "http://localhost:8000"
 
+    # WhatsApp Flows encryption
+    flow_private_key_path: str = "keys/flow_private.pem"
+    flow_private_key_passphrase: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = False

@@ -176,7 +176,7 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
         header_text="JobInfo – Job Seeker Registration",
         # 👇 We wrapped the variable in 'data' and added a 'screen' name
         flow_action_payload={
-            "screen": "SEEKER_REGISTRATION_SCREEN", 
+            "screen": "SEEKER_REGISTRATION",
             "data": {
                 "pending_job_code": job_code
             }
@@ -190,11 +190,11 @@ async def handle_registration_flow_completion(
     """
     Called when the seeker registration Flow completes.
     Saves candidate, optionally offers plan selection.
-    flow_data keys: name, location, skills, media_id (CV), mime_type, pending_job_code
+    flow_data keys: name, pin_code, post_office, skills, cv_file, pending_job_code
     """
     # Save CV
     cv_path = None
-    raw_media = flow_data.get("media_id")
+    raw_media = flow_data.get("cv_file")
     
     if raw_media:
         # Meta's File Upload returns a list of dictionaries
@@ -216,7 +216,8 @@ async def handle_registration_flow_completion(
         candidate = Candidate(
             wa_number=wa_number,
             name=flow_data.get("name", ""),
-            location=flow_data.get("location"),
+            pin_code=flow_data.get("pin_code"),
+            post_office=flow_data.get("post_office"),
             skills=flow_data.get("skills"),
             cv_path=cv_path,
             registration_complete=False,
@@ -224,7 +225,8 @@ async def handle_registration_flow_completion(
         db.add(candidate)
     else:
         candidate.name = flow_data.get("name", candidate.name)
-        candidate.location = flow_data.get("location", candidate.location)
+        candidate.pin_code = flow_data.get("pin_code", candidate.pin_code)
+        candidate.post_office = flow_data.get("post_office", candidate.post_office)
         candidate.skills = flow_data.get("skills", candidate.skills)
         if cv_path:
             candidate.cv_path = cv_path
