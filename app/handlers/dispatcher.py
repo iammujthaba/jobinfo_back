@@ -141,6 +141,19 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await recruiter_handler.handle_my_vacancies_button(wa_number, db)
         return
 
+    # ── Seeker main menu buttons ──────────────────────────────────────────────
+    if button_id == "ACTION_SUGGEST_JOBS":
+        await seeker_handler.handle_suggest_jobs(wa_number, db)
+        return
+
+    if button_id == "ACTION_EXPLORE_JOBS":
+        await seeker_handler.handle_explore_jobs(wa_number)
+        return
+
+    if button_id == "ACTION_MY_APPLICATIONS":
+        await seeker_handler.handle_my_applications_menu(wa_number, db)
+        return
+
     # ── Seeker buttons ──────────────────────────────────────────────────────
     if button_id == "btn_callback":
         await seeker_handler.handle_callback_button(wa_number, db)

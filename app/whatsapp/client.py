@@ -206,6 +206,42 @@ class WhatsAppClient:
         return hmac.compare_digest(expected, received)
 
 
+    # ─── CTA URL (call-to-action link button) ────────────────────────────────
+
+    async def send_cta_url(
+        self,
+        to: str,
+        body_text: str,
+        button_text: str,
+        url: str,
+        header_text: str | None = None,
+        footer_text: str | None = None,
+    ) -> dict:
+        """Send an interactive message with a single CTA URL button."""
+        interactive: dict[str, Any] = {
+            "type": "cta_url",
+            "body": {"text": body_text},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": button_text,
+                    "url": url,
+                },
+            },
+        }
+        if header_text:
+            interactive["header"] = {"type": "text", "text": header_text}
+        if footer_text:
+            interactive["footer"] = {"text": footer_text}
+
+        return await self._post({
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "interactive",
+            "interactive": interactive,
+        })
+
+
     # ─── Channel broadcast ───────────────────────────────────────────────────
 
     async def send_to_channel(self, body: str) -> dict:

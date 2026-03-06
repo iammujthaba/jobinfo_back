@@ -72,14 +72,8 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
         return True
 
     if button_id == "menu_seeker":
-        await wa_client.send_text(
-            to=wa_number,
-            body=(
-                "🔍 To apply for a job, tap any job apply link from our WhatsApp Channel.\n\n"
-                "📢 Join: https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k\n\n"
-                "Already have a link? Tap it and we'll guide you through!"
-            ),
-        )
+        from app.handlers import seeker as seeker_handler
+        await seeker_handler.send_seeker_greeting_menu(wa_number)
         return True
 
     return False

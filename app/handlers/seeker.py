@@ -458,3 +458,210 @@ async def handle_view_applications_button(wa_number: str, db: Session) -> None:
     lines.append("\n_Full details at jobinfo.club_")
 
     await wa_client.send_text(to=wa_number, body="\n".join(lines))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Seeker Main Menu & New Button Handlers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
+DASHBOARD_URL = "https://jobinfo.club/"
+
+# Keywords used to match a seeker's category to vacancy title/description
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "retail": ["retail", "sales", "showroom", "cashier", "store", "billing", "floor manager", "packing"],
+    "hospitality": ["hotel", "restaurant", "chef", "cook", "waiter", "kitchen", "housekeeping", "server", "food"],
+    "healthcare": ["nurse", "caretaker", "clinic", "pharmacy", "lab", "hospital", "medical", "physioth"],
+    "driving": ["driver", "delivery", "logistics", "forklift", "taxi", "auto", "vehicle"],
+    "office_admin": ["receptionist", "data entry", "accountant", "tally", "office", "telecaller", "bpo", "admin", "front desk"],
+    "maintenance_technician": ["electrician", "mechanic", "plumber", "welder", "fitter", "technician", "ac ", "cctv", "lift"],
+    "it_professional": ["software", "developer", "graphic", "designer", "digital market", "it ", "video editor", "content writer", "programmer"],
+    "gulf_abroad": ["gulf", "gcc", "abroad", "overseas", "dubai", "qatar", "saudi", "oman", "bahrain", "kuwait"],
+    "other": [],
+}
+
+
+async def send_seeker_greeting_menu(wa_number: str) -> None:
+    """Send the main 3-button seeker welcome menu."""
+    await wa_client.send_buttons(
+        to=wa_number,
+        header_text="JobInfo — Your Career Partner 🌟",
+        body_text=(
+            "👋 *Welcome to JobInfo!*\n\n"
+            "We're thrilled to help you take the next step in your career. "
+            "Whether you're looking for your dream job or just exploring options — we've got you covered.\n\n"
+            "Choose how you'd like to start 👇"
+        ),
+        buttons=[
+            {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Jobs"},
+            {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
+        ],
+        footer_text="Powered by JobInfo.club",
+    )
+
+
+async def handle_explore_jobs(wa_number: str) -> None:
+    """Send a CTA URL inviting the seeker to the WhatsApp job channel."""
+    await wa_client.send_cta_url(
+        to=wa_number,
+        header_text="📢 JobInfo Jobs Channel",
+        body_text=(
+            "🔥 *Stay ahead of the crowd!*\n\n"
+            "Our WhatsApp Channel is updated daily with the freshest walk-in interviews "
+            "and urgent vacancies across Kerala and beyond.\n\n"
+            "Join now so you never miss an opportunity — your next job could be one tap away! 🚀"
+        ),
+        button_text="Join Channel",
+        url=WHATSAPP_CHANNEL_URL,
+        footer_text="Free • Instant updates • No spam",
+    )
+
+
+async def handle_my_applications_menu(wa_number: str, db: Session) -> None:
+    """
+    Show My Applications: if registered → dashboard link, else → registration flow.
+    """
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+
+    if candidate and candidate.registration_complete:
+        await wa_client.send_cta_url(
+            to=wa_number,
+            header_text="📊 Your Applications Dashboard",
+            body_text=(
+                "Great news — your profile is all set up! 🎉\n\n"
+                "Tap below to view your application history, check status updates, "
+                "and manage your profile on the JobInfo dashboard.\n\n"
+                "Stay on top of every opportunity! 💼"
+            ),
+            button_text="Login to Dashboard",
+            url=DASHBOARD_URL,
+            footer_text="Secure login via your registered number",
+        )
+    else:
+        await wa_client.send_flow(
+            to=wa_number,
+            flow_id=FLOW_ID_SEEKER_REGISTER,
+            flow_cta="Set Up Profile",
+            header_text="JobInfo — Profile Required",
+            body_text=(
+                "📋 *One quick step before you can track applications!*\n\n"
+                "To view your application history and get personalized job updates, "
+                "we need to set up your profile first.\n\n"
+                "It takes less than 2 minutes — tap below to get started! ✨"
+            ),
+            flow_action_payload={
+                "screen": "SEEKER_REGISTRATION",
+                "data": {"pending_job_code": ""},
+            },
+        )
+
+
+async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
+    """
+    Suggest matching jobs: if registered → find jobs by category, else → registration flow.
+    """
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+
+    if not candidate or not candidate.registration_complete:
+        await wa_client.send_flow(
+            to=wa_number,
+            flow_id=FLOW_ID_SEEKER_REGISTER,
+            flow_cta="Register Now",
+            header_text="JobInfo — Let Us Know Your Preferences",
+            body_text=(
+                "🎯 *We'd love to suggest the perfect jobs for you!*\n\n"
+                "To match you with the right opportunities, we need to know "
+                "your preferred job area, location, and a few quick details.\n\n"
+                "Set up your profile in under 2 minutes and start receiving "
+                "tailored job suggestions! 🚀"
+            ),
+            flow_action_payload={
+                "screen": "SEEKER_REGISTRATION",
+                "data": {"pending_job_code": ""},
+            },
+        )
+        return
+
+    # ── Find matching jobs based on candidate's category ──────────────────
+    category = (candidate.category or "").strip().lower()
+    keywords = CATEGORY_KEYWORDS.get(category, [])
+
+    matching_jobs: list[JobVacancy] = []
+
+    if keywords:
+        # Build an OR query: title or description contains any keyword
+        from sqlalchemy import or_, func
+        filters = []
+        for kw in keywords:
+            filters.append(func.lower(JobVacancy.title).contains(kw))
+            filters.append(func.lower(JobVacancy.description).contains(kw))
+
+        matching_jobs = (
+            db.query(JobVacancy)
+            .filter(JobVacancy.status == "approved")
+            .filter(or_(*filters))
+            .order_by(JobVacancy.approved_at.desc())
+            .limit(3)
+            .all()
+        )
+
+    # Fallback: if no keyword matches or "other" category, show latest jobs
+    if not matching_jobs:
+        matching_jobs = (
+            db.query(JobVacancy)
+            .filter(JobVacancy.status == "approved")
+            .order_by(JobVacancy.approved_at.desc())
+            .limit(3)
+            .all()
+        )
+
+    if not matching_jobs:
+        # No active jobs at all
+        await wa_client.send_cta_url(
+            to=wa_number,
+            header_text="JobInfo — Job Suggestions",
+            body_text=(
+                "😔 *We're currently sourcing new roles in your field.*\n\n"
+                "Our team is working hard to bring fresh opportunities that match "
+                f"your expertise. In the meantime, keep an eye on our Jobs Channel "
+                "for daily walk-in interviews and urgent openings.\n\n"
+                "We'll match you as soon as new roles come in — hang tight! 💪"
+            ),
+            button_text="Browse Jobs Channel",
+            url=WHATSAPP_CHANNEL_URL,
+            footer_text="Updated daily with new opportunities",
+        )
+        return
+
+    # ── Send individual job cards ─────────────────────────────────────────
+    await wa_client.send_text(
+        to=wa_number,
+        body=(
+            f"🎯 *Great picks for you, {candidate.name.split()[0] if candidate.name else 'there'}!*\n\n"
+            "Based on your profile, here are the top opportunities we've found. "
+            "Tap *Apply Now* on any job that excites you! 👇"
+        ),
+    )
+
+    for job in matching_jobs:
+        salary_line = f"💰  *Salary:* {job.salary_range}\n" if job.salary_range else ""
+        exp_line = f"📋  *Experience:* {job.experience_required}\n" if job.experience_required else ""
+
+        body = (
+            f"🏢  *{job.title}*\n"
+            f"📍  {job.company or 'Company'} — {job.location}\n"
+            f"{salary_line}"
+            f"{exp_line}"
+            f"\n_{job.description[:120] + '…' if job.description and len(job.description) > 120 else job.description or ''}_"
+        )
+
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=body.strip(),
+            buttons=[
+                {"id": f"btn_apply_now_{job.id}", "title": "Apply Now"},
+            ],
+            footer_text=f"Job Code: {job.job_code}",
+        )
+
