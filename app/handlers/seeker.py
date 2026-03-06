@@ -190,7 +190,7 @@ async def handle_registration_flow_completion(
     """
     Called when the seeker registration Flow completes.
     Saves candidate, optionally offers plan selection.
-    flow_data keys: name, pin_code, post_office, skills, cv_file, pending_job_code
+    flow_data keys: name, pin_code, post_office, category, sub_category, age, alt_phone, cv_file, pending_job_code
     """
     # Save CV
     cv_path = None
@@ -218,7 +218,10 @@ async def handle_registration_flow_completion(
             name=flow_data.get("name", ""),
             pin_code=flow_data.get("pin_code"),
             post_office=flow_data.get("post_office"),
-            skills=flow_data.get("skills"),
+            category=flow_data.get("category"),
+            sub_category=flow_data.get("sub_category"),
+            age=int(flow_data["age"]) if flow_data.get("age") else None,
+            alt_phone=flow_data.get("alt_phone"),
             cv_path=cv_path,
             registration_complete=False,
         )
@@ -227,7 +230,11 @@ async def handle_registration_flow_completion(
         candidate.name = flow_data.get("name", candidate.name)
         candidate.pin_code = flow_data.get("pin_code", candidate.pin_code)
         candidate.post_office = flow_data.get("post_office", candidate.post_office)
-        candidate.skills = flow_data.get("skills", candidate.skills)
+        candidate.category = flow_data.get("category", candidate.category)
+        candidate.sub_category = flow_data.get("sub_category", candidate.sub_category)
+        if flow_data.get("age"):
+            candidate.age = int(flow_data["age"])
+        candidate.alt_phone = flow_data.get("alt_phone", candidate.alt_phone)
         if cv_path:
             candidate.cv_path = cv_path
 

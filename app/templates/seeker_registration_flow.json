@@ -42,20 +42,28 @@
                 "max-chars": 6
               },
               {
-                "type": "TextArea",
-                "name": "skills",
-                "label": "Skills",
-                "required": false,
-                "helper-text": "e.g. Driving, Cooking, Computer, Sales"
+                "type": "Dropdown",
+                "name": "category",
+                "label": "Preferred Job Area",
+                "required": true,
+                "data-source": [
+                  {"id": "retail", "title": "Retail & Showrooms"},
+                  {"id": "hospitality", "title": "Hospitality & Food Service"},
+                  {"id": "healthcare", "title": "Healthcare & Caretaking"},
+                  {"id": "driving", "title": "Driving & Logistics"},
+                  {"id": "office_admin", "title": "Office & Admin"},
+                  {"id": "maintenance_technician", "title": "Maintenance & Technician"},
+                  {"id": "it_professional", "title": "IT & Professional"},
+                  {"id": "gulf_abroad", "title": "Gulf / Abroad Jobs"},
+                  {"id": "other", "title": "Other / General"}
+                ]
               },
               {
                 "type": "DocumentPicker",
                 "name": "cv_file",
                 "label": "Upload CV (PDF)",
-                "required": false,
-                "min-file-size": 1,
-                "max-file-size": 5242880,
-                "media-type": ["application/pdf"]
+                "max-uploaded-documents": 1,
+                "max-file-size-kb": 5120
               }
             ]
           },
@@ -67,7 +75,7 @@
               "payload": {
                 "name": "${form.name}",
                 "pin_code": "${form.pin_code}",
-                "skills": "${form.skills}",
+                "category": "${form.category}",
                 "cv_file": "${form.cv_file}",
                 "pending_job_code": "${data.pending_job_code}"
               }
@@ -78,7 +86,7 @@
     },
     {
       "id": "SEEKER_LOCATION",
-      "title": "Select Your Location",
+      "title": "Final Details",
       "terminal": true,
       "data": {
         "post_offices": {
@@ -94,6 +102,20 @@
             { "id": "Thondayad", "title": "Thondayad" },
             { "id": "Kozhikode H.O", "title": "Kozhikode H.O" }
           ]
+        },
+        "sub_categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "sales_executive", "title": "Sales Executive" },
+            { "id": "cashier", "title": "Cashier / Billing" }
+          ]
         }
       },
       "layout": {
@@ -105,10 +127,34 @@
             "children": [
               {
                 "type": "Dropdown",
+                "name": "sub_category",
+                "label": "Select Preferred Role",
+                "required": true,
+                "data-source": "${data.sub_categories}"
+              },
+              {
+                "type": "Dropdown",
                 "name": "post_office",
-                "label": "Select Post Office",
+                "label": "Select Nearby Location",
                 "required": true,
                 "data-source": "${data.post_offices}"
+              },
+              {
+                "type": "TextInput",
+                "name": "age",
+                "label": "Your Age",
+                "input-type": "number",
+                "required": true,
+                "helper-text": "E.g., 25, 30, 35",
+                "max-chars": 2
+              },
+              {
+                "type": "TextInput",
+                "name": "alt_phone",
+                "label": "Alternative contact Number",
+                "input-type": "phone",
+                "required": false,
+                "helper-text": "Leave blank if WhatsApp is your contact number"
               }
             ]
           },
@@ -119,11 +165,14 @@
               "name": "complete",
               "payload": {
                 "post_office": "${form.post_office}",
+                "sub_category": "${form.sub_category}",
+                "alt_phone": "${form.alt_phone}",
+                "category": "${screen.SEEKER_REGISTRATION.form.category}",
                 "name": "${screen.SEEKER_REGISTRATION.form.name}",
                 "pin_code": "${screen.SEEKER_REGISTRATION.form.pin_code}",
-                "skills": "${screen.SEEKER_REGISTRATION.form.skills}",
-                "cv_file": "${screen.SEEKER_REGISTRATION.form.cv_file}",
-                "pending_job_code": "${data.pending_job_code}"
+                "media_id": "${screen.SEEKER_REGISTRATION.form.cv_file}",
+                "mime_type": "application/pdf",
+                "pending_job_code": "${screen.SEEKER_REGISTRATION.data.pending_job_code}"
               }
             }
           }

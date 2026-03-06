@@ -113,7 +113,10 @@ class Candidate(Base):
     name = Column(String(120), nullable=False)
     pin_code = Column(String(6))
     post_office = Column(String(200))
-    skills = Column(Text)
+    category = Column(String(100))
+    sub_category = Column(String(100))
+    age = Column(Integer)
+    alt_phone = Column(String(20))
     cv_path = Column(String(500))   # local path or object-storage URL
     cv_updates_used = Column(Integer, default=0)
 

@@ -203,11 +203,11 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
         # Post Vacancy Flow
         await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
 
-    elif "skills" in submitted:
+    elif "category" in submitted and "sub_category" in submitted:
         # Seeker Registration Flow
         await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
 
-    elif "media_id" in submitted and "skills" not in submitted:
+    elif "media_id" in submitted and "category" not in submitted:
         # CV Update Flow
         await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
 

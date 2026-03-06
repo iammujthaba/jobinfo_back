@@ -101,16 +101,116 @@ def _handle_init(screen: str, data: dict) -> dict:
     return {"screen": screen, "data": {}}
 
 
+# ── Category → Sub-category mapping ──────────────────────────────────────────
+CATEGORY_SUBCATEGORIES: dict[str, list[dict[str, str]]] = {
+    "retail": [
+        {"id": "sales_executive", "title": "Sales Executive"},
+        {"id": "cashier", "title": "Cashier / Billing"},
+        {"id": "store_keeper", "title": "Store Keeper"},
+        {"id": "floor_manager", "title": "Floor Manager"},
+        {"id": "customer_support", "title": "Customer Support"},
+        {"id": "packing_staff", "title": "Packing Staff"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "hospitality": [
+        {"id": "chef_cook", "title": "Chef / Cook (Master)"},
+        {"id": "waiter_server", "title": "Waiter / Server"},
+        {"id": "kitchen_helper", "title": "Kitchen Helper / Cleaner"},
+        {"id": "restaurant_manager", "title": "Restaurant Manager"},
+        {"id": "juice_tea_maker", "title": "Juice / Tea Maker"},
+        {"id": "housekeeping_hotel", "title": "Housekeeping (Hotel)"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "healthcare": [
+        {"id": "home_nurse", "title": "Home Nurse / Caretaker"},
+        {"id": "clinic_receptionist", "title": "Clinic Receptionist"},
+        {"id": "pharmacy_staff", "title": "Pharmacy Staff"},
+        {"id": "lab_technician", "title": "Lab Technician"},
+        {"id": "ward_boy", "title": "Ward Boy / Helper"},
+        {"id": "physiotherapist", "title": "Physiotherapist"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "driving": [
+        {"id": "two_wheeler_delivery", "title": "Two-Wheeler Delivery"},
+        {"id": "heavy_vehicle_driver", "title": "Heavy Vehicle Driver"},
+        {"id": "private_car_taxi", "title": "Private Car / Taxi Driver"},
+        {"id": "auto_goods_driver", "title": "Auto Rickshaw / Goods Driver"},
+        {"id": "forklift_operator", "title": "Forklift Operator"},
+        {"id": "logistics_coordinator", "title": "Logistics Coordinator"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "office_admin": [
+        {"id": "receptionist", "title": "Receptionist / Front Desk"},
+        {"id": "data_entry", "title": "Data Entry Operator"},
+        {"id": "accountant_tally", "title": "Basic Accountant (Tally)"},
+        {"id": "office_peon", "title": "Office Peon / Helper"},
+        {"id": "telecaller_bpo", "title": "Telecaller / BPO"},
+        {"id": "hr_admin", "title": "HR / Admin"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "maintenance_technician": [
+        {"id": "electrician", "title": "Electrician"},
+        {"id": "ac_mechanic", "title": "AC Mechanic"},
+        {"id": "plumber", "title": "Plumber"},
+        {"id": "automobile_mechanic", "title": "Automobile Mechanic"},
+        {"id": "welder_fitter", "title": "Welder / Fitter"},
+        {"id": "lift_cctv_technician", "title": "Lift / CCTV Technician"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "it_professional": [
+        {"id": "software_developer", "title": "Software Developer"},
+        {"id": "graphic_designer", "title": "Graphic Designer"},
+        {"id": "digital_marketer", "title": "Digital Marketer"},
+        {"id": "it_hardware_support", "title": "IT Hardware / Support"},
+        {"id": "video_editor", "title": "Video Editor"},
+        {"id": "content_writer", "title": "Content Writer"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "gulf_abroad": [
+        {"id": "construction_worker", "title": "Construction Worker"},
+        {"id": "driver_gcc", "title": "Driver (GCC License)"},
+        {"id": "nurse_medical", "title": "Nurse / Medical"},
+        {"id": "retail_sales_gcc", "title": "Retail / Sales (GCC)"},
+        {"id": "camp_boss", "title": "Camp Boss / Supervisor"},
+        {"id": "it_professional_gcc", "title": "IT / Professional"},
+        {"id": "office_admin_gcc", "title": "Office Admin (GCC)"},
+        {"id": "chef_cook_gcc", "title": "Chef / Cook (Master)"},
+        {"id": "waiter_server_gcc", "title": "Waiter / Server"},
+        {"id": "kitchen_helper_gcc", "title": "Kitchen Helper / Cleaner"},
+        {"id": "other", "title": "Other / General"},
+    ],
+    "other": [
+        {"id": "beautician_salon", "title": "Beautician / Salon Staff"},
+        {"id": "tailor_garment", "title": "Tailor / Garment Worker"},
+        {"id": "petrol_pump", "title": "Petrol Pump Attendant"},
+        {"id": "general_labor", "title": "General Labor / Helper"},
+        {"id": "security_guard", "title": "Security Guard / Supervisor"},
+        {"id": "housekeeping_cleaning", "title": "Housekeeping / Cleaning"},
+        {"id": "factory_warehouse", "title": "Factory / Warehouse Worker"},
+        {"id": "painter_carpenter", "title": "Painter / Carpenter"},
+        {"id": "event_management", "title": "Event Management Staff"},
+        {"id": "any_other", "title": "Any Other Role"},
+    ],
+}
+
+
 async def _handle_data_exchange(screen: str, data: dict) -> dict:
     """
-    Handle the Screen 1 → Screen 2 transition.
-    Receives the PIN code, queries the postal API, and returns
-    a response that directs the Flow to SEEKER_LOCATION.
+    Handle Screen 1 → Screen 2 transition.
+    Receives pin_code + category from SEEKER_REGISTRATION.
+    Returns post_offices (from Postal API) and sub_categories (from mapping).
     """
-    # FIX: We must check the screen the user is CURRENTLY coming from
     if screen == "SEEKER_REGISTRATION":
         pin_code = str(data.get("pin_code", "")).strip()
+        category = str(data.get("category", "")).strip()
 
+        # ── Resolve sub-categories from the category ──────────────────────
+        sub_categories = CATEGORY_SUBCATEGORIES.get(
+            category,
+            [{"id": "other", "title": "Other / General"}],
+        )
+
+        # ── Resolve post offices from the PIN code ────────────────────────
         if not pin_code or len(pin_code) != 6 or not pin_code.isdigit():
             return {
                 "screen": "SEEKER_LOCATION",
@@ -118,6 +218,7 @@ async def _handle_data_exchange(screen: str, data: dict) -> dict:
                     "post_offices": [
                         {"id": "invalid", "title": "Invalid PIN — go back and re-enter"},
                     ],
+                    "sub_categories": sub_categories,
                 },
             }
 
@@ -130,15 +231,17 @@ async def _handle_data_exchange(screen: str, data: dict) -> dict:
                     "post_offices": [
                         {"id": "not_found", "title": f"No results for PIN {pin_code}"},
                     ],
+                    "sub_categories": sub_categories,
                 },
             }
 
-        options = [{"id": name, "title": name} for name in post_offices]
+        po_options = [{"id": name, "title": name} for name in post_offices]
 
         return {
             "screen": "SEEKER_LOCATION",
             "data": {
-                "post_offices": options,
+                "post_offices": po_options,
+                "sub_categories": sub_categories,
             },
         }
 

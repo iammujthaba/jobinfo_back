@@ -68,7 +68,10 @@ class CandidateRegisterRequest(BaseModel):
     name: str
     pin_code: str | None = None
     post_office: str | None = None
-    skills: str | None = None
+    category: str | None = None
+    sub_category: str | None = None
+    age: int | None = None
+    alt_phone: str | None = None
     # CV is uploaded as a separate multipart request (see /api/candidates/upload-cv)
 
 
@@ -348,7 +351,10 @@ async def register_candidate_web(
             name=body.name,
             pin_code=body.pin_code,
             post_office=body.post_office,
-            skills=body.skills,
+            category=body.category,
+            sub_category=body.sub_category,
+            age=body.age,
+            alt_phone=body.alt_phone,
             registration_complete=not settings.subscription_enabled,
         )
         db.add(candidate)
@@ -356,7 +362,10 @@ async def register_candidate_web(
         candidate.name = body.name
         candidate.pin_code = body.pin_code
         candidate.post_office = body.post_office
-        candidate.skills = body.skills
+        candidate.category = body.category
+        candidate.sub_category = body.sub_category
+        candidate.age = body.age
+        candidate.alt_phone = body.alt_phone
     db.commit()
 
     await wa_client.send_text(
@@ -528,7 +537,10 @@ def list_vacancy_applications(
                 "name": c.name,
                 "pin_code": c.pin_code or "",
                 "post_office": c.post_office or "",
-                "skills": c.skills or "",
+                "category": c.category or "",
+                "sub_category": c.sub_category or "",
+                "age": c.age,
+                "alt_phone": c.alt_phone or "",
                 "wa_number": c.wa_number,
                 "has_cv": bool(c.cv_path),
                 "cv_path": c.cv_path or None,
@@ -613,7 +625,7 @@ def export_applications_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["#", "Name", "PIN Code", "Post Office", "Skills", "WhatsApp", "Status", "Applied On"])
+    writer.writerow(["#", "Name", "PIN Code", "Post Office", "Category", "Role", "Age", "Alt Phone", "WhatsApp", "Status", "Applied On"])
     for i, app in enumerate(applications, 1):
         c = app.candidate
         writer.writerow([
@@ -621,7 +633,10 @@ def export_applications_csv(
             c.name,
             c.pin_code or "",
             c.post_office or "",
-            c.skills or "",
+            c.category or "",
+            c.sub_category or "",
+            c.age or "",
+            c.alt_phone or "",
             f"+{c.wa_number}",
             app.status.value,
             app.applied_at.strftime("%d %b %Y") if app.applied_at else "",
