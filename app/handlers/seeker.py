@@ -92,11 +92,11 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             body_text=(
                 f"📋 *{vacancy.title}* | {vacancy.location}\n\n"
                 "To apply, you need to register first. It's quick and free!\n\n"
-                "Tap *Register Now* to continue or *Call Back* if you need help."
+                "Tap *Register Now* to continue or *Get Help* if you need assistance."
             ),
             buttons=[
                 {"id": f"btn_register_{job_code}", "title": "Register Now"},
-                {"id": "btn_callback", "title": "Call Back"},
+                {"id": "btn_callback", "title": "Get Help"},
             ],
         )
         # Save job_code in state so we know what to apply for after registration
@@ -148,7 +148,7 @@ async def _show_job_apply_prompt(
 
 
 async def handle_callback_button(wa_number: str, db: Session) -> None:
-    """Save a callback request when user taps 'Call Back'."""
+    """Save a callback request when user taps 'Get Help'."""
     req = CallbackRequest(wa_number=wa_number)
     db.add(req)
     db.commit()
@@ -248,9 +248,21 @@ async def handle_registration_flow_completion(
         # Skip subscription during launch phase
         candidate.registration_complete = True
         db.commit()
-        await wa_client.send_text(
+        name = candidate.name.split()[0] if candidate.name else "there"
+        await wa_client.send_buttons(
             to=wa_number,
-            body=registration_confirmation_body(candidate.name, "candidate"),
+            header_text="Welcome to JobInfo! 🎉",
+            body_text=(
+                f"🎉 *Congratulations, {name}!* Your professional profile is officially live!\n\n"
+                "You're now part of Kerala's fastest-growing job network. "
+                "We'll match you with opportunities tailored to your skills and preferences.\n\n"
+                "What would you like to do next? 👇"
+            ),
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
+            ],
+            footer_text="Powered by JobInfo.club",
         )
         # If they were in the middle of applying, resume
         state = _get_or_create_state(wa_number, db)
@@ -431,33 +443,133 @@ async def handle_cv_update_flow_completion(
 
 
 async def handle_view_applications_button(wa_number: str, db: Session) -> None:
-    """Show candidate's application history."""
+    """Show candidate's application summary (delegates to shared helper)."""
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     if not candidate:
         return
+    await _send_application_summary_cta(wa_number, candidate, db)
 
-    apps = (
+
+async def _send_application_summary_cta(
+    wa_number: str, candidate: Candidate, db: Session
+) -> None:
+    """
+    Reusable helper: 7-day summary + category breakdown + 1 latest job + dashboard CTA.
+    Called from both handle_view_applications_button and handle_my_applications_menu.
+    """
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+
+    # ── Most recent application ───────────────────────────────────────────
+    latest = (
         db.query(CandidateApplication)
         .filter_by(candidate_id=candidate.id)
         .order_by(CandidateApplication.applied_at.desc())
-        .limit(10)
-        .all()
+        .first()
     )
 
-    if not apps:
-        await wa_client.send_text(to=wa_number, body="You haven't applied for any jobs yet.")
+    if not latest:
+        await wa_client.send_cta_url(
+            to=wa_number,
+            header_text="📂 Your Applications",
+            body_text=(
+                "You haven't applied for any jobs yet — but that's about to change! 🚀\n\n"
+                "Tap *Suggest Jobs* from the main menu to discover roles "
+                "that match your profile, or browse our Jobs Channel for "
+                "the latest walk-in openings.\n\n"
+                "Your career journey starts with a single tap! 💪"
+            ),
+            button_text="Explore Dashboard",
+            url=DASHBOARD_URL,
+        )
         return
 
-    status_emoji = {"applied": "⏳", "shortlisted": "🌟", "rejected": "❌"}
-    lines = [f"📂 *Your Applications ({len(apps)}):*\n"]
-    for app in apps:
-        emoji = status_emoji.get(app.status.value, "❓")
-        lines.append(
-            f"{emoji} *{app.vacancy.title}* | {app.vacancy.location} – {app.status.value}"
+    # ── 7-day applications ────────────────────────────────────────────────
+    week_apps = (
+        db.query(CandidateApplication)
+        .filter(
+            CandidateApplication.candidate_id == candidate.id,
+            CandidateApplication.applied_at >= seven_days_ago,
         )
-    lines.append("\n_Full details at jobinfo.club_")
+        .all()
+    )
+    total_7d = len(week_apps)
 
-    await wa_client.send_text(to=wa_number, body="\n".join(lines))
+    # ── Category breakdown ────────────────────────────────────────────────
+    CATEGORY_LABELS = {
+        "retail": ("🛍️", "Retail & Showrooms"),
+        "hospitality": ("🍽️", "Hospitality & Food"),
+        "healthcare": ("🏥", "Healthcare"),
+        "driving": ("🚗", "Driving & Logistics"),
+        "office_admin": ("🏢", "Office & Admin"),
+        "maintenance_technician": ("🔧", "Maintenance & Tech"),
+        "it_professional": ("💻", "IT & Professional"),
+        "gulf_abroad": ("✈️", "Gulf / Abroad"),
+        "other": ("📌", "Other"),
+    }
+
+    cat_counts: dict[str, int] = {}
+    for app in week_apps:
+        cat = _infer_job_category(app.vacancy)
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+
+    # ── Build message ─────────────────────────────────────────────────────
+    name = candidate.name.split()[0] if candidate.name else "there"
+    lines = [f"🌟 *Great momentum, {name}!*\n"]
+
+    if total_7d > 0:
+        lines.append(
+            f"Over the last 7 days, you've applied for *{total_7d} "
+            f"role{'s' if total_7d != 1 else ''}*! Keep it up — "
+            "consistency is the key to landing the right opportunity.\n"
+        )
+        if cat_counts:
+            parts = []
+            for cat, count in sorted(cat_counts.items(), key=lambda x: -x[1]):
+                emoji, label = CATEGORY_LABELS.get(cat, ("📌", cat.replace("_", " ").title()))
+                parts.append(f"{emoji} {label}: *{count}*")
+            lines.append("📊 *Your Focus Areas:*")
+            lines.append(" | ".join(parts) + "\n")
+    else:
+        lines.append("No new applications this week — it's a perfect time to explore fresh openings!\n")
+
+    # ── Latest application ────────────────────────────────────────────────
+    status_emoji = {"applied": "✅", "shortlisted": "🌟", "rejected": "❌"}
+    status_label = {"applied": "Applied", "shortlisted": "Shortlisted", "rejected": "Not Selected"}
+
+    v = latest.vacancy
+    emoji = status_emoji.get(latest.status.value, "❓")
+    label = status_label.get(latest.status.value, latest.status.value.title())
+    company = f" — {v.company}" if v.company else ""
+
+    lines.append("📌 *Your Latest Application:*")
+    lines.append(f"  {emoji}  *{v.title}*{company} · _{label}_")
+
+    lines.append(
+        "\nTo view your complete history and track live recruiter updates, "
+        "log in to your secure dashboard below 👇"
+    )
+
+    await wa_client.send_cta_url(
+        to=wa_number,
+        header_text="📊 Your Application Summary",
+        body_text="\n".join(lines),
+        button_text="View Full Dashboard",
+        url=DASHBOARD_URL,
+        footer_text="Updated in real-time",
+    )
+
+
+def _infer_job_category(vacancy: JobVacancy) -> str:
+    """Infer a category for a job vacancy by matching its title/description against keywords."""
+    text = f"{vacancy.title or ''} {vacancy.description or ''}".lower()
+    for cat, keywords in CATEGORY_KEYWORDS.items():
+        if cat == "other":
+            continue
+        for kw in keywords:
+            if kw in text:
+                return cat
+    return "other"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -494,7 +606,7 @@ async def send_seeker_greeting_menu(wa_number: str) -> None:
         ),
         buttons=[
             {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-            {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Jobs"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
             {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
         ],
         footer_text="Powered by JobInfo.club",
@@ -520,24 +632,12 @@ async def handle_explore_jobs(wa_number: str) -> None:
 
 async def handle_my_applications_menu(wa_number: str, db: Session) -> None:
     """
-    Show My Applications: if registered → dashboard link, else → registration flow.
+    Show My Applications: if registered → rich summary, else → registration flow.
     """
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
 
     if candidate and candidate.registration_complete:
-        await wa_client.send_cta_url(
-            to=wa_number,
-            header_text="📊 Your Applications Dashboard",
-            body_text=(
-                "Great news — your profile is all set up! 🎉\n\n"
-                "Tap below to view your application history, check status updates, "
-                "and manage your profile on the JobInfo dashboard.\n\n"
-                "Stay on top of every opportunity! 💼"
-            ),
-            button_text="Login to Dashboard",
-            url=DASHBOARD_URL,
-            footer_text="Secure login via your registered number",
-        )
+        await _send_application_summary_cta(wa_number, candidate, db)
     else:
         await wa_client.send_flow(
             to=wa_number,
@@ -567,7 +667,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         await wa_client.send_flow(
             to=wa_number,
             flow_id=FLOW_ID_SEEKER_REGISTER,
-            flow_cta="Register Now",
+            flow_cta="Set Up Profile",
             header_text="JobInfo — Let Us Know Your Preferences",
             body_text=(
                 "🎯 *We'd love to suggest the perfect jobs for you!*\n\n"
