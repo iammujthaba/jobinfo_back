@@ -33,7 +33,6 @@ HOW_IT_WORKS_TEXT = (
     "2️⃣ See daily job posts with apply links\n"
     "3️⃣ Tap the link → register once → apply!\n"
     "4️⃣ Track your applications right here\n\n"
-    "Website: https://jobinfo.club\n"
     "_JobInfo – Connecting Kerala's talent_"
 )
 
@@ -52,7 +51,12 @@ async def send_help_menu(wa_number: str) -> None:
 
 
 async def send_how_it_works(wa_number: str) -> None:
-    await wa_client.send_text(to=wa_number, body=HOW_IT_WORKS_TEXT)
+    await wa_client.send_cta_url(
+        to=wa_number,
+        body_text=HOW_IT_WORKS_TEXT,
+        button_text="🌐 Visit Website",
+        url="https://jobinfo.club"
+    )
 
 
 async def handle_global_button(wa_number: str, button_id: str, db: Session) -> bool:
