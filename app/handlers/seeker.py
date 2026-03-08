@@ -14,8 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.models import (
-    Candidate, CandidateApplication, CallbackRequest,
-    ConversationState, JobVacancy, SubscriptionPlan, SubscriptionPlanName
+    Candidate, CandidateApplication, CandidateResume, CallbackRequest,
+    ConversationState, JobVacancy, SubscriptionPlan, SubscriptionPlanName,
+    MAX_CANDIDATE_RESUMES,
 )
 from app.services.storage import save_cv_from_whatsapp
 from app.whatsapp.client import wa_client
@@ -36,6 +37,18 @@ FLOW_ID_SELECT_PLAN = "YOUR_SELECT_PLAN_FLOW_ID"
 FLOW_ID_CV_UPDATE = "1830313444154607"
 FLOW_ID_MY_APPLICATIONS = "YOUR_MY_APPLICATIONS_FLOW_ID"
 
+# Friendly display names for category keys
+CATEGORY_DISPLAY_NAMES: dict[str, str] = {
+    "retail": "Retail & Sales",
+    "hospitality": "Hospitality & Food",
+    "healthcare": "Healthcare",
+    "driving": "Driving & Logistics",
+    "office_admin": "Office & Admin",
+    "maintenance_technician": "Maintenance & Technical",
+    "it_professional": "IT & Professional",
+    "gulf_abroad": "Gulf / Abroad",
+    "other": "General",
+}
 
 def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
     state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
@@ -130,6 +143,86 @@ async def _show_job_apply_prompt(
         )
         return
 
+    # ── Branch 1: Zero CVs on file ──────────────────────────────────────────
+    resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+    has_cv = resume_count > 0 or bool(candidate.cv_path)
+
+    # Safety net: if candidate.cv_path exists but no CandidateResume, backfill one
+    if resume_count == 0 and candidate.cv_path:
+        backfill = CandidateResume(
+            candidate_id=candidate.id,
+            media_id=candidate.cv_path,
+            category_tag=candidate.category or "other",
+            is_default=True,
+        )
+        db.add(backfill)
+        db.commit()
+        resume_count = 1
+        has_cv = True
+
+    inferred_cat = _infer_job_category(vacancy)
+    job_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat, inferred_cat.replace("_", " ").title())
+
+    if not has_cv:
+        await wa_client.send_buttons(
+            to=wa_number,
+            header_text="🌟 Stand Out to the Recruiter!",
+            body_text=(
+                f"You're applying for an exciting *{job_label}* role — *{vacancy.title}*! "
+                "We noticed you haven't added a CV to your profile yet.\n\n"
+                "Uploading a CV gives recruiters a complete picture of your skills "
+                "and dramatically boosts your chances of getting hired. 🚀"
+            ),
+            buttons=[
+                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📝 Upload a CV"},
+                {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "🚀 Apply Without CV"},
+            ],
+            footer_text="Candidates with CVs get 5x more callbacks!",
+        )
+        _set_state(
+            wa_number,
+            "seeker_no_cv",
+            {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+            db,
+        )
+        return
+
+    # ── Branch 2: Has CV(s) + Category Mismatch ───────────────────────────
+    candidate_cat = (candidate.category or "").strip().lower()
+
+    if (
+        candidate_cat
+        and inferred_cat != "other"
+        and candidate_cat != inferred_cat
+    ):
+        candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title())
+        job_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat, inferred_cat.replace("_", " ").title())
+
+        await wa_client.send_buttons(
+            to=wa_number,
+            header_text="🌟 Maximize Your Chances!",
+            body_text=(
+                f"We noticed your default CV is tailored for *{candidate_label}*, "
+                f"but you're applying for an exciting *{job_label}* role!\n\n"
+                "Sending a customized CV dramatically boosts your chances of "
+                "getting shortlisted. Choose how you'd like to proceed below:"
+            ),
+            buttons=[
+                {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload New CV"},
+                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📁 Choose Existing"},
+                {"id": f"APPLY_NO_CV_{vacancy.job_code}", "title": "🚀 Apply Without CV"},
+            ],
+            footer_text="A tailored CV = 3x more callbacks!",
+        )
+        _set_state(
+            wa_number,
+            "seeker_cv_mismatch",
+            {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+            db,
+        )
+        return
+
+    # ── Standard apply prompt ─────────────────────────────────────────────
     await wa_client.send_buttons(
         to=wa_number,
         header_text="JobInfo – Job Details",
@@ -194,7 +287,8 @@ async def handle_registration_flow_completion(
     """
     # Save CV
     cv_path = None
-    raw_media = flow_data.get("cv_file")
+    raw_media = flow_data.get("media_id")
+
     
     if raw_media:
         # Meta's File Upload returns a list of dictionaries
@@ -240,6 +334,21 @@ async def handle_registration_flow_completion(
 
     db.commit()
     db.refresh(candidate)
+
+    # Sync CV to CandidateResume table for Smart Interceptor
+    if candidate.cv_path:
+        already_has = db.query(CandidateResume).filter_by(
+            candidate_id=candidate.id,
+        ).first()
+        if not already_has:
+            new_resume = CandidateResume(
+                candidate_id=candidate.id,
+                media_id=candidate.cv_path,
+                category_tag=candidate.category or "other",
+                is_default=True,
+            )
+            db.add(new_resume)
+            db.commit()
 
     if settings.subscription_enabled:
         # Offer plan selection
@@ -380,6 +489,208 @@ async def handle_apply_now_button(
     _set_state(wa_number, "idle", {}, db)
 
 
+async def handle_confirm_apply_button(
+    wa_number: str, job_code: str, db: Session
+) -> None:
+    """User chose 'Apply Anyway' from the CV mismatch warning — proceed with application."""
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+    if not vacancy:
+        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+    await handle_apply_now_button(wa_number, vacancy.id, db)
+
+
+async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None:
+    """Apply for a job explicitly without attaching any CV."""
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+
+    if not candidate or not vacancy:
+        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+
+    if not _has_active_plan(candidate):
+        await wa_client.send_text(to=wa_number, body=plan_renewal_body(candidate))
+        return
+
+    existing = (
+        db.query(CandidateApplication)
+        .filter_by(candidate_id=candidate.id, vacancy_id=vacancy.id)
+        .first()
+    )
+    if existing:
+        await wa_client.send_text(
+            to=wa_number,
+            body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing.status.value}_",
+        )
+        return
+
+    application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id)
+    db.add(application)
+    candidate.applications_used = (candidate.applications_used or 0) + 1
+    db.commit()
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        header_text="✅ Application Submitted!",
+        body_text=(
+            f"We've sent your profile to the recruiter for *{vacancy.title}* "
+            "without a CV attached.\n\n"
+            "💡 *Pro tip:* Uploading a tailored CV for future applications "
+            "can dramatically boost your chances. Best of luck! 🍀"
+        ),
+        buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
+    )
+    _set_state(wa_number, "idle", {}, db)
+
+
+# ── Smart CV Manager handlers ────────────────────────────────────────────────
+
+async def handle_manage_cv(wa_number: str, job_code: str, db: Session) -> None:
+    """Show an interactive list of saved CVs + optional Upload New option."""
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        return
+
+    # Fast-forward: if zero CVs, skip the list and go straight to upload
+    resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+    if resume_count == 0 and not candidate.cv_path:
+        await handle_upload_new_cv(wa_number, job_code, db)
+        return
+
+    resumes = (
+        db.query(CandidateResume)
+        .filter_by(candidate_id=candidate.id)
+        .order_by(CandidateResume.uploaded_at.desc())
+        .all()
+    )
+
+    sections: list[dict] = []
+
+    # Section 1: Saved CVs
+    if resumes:
+        rows = []
+        for r in resumes:
+            tag_label = CATEGORY_DISPLAY_NAMES.get(
+                (r.category_tag or "").lower(),
+                (r.category_tag or "General").replace("_", " ").title(),
+            )
+            default_marker = " ★ Default" if r.is_default else ""
+            date_str = r.uploaded_at.strftime("%d %b %Y") if r.uploaded_at else "Recently"
+            rows.append({
+                "id": f"SELECT_CV_{r.id}_{job_code}",
+                "title": f"{tag_label} CV{default_marker}"[:24],
+                "description": f"Uploaded on {date_str}",
+            })
+        sections.append({"title": "Your Saved CVs", "rows": rows})
+
+    # Fallback if somehow no saved CVs exist despite earlier check
+    if not sections:
+        await handle_upload_new_cv(wa_number, job_code, db)
+        return
+
+    await wa_client.send_list(
+        to=wa_number,
+        header_text="📂 Smart CV Manager",
+        body_text=(
+            "🌟 *Let's put your best foot forward!*\n\n"
+            "Select the CV that best matches this role, "
+            "or upload a newly tailored one to maximize your chances of getting shortlisted.\n\n"
+            "A targeted CV can make all the difference! 🚀"
+        ),
+        button_label="Choose CV",
+        sections=sections,
+    )
+
+
+async def handle_select_cv(
+    wa_number: str, resume_id: int, job_code: str, db: Session
+) -> None:
+    """User selected an existing CV from the list — set as default and apply."""
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        return
+
+    resume = db.query(CandidateResume).filter_by(id=resume_id, candidate_id=candidate.id).first()
+    if not resume:
+        await wa_client.send_text(to=wa_number, body="❌ CV not found. Please try again.")
+        return
+
+    # Set this CV as default, unset all others
+    db.query(CandidateResume).filter(
+        CandidateResume.candidate_id == candidate.id,
+        CandidateResume.id != resume.id,
+    ).update({"is_default": False})
+    resume.is_default = True
+    candidate.cv_path = resume.media_id  # keep legacy field in sync
+    db.commit()
+
+    # Proceed with application
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+    if not vacancy:
+        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+
+    # Check for duplicate
+    existing = (
+        db.query(CandidateApplication)
+        .filter_by(candidate_id=candidate.id, vacancy_id=vacancy.id)
+        .first()
+    )
+    if existing:
+        await wa_client.send_text(
+            to=wa_number,
+            body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing.status.value}_",
+        )
+        return
+
+    application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id)
+    db.add(application)
+    candidate.applications_used = (candidate.applications_used or 0) + 1
+    db.commit()
+
+    tag_label = CATEGORY_DISPLAY_NAMES.get(
+        (resume.category_tag or "").lower(),
+        (resume.category_tag or "General").replace("_", " ").title(),
+    )
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        header_text="✅ Application Submitted!",
+        body_text=(
+            f"Excellent choice! We've updated your active CV to *{tag_label}* "
+            f"and successfully submitted your tailored application for *{vacancy.title}*.\n\n"
+            "The recruiter will review your profile shortly. Keep an eye on your dashboard for updates! 🎯"
+        ),
+        buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
+    )
+    _set_state(wa_number, "idle", {}, db)
+
+
+async def handle_upload_new_cv(wa_number: str, job_code: str, db: Session) -> None:
+    """Launch the CV Update Flow with the job_code attached for post-upload application."""
+    await wa_client.send_flow(
+        to=wa_number,
+        flow_id=FLOW_ID_CV_UPDATE,
+        flow_cta="Upload CV",
+        header_text="JobInfo – Upload Tailored CV",
+        body_text=(
+            "📄 *Upload Your Tailored CV*\n\n"
+            "Tap the button below to securely upload your newly tailored CV. "
+            "We accept files up to 5MB.\n\n"
+            "A targeted CV = more interview calls! 🚀"
+        ),
+        footer_text = "Maximum 4 CVs allowed per user",
+        flow_action_payload={
+            "screen": "CV_UPDATE_SCREEN",
+            "data": {
+                "job_code": job_code,
+            },
+        },
+    )
+    _set_state(wa_number, "seeker_uploading_cv", {"job_code": job_code}, db)
+
+
 async def handle_update_cv_button(
     wa_number: str, vacancy_id: int, db: Session
 ) -> None:
@@ -407,11 +718,36 @@ async def handle_update_cv_button(
 async def handle_cv_update_flow_completion(
     wa_number: str, flow_data: dict, db: Session
 ) -> None:
-    """Process CV update from WhatsApp Flow."""
+    """Process CV update from WhatsApp Flow (legacy and Smart CV Manager)."""
+    new_cv_category = flow_data.get("new_cv_category")
+    job_code = flow_data.get("job_code")
     raw_media = flow_data.get("media_id")
 
+    # ── Missing-file safety check ─────────────────────────────────────────
     if not raw_media:
-        await wa_client.send_text(to=wa_number, body="⚠️ No file received. Please try again.")
+        if job_code:
+            await wa_client.send_buttons(
+                to=wa_number,
+                header_text="📄 File Not Attached",
+                body_text=(
+                    "Oops! 📄 It looks like you forgot to attach your CV file.\n\n"
+                    "Would you like to try uploading it again, or would you "
+                    "prefer to proceed with your CV right now?"
+                ),
+                buttons=[
+                    {"id": f"UPLOAD_NEW_CV_{job_code}", "title": "🔄 Retry Upload"},
+                    {"id": f"CONFIRM_APPLY_{job_code}", "title": "🚀 Apply Without CV"},
+                ],
+            )
+        else:
+            await wa_client.send_text(
+                to=wa_number,
+                body=(
+                    "Oops! 📄 It looks like you forgot to attach your PDF file.\n\n"
+                    "Please tap the *Upload CV* menu again and make sure your file "
+                    "is selected before hitting submit. We're here to help! 💪"
+                ),
+            )
         return
 
     # Extract ID from Meta's list structure
@@ -431,14 +767,93 @@ async def handle_cv_update_flow_completion(
         return
 
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
-    if candidate:
-        candidate.cv_path = cv_path
+    if not candidate:
+        return
+
+    # ── Smart CV Manager flow (new_cv_category present) ───────────────────
+    if new_cv_category and job_code:
+        # Unset all existing defaults
+        db.query(CandidateResume).filter(
+            CandidateResume.candidate_id == candidate.id,
+        ).update({"is_default": False})
+
+        # Enforce max limit — remove oldest if at limit
+        existing_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+        if existing_count >= MAX_CANDIDATE_RESUMES:
+            oldest = (
+                db.query(CandidateResume)
+                .filter_by(candidate_id=candidate.id)
+                .order_by(CandidateResume.uploaded_at.asc())
+                .first()
+            )
+            if oldest:
+                db.delete(oldest)
+
+        # Save new resume record
+        new_resume = CandidateResume(
+            candidate_id=candidate.id,
+            media_id=cv_path,
+            category_tag=new_cv_category,
+            is_default=True,
+        )
+        db.add(new_resume)
+        candidate.cv_path = cv_path  # keep legacy field in sync
         candidate.cv_updates_used = (candidate.cv_updates_used or 0) + 1
         db.commit()
-        await wa_client.send_text(
-            to=wa_number,
-            body=cv_update_confirmation_body(candidate),
+
+        # Auto-apply for the job
+        vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+        if not vacancy:
+            await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+            _set_state(wa_number, "idle", {}, db)
+            return
+
+        # Check for duplicate
+        existing_app = (
+            db.query(CandidateApplication)
+            .filter_by(candidate_id=candidate.id, vacancy_id=vacancy.id)
+            .first()
         )
+        if existing_app:
+            await wa_client.send_text(
+                to=wa_number,
+                body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing_app.status.value}_",
+            )
+            _set_state(wa_number, "idle", {}, db)
+            return
+
+        application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id)
+        db.add(application)
+        candidate.applications_used = (candidate.applications_used or 0) + 1
+        db.commit()
+
+        tag_label = CATEGORY_DISPLAY_NAMES.get(
+            new_cv_category.lower(),
+            new_cv_category.replace("_", " ").title(),
+        )
+
+        await wa_client.send_buttons(
+            to=wa_number,
+            header_text="🎉 CV Uploaded & Application Sent!",
+            body_text=(
+                f"Your new *{tag_label}* CV has been securely uploaded Successfully!\n"
+                f"Your application for *{vacancy.title}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
+                "You're one step closer to landing your dream role. "
+                "Keep the momentum going! 🚀"
+            ),
+            buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
+        )
+        _set_state(wa_number, "idle", {}, db)
+        return
+
+    # ── Legacy flow (no category/job_code) ────────────────────────────────
+    candidate.cv_path = cv_path
+    candidate.cv_updates_used = (candidate.cv_updates_used or 0) + 1
+    db.commit()
+    await wa_client.send_text(
+        to=wa_number,
+        body=cv_update_confirmation_body(candidate),
+    )
     _set_state(wa_number, "idle", {}, db)
 
 

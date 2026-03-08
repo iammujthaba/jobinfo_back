@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.db.models import Candidate, JobVacancy
+
 from app.db.models import ConversationState
 from app.handlers import global_handler
 
@@ -55,7 +57,7 @@ async def dispatch(payload: dict, db: Session) -> None:
                     await _handle_button(wa_number, button_id, db)
                 elif inter_type == "list_reply":
                     list_id = interactive["list_reply"]["id"]
-                    await _handle_list(wa_number, list_id, db)
+                    await _handle_list_reply(wa_number, list_id, db)
 
             elif msg_type == "document":
                 # Direct document upload (CV)
@@ -169,16 +171,46 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await seeker_handler.handle_register_button(wa_number, job_code, db)
         return
 
-    # "btn_apply_now_42"
+    # "btn_apply_now_42" — route through Smart Interceptor
     if button_id.startswith("btn_apply_now_"):
         vacancy_id = int(button_id.removeprefix("btn_apply_now_"))
-        await seeker_handler.handle_apply_now_button(wa_number, vacancy_id, db)
+        vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
+        if not vacancy:
+            return
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if not candidate:
+            return
+        await seeker_handler._show_job_apply_prompt(wa_number, candidate, vacancy, db)
         return
 
     # "btn_update_cv_42"
     if button_id.startswith("btn_update_cv_"):
         vacancy_id = int(button_id.removeprefix("btn_update_cv_"))
         await seeker_handler.handle_update_cv_button(wa_number, vacancy_id, db)
+        return
+
+    # "CONFIRM_APPLY_JC:1002" — user chose "Apply Anyway" from mismatch warning
+    if button_id.startswith("CONFIRM_APPLY_"):
+        job_code = button_id.removeprefix("CONFIRM_APPLY_")
+        await seeker_handler.handle_confirm_apply_button(wa_number, job_code, db)
+        return
+
+    # "MANAGE_CV_JC:1002" — user chose to update/select CV
+    if button_id.startswith("MANAGE_CV_"):
+        job_code = button_id.removeprefix("MANAGE_CV_")
+        await seeker_handler.handle_manage_cv(wa_number, job_code, db)
+        return
+
+    # "APPLY_NO_CV_JC:1002" — apply explicitly without CV
+    if button_id.startswith("APPLY_NO_CV_"):
+        job_code = button_id.removeprefix("APPLY_NO_CV_")
+        await seeker_handler.handle_apply_no_cv(wa_number, job_code, db)
+        return
+
+    # "UPLOAD_NEW_CV_JC:1002" — upload a new CV (button variant)
+    if button_id.startswith("UPLOAD_NEW_CV_"):
+        job_code = button_id.removeprefix("UPLOAD_NEW_CV_")
+        await seeker_handler.handle_upload_new_cv(wa_number, job_code, db)
         return
 
     logger.warning("Unhandled button_id '%s' from %s", button_id, wa_number)
@@ -192,6 +224,22 @@ async def _handle_list_reply(wa_number: str, row_id: str, db: Session) -> None:
     if row_id.startswith("plan_"):
         plan_name = row_id.removeprefix("plan_")
         await seeker_handler.handle_plan_selection(wa_number, plan_name, db)
+        return
+
+    # "SELECT_CV_5_JC:1002" — user picked an existing CV from the list
+    if row_id.startswith("SELECT_CV_"):
+        # Format: SELECT_CV_{resume_id}_{job_code}
+        parts = row_id.removeprefix("SELECT_CV_").split("_", 1)
+        if len(parts) == 2:
+            resume_id = int(parts[0])
+            job_code = parts[1]
+            await seeker_handler.handle_select_cv(wa_number, resume_id, job_code, db)
+            return
+
+    # "UPLOAD_NEW_CV_JC:1002" — user wants to upload a new CV
+    if row_id.startswith("UPLOAD_NEW_CV_"):
+        job_code = row_id.removeprefix("UPLOAD_NEW_CV_")
+        await seeker_handler.handle_upload_new_cv(wa_number, job_code, db)
         return
 
     logger.warning("Unhandled list row_id '%s' from %s", row_id, wa_number)
@@ -220,8 +268,12 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
         # Seeker Registration Flow
         await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
 
+    elif "new_cv_category" in submitted:
+        # CV Update Flow (with category tag + job_code for Smart CV Manager)
+        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
+
     elif "media_id" in submitted and "category" not in submitted:
-        # CV Update Flow
+        # Legacy CV Update Flow (without category)
         await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
 
     elif "company" in submitted and "location" in submitted:
