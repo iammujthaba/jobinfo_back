@@ -36,5 +36,9 @@ htmlcov/
 .coverage
 .tox/
 
+# Keys
 keys/
 *.pem
+
+# test files
+seed_jobs.py

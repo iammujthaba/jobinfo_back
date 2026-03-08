@@ -223,13 +223,18 @@ async def _show_job_apply_prompt(
         return
 
     # ── Standard apply prompt ─────────────────────────────────────────────
+    candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title()) if candidate_cat else ""
+    
     await wa_client.send_buttons(
         to=wa_number,
-        header_text="JobInfo – Job Details",
-        body_text=seeker_job_detail_body(vacancy),
+        header_text="✅ Perfect Match!",
+        body_text=(
+            f"Your default CV is perfectly tailored for this {candidate_label} role. "
+            "Ready to submit your application to the recruiter?"
+        ),
         buttons=[
-            {"id": f"btn_apply_now_{vacancy.id}", "title": "Apply Now"},
-            {"id": f"btn_update_cv_{vacancy.id}", "title": "Update CV"},
+            {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "🚀 Submit Application"},
+            {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📝 Change CV"},
         ],
     )
     _set_state(
