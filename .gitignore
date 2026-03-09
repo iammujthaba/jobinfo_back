@@ -42,3 +42,4 @@ keys/
 
 # test files
 seed_jobs.py
+reset_tester.py

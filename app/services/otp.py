@@ -20,8 +20,14 @@ def generate_otp() -> str:
 
 def create_otp(db: Session, wa_number: str) -> str:
     """Generate and persist a new OTP for the given WhatsApp number."""
+    now = datetime.now(timezone.utc)
+    
+    # Self-cleaning: Delete all expired or used OTP records to prevent database bloat
+    db.query(OTPRecord).filter(OTPRecord.used == True).delete()  # noqa: E712
+    db.query(OTPRecord).filter(OTPRecord.expires_at < now).delete()
+
     otp_code = generate_otp()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_TTL_MINUTES)
+    expires_at = now + timedelta(minutes=OTP_TTL_MINUTES)
 
     # Invalidate any previous unused OTPs for this number
     db.query(OTPRecord).filter(

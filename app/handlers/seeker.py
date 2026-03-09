@@ -230,11 +230,13 @@ async def _show_job_apply_prompt(
         header_text="✅ Perfect Match!",
         body_text=(
             f"Your default CV is perfectly tailored for this {candidate_label} role. "
-            "Ready to submit your application to the recruiter?"
+            "Ready to submit your application to the recruiter?\n\n"
+            "Or would you want to change your current CV?"
         ),
         buttons=[
             {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "🚀 Submit Application"},
-            {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📝 Change CV"},
+            {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload New CV"},
+            {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📁 Choose Existing"},
         ],
     )
     _set_state(
@@ -1160,7 +1162,8 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         body=(
             f"🎯 *Great picks for you, {candidate.name.split()[0] if candidate.name else 'there'}!*\n\n"
             "Based on your profile, here are the top opportunities we've found. "
-            "Tap *Apply Now* on any job that excites you! 👇"
+            "Tap *Apply Now* on any job that excites you! 👇\n\n"
+            "_We suggest up to 3 jobs_"
         ),
     )
 
