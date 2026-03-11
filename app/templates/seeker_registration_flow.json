@@ -185,6 +185,7 @@
                 "post_office": "${form.post_office}",
                 "manual_location_input": "${form.manual_location_input}",
                 "sub_category": "${form.sub_category}",
+                "age": "${form.age}",
                 "alt_phone": "${form.alt_phone}",
                 "category": "${screen.SEEKER_REGISTRATION.form.category}",
                 "name": "${screen.SEEKER_REGISTRATION.form.name}",
