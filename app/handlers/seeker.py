@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.db.models import (
     Candidate, CandidateApplication, CandidateResume, CallbackRequest,
     ConversationState, JobVacancy, SubscriptionPlan, SubscriptionPlanName,
-    MAX_CANDIDATE_RESUMES,
+    MAX_CANDIDATE_RESUMES, MagicLink
 )
 from app.services.storage import save_cv_from_whatsapp
 from app.whatsapp.client import wa_client
@@ -905,7 +905,7 @@ async def _send_application_summary_cta(
                 "Your career journey starts with a single tap! 💪"
             ),
             button_text="Explore Dashboard",
-            url=DASHBOARD_URL,
+            url=_generate_magic_dashboard_url(wa_number, db),
         )
         return
 
@@ -980,7 +980,7 @@ async def _send_application_summary_cta(
         header_text="📊 Your Application Summary",
         body_text="\n".join(lines),
         button_text="View Full Dashboard",
-        url=DASHBOARD_URL,
+        url=_generate_magic_dashboard_url(wa_number, db),
         footer_text="Updated in real-time",
     )
 
@@ -1002,7 +1002,22 @@ def _infer_job_category(vacancy: JobVacancy) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
-DASHBOARD_URL = "https://jobinfo.club/"
+
+
+def _generate_magic_dashboard_url(wa_number: str, db: Session) -> str:
+    import secrets
+    from datetime import datetime, timedelta, timezone
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+    magic = MagicLink(
+        token=token,
+        wa_number=wa_number,
+        role="seeker",
+        expires_at=expires,
+    )
+    db.add(magic)
+    db.commit()
+    return f"https://jobinfo.club/index.html?magic_token={token}"
 
 # Keywords used to match a seeker's category to vacancy title/description
 CATEGORY_KEYWORDS: dict[str, list[str]] = {

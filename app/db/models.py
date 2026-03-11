@@ -212,3 +212,15 @@ class UserQuestion(Base):
     source = Column(String(50), nullable=True)
     is_resolved = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MagicLink(Base):
+    __tablename__ = "magic_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(100), unique=True, nullable=False, index=True)
+    wa_number = Column(String(20), nullable=False, index=True)
+    role = Column(String(20), default="seeker", nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

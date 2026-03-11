@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
     ApplicationStatus, Candidate, CandidateApplication, JobVacancy,
-    Recruiter, SubscriptionPlan, UserQuestion, VacancyStatus
+    Recruiter, SubscriptionPlan, UserQuestion, VacancyStatus, MagicLink
 )
 from app.services import otp as otp_service
 from app.services.job_code import generate_job_code
@@ -51,6 +51,15 @@ class OTPVerifyRequest(BaseModel):
     wa_number: str
     otp_code: str
     role: str = "recruiter"
+
+
+class MagicTokenGenerateRequest(BaseModel):
+    wa_number: str
+    role: str = "seeker"
+
+
+class MagicTokenVerifyRequest(BaseModel):
+    token: str
 
 
 class RecruiterVacancyRequest(BaseModel):
@@ -204,6 +213,67 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
         "session_token": token, 
         "wa_number": body.wa_number,
         "role": body.role,
+        "is_new_user": is_new_user
+    }
+
+
+# ─── Magic Links ──────────────────────────────────────────────────────────────
+
+@router.post("/auth/magic/generate")
+def generate_magic_link(body: MagicTokenGenerateRequest, db: Session = Depends(get_db)):
+    """Internal use: generates a short-lived magic token for a user."""
+    import secrets
+    token = secrets.token_urlsafe(32)
+    # 15 minute expiry
+    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    magic = MagicLink(
+        token=token,
+        wa_number=body.wa_number,
+        role=body.role,
+        expires_at=expires,
+        is_used=False
+    )
+    db.add(magic)
+    db.commit()
+
+    return {"token": token, "expires_at": expires}
+
+
+@router.post("/auth/magic/verify")
+def verify_magic_link(body: MagicTokenVerifyRequest, db: Session = Depends(get_db)):
+    """Public use: verifies a magic token and issues a session."""
+    magic = db.query(MagicLink).filter_by(token=body.token, is_used=False).first()
+    if not magic:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+    
+    # Ensure timezone awareness for comparison
+    now = datetime.now(timezone.utc)
+    expires_at = magic.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        
+    if now > expires_at:
+        raise HTTPException(status_code=400, detail="Magic link has expired")
+
+    # Mark as used     
+    magic.is_used = True
+    db.commit()
+
+    # Create session
+    session_token = _create_session(magic.wa_number, magic.role)
+    
+    # Check if new user
+    is_new_user = False
+    if magic.role == "seeker":
+        candidate = db.query(Candidate).filter_by(wa_number=magic.wa_number).first()
+        if not candidate:
+            is_new_user = True
+
+    return {
+        "session_token": session_token,
+        "wa_number": magic.wa_number,
+        "role": magic.role,
         "is_new_user": is_new_user
     }
 
