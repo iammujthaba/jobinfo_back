@@ -116,6 +116,14 @@
             { "id": "sales_executive", "title": "Sales Executive" },
             { "id": "cashier", "title": "Cashier / Billing" }
           ]
+        },
+        "api_failed": {
+          "type": "boolean",
+          "__example__": false
+        },
+        "api_success": {
+          "type": "boolean",
+          "__example__": true
         }
       },
       "layout": {
@@ -137,7 +145,17 @@
                 "name": "post_office",
                 "label": "Select Nearby Location",
                 "required": true,
+                "visible": "${data.api_success}",
                 "data-source": "${data.post_offices}"
+              },
+              {
+                "type": "TextInput",
+                "name": "manual_location_input",
+                "label": "Type Preferred Job Location",
+                "input-type": "text",
+                "required": true,
+                "visible": "${data.api_failed}",
+                "helper-text": "E.g. Kozhikode, Kochi"
               },
               {
                 "type": "TextInput",
@@ -165,6 +183,7 @@
               "name": "complete",
               "payload": {
                 "post_office": "${form.post_office}",
+                "manual_location_input": "${form.manual_location_input}",
                 "sub_category": "${form.sub_category}",
                 "alt_phone": "${form.alt_phone}",
                 "category": "${screen.SEEKER_REGISTRATION.form.category}",

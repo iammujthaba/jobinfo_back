@@ -318,7 +318,7 @@ async def handle_registration_flow_completion(
             wa_number=wa_number,
             name=flow_data.get("name", ""),
             pin_code=flow_data.get("pin_code"),
-            post_office=flow_data.get("post_office"),
+            post_office=flow_data.get("manual_location_input") or flow_data.get("post_office"),
             category=flow_data.get("category"),
             sub_category=flow_data.get("sub_category"),
             age=int(flow_data["age"]) if flow_data.get("age") else None,
@@ -330,7 +330,10 @@ async def handle_registration_flow_completion(
     else:
         candidate.name = flow_data.get("name", candidate.name)
         candidate.pin_code = flow_data.get("pin_code", candidate.pin_code)
-        candidate.post_office = flow_data.get("post_office", candidate.post_office)
+        
+        new_loc = flow_data.get("manual_location_input") or flow_data.get("post_office")
+        if new_loc:
+            candidate.post_office = new_loc
         candidate.category = flow_data.get("category", candidate.category)
         candidate.sub_category = flow_data.get("sub_category", candidate.sub_category)
         if flow_data.get("age"):

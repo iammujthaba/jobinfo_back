@@ -70,6 +70,7 @@ class CandidateRegisterRequest(BaseModel):
     name: str
     pin_code: str | None = None
     post_office: str | None = None
+    manual_location_input: str | None = None
     category: str | None = None
     sub_category: str | None = None
     age: int | None = None
@@ -83,6 +84,7 @@ class CandidateUpdateRequest(BaseModel):
     name: str | None = None
     pin_code: str | None = None
     post_office: str | None = None
+    manual_location_input: str | None = None
     category: str | None = None
     sub_category: str | None = None
     age: int | None = None
@@ -384,7 +386,7 @@ async def register_candidate_web(
             wa_number=body.wa_number,
             name=body.name,
             pin_code=body.pin_code,
-            post_office=body.post_office,
+            post_office=body.manual_location_input or body.post_office,
             category=body.category,
             sub_category=body.sub_category,
             age=body.age,
@@ -395,7 +397,9 @@ async def register_candidate_web(
     else:
         candidate.name = body.name
         candidate.pin_code = body.pin_code
-        candidate.post_office = body.post_office
+        new_loc = body.manual_location_input or body.post_office
+        if new_loc is not None:
+            candidate.post_office = new_loc
         candidate.category = body.category
         candidate.sub_category = body.sub_category
         candidate.age = body.age
@@ -806,8 +810,11 @@ def update_candidate_profile(
         candidate.name = body.name
     if body.pin_code is not None:
         candidate.pin_code = body.pin_code
-    if body.post_office is not None:
-        candidate.post_office = body.post_office
+        
+    new_loc = body.manual_location_input or body.post_office
+    if new_loc is not None:
+        candidate.post_office = new_loc
+        
     if body.category is not None:
         candidate.category = body.category
     if body.sub_category is not None:
@@ -854,3 +861,23 @@ def get_candidate_applications(
         })
         
     return {"applications": results}
+
+
+@router.get("/locations/{pin_code}")
+async def get_locations_by_pin(pin_code: str):
+    """
+    Fetch locations based on PIN code.
+    If postal API fails, returns api_failed=True instead of an HTTP error,
+    so the frontend can display a manual text input.
+    """
+    if not pin_code or len(pin_code) != 6 or not pin_code.isdigit():
+        return {"success": True, "api_failed": True, "locations": []}
+
+    from app.routers.flows import _lookup_post_offices
+    locations, api_failed = await _lookup_post_offices(pin_code)
+
+    return {
+        "success": True,
+        "api_failed": api_failed,
+        "locations": locations
+    }

@@ -219,12 +219,14 @@ async def _handle_data_exchange(screen: str, data: dict) -> dict:
                         {"id": "invalid", "title": "Invalid PIN — go back and re-enter"},
                     ],
                     "sub_categories": sub_categories,
+                    "api_failed": True,
+                    "api_success": False, # <-- Added
                 },
             }
 
-        post_offices = await _lookup_post_offices(pin_code)
+        post_offices, api_failed = await _lookup_post_offices(pin_code)
 
-        if not post_offices:
+        if not post_offices and not api_failed:
             return {
                 "screen": "SEEKER_LOCATION",
                 "data": {
@@ -232,6 +234,8 @@ async def _handle_data_exchange(screen: str, data: dict) -> dict:
                         {"id": "not_found", "title": f"No results for PIN {pin_code}"},
                     ],
                     "sub_categories": sub_categories,
+                    "api_failed": False,
+                    "api_success": True, # <-- Added
                 },
             }
 
@@ -242,16 +246,17 @@ async def _handle_data_exchange(screen: str, data: dict) -> dict:
             "data": {
                 "post_offices": po_options,
                 "sub_categories": sub_categories,
+                "api_failed": api_failed,
+                "api_success": not api_failed, # <-- Added dynamically
             },
         }
 
     return {"screen": screen, "data": {}}
 
-
-async def _lookup_post_offices(pin_code: str) -> list[str]:
+async def _lookup_post_offices(pin_code: str) -> tuple[list[str], bool]:
     """
     Query the Indian Postal PIN Code API.
-    Returns a list of post office names for the given PIN.
+    Returns a tuple: (list of post office names, api_failed flag).
     """
     url = f"https://api.postalpincode.in/pincode/{pin_code}"
     try:
@@ -263,7 +268,7 @@ async def _lookup_post_offices(pin_code: str) -> list[str]:
         # API returns an array, check if first element has a successful status
         if not data or not isinstance(data, list) or data[0].get("Status") != "Success":
             logger.warning("Postal API: no results for PIN %s", pin_code)
-            return []
+            return ([], True)
 
         names = [
             po.get("Name", "")
@@ -271,8 +276,8 @@ async def _lookup_post_offices(pin_code: str) -> list[str]:
             if po.get("Name")
         ]
         logger.info("PIN %s → %d post offices", pin_code, len(names))
-        return names
+        return (names, False) if names else ([], True)
 
     except Exception as e:
         logger.error("Postal API error for PIN %s: %s", pin_code, e)
-        return []
+        return ([], True)
