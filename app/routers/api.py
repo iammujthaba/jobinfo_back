@@ -44,11 +44,13 @@ class UserQuestionRequest(BaseModel):
 
 class OTPSendRequest(BaseModel):
     wa_number: str
+    role: str = "recruiter"
 
 
 class OTPVerifyRequest(BaseModel):
     wa_number: str
     otp_code: str
+    role: str = "recruiter"
 
 
 class RecruiterVacancyRequest(BaseModel):
@@ -75,6 +77,18 @@ class CandidateRegisterRequest(BaseModel):
     # CV is uploaded as a separate multipart request (see /api/candidates/upload-cv)
 
 
+class CandidateUpdateRequest(BaseModel):
+    wa_number: str
+    session_token: str
+    name: str | None = None
+    pin_code: str | None = None
+    post_office: str | None = None
+    category: str | None = None
+    sub_category: str | None = None
+    age: int | None = None
+    alt_phone: str | None = None
+
+
 class CandidateApplyRequest(BaseModel):
     wa_number: str
     session_token: str
@@ -83,24 +97,26 @@ class CandidateApplyRequest(BaseModel):
 
 # ─── Simple in-memory session store for OTP-verified sessions ─────────────────
 # For production use Redis or DB-backed sessions.
-_sessions: dict[str, str] = {}  # token → wa_number
+_sessions: dict[str, dict] = {}  # token → {"wa_number": wa_number, "role": role}
 
 
-def _create_session(wa_number: str) -> str:
+def _create_session(wa_number: str, role: str = "recruiter") -> str:
     import secrets
     token = secrets.token_urlsafe(32)
-    _sessions[token] = wa_number
+    _sessions[token] = {"wa_number": wa_number, "role": role}
     return token
 
 
-def _get_wa_number_from_token(token: str) -> str | None:
+def _get_session_data(token: str) -> dict | None:
     return _sessions.get(token)
 
 
-def _require_session(wa_number: str, session_token: str):
-    resolved = _get_wa_number_from_token(session_token)
-    if resolved != wa_number:
+def _require_session(wa_number: str, session_token: str, expected_role: str = "recruiter"):
+    session_data = _get_session_data(session_token)
+    if not session_data or session_data["wa_number"] != wa_number:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
+    if session_data["role"] != expected_role:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
 # ─── OTP endpoints ────────────────────────────────────────────────────────────
@@ -110,6 +126,11 @@ async def send_otp(body: OTPSendRequest, db: Session = Depends(get_db)):
     """Generate OTP and send it via WhatsApp."""
     import httpx
     try:
+        if body.role == "seeker":
+            candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+            if not candidate:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_registered")
+
         otp_code = otp_service.create_otp(db, body.wa_number)
         
         # Check 24-hour window
@@ -165,11 +186,24 @@ async def send_otp(body: OTPSendRequest, db: Session = Depends(get_db)):
 
 @router.post("/otp/verify")
 async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
-    """Verify OTP and return a session token."""
+    """Verify OTP and return a session token. Supports role-based routing."""
     if not otp_service.verify_otp(db, body.wa_number, body.otp_code):
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-    token = _create_session(body.wa_number)
-    return {"session_token": token, "wa_number": body.wa_number}
+    
+    token = _create_session(body.wa_number, body.role)
+    
+    is_new_user = False
+    if body.role == "seeker":
+        candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+        if not candidate:
+            is_new_user = True
+
+    return {
+        "session_token": token, 
+        "wa_number": body.wa_number,
+        "role": body.role,
+        "is_new_user": is_new_user
+    }
 
 
 # ─── Vacancies (public) ───────────────────────────────────────────────────────
@@ -727,3 +761,96 @@ def edit_rejected_vacancy(
         "status": vacancy.status.value,
         "message": "Vacancy resubmitted for review. You will be notified via WhatsApp once reviewed.",
     }
+
+
+# ─── Candidate actions ────────────────────────────────────────────────────────
+
+@router.get("/candidates/me")
+def get_candidate_profile(
+    wa_number: str,
+    session_token: str,
+    db: Session = Depends(get_db)
+):
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    
+    return {
+        "id": candidate.id,
+        "name": candidate.name,
+        "wa_number": candidate.wa_number,
+        "pin_code": candidate.pin_code,
+        "post_office": candidate.post_office,
+        "category": candidate.category,
+        "sub_category": candidate.sub_category,
+        "age": candidate.age,
+        "alt_phone": candidate.alt_phone,
+        "cv_path": candidate.cv_path,
+        "registration_complete": candidate.registration_complete,
+        "created_at": candidate.created_at
+    }
+
+
+@router.put("/candidates/me")
+def update_candidate_profile(
+    body: CandidateUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    _require_session(body.wa_number, body.session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    if body.name is not None:
+        candidate.name = body.name
+    if body.pin_code is not None:
+        candidate.pin_code = body.pin_code
+    if body.post_office is not None:
+        candidate.post_office = body.post_office
+    if body.category is not None:
+        candidate.category = body.category
+    if body.sub_category is not None:
+        candidate.sub_category = body.sub_category
+    if body.age is not None:
+        candidate.age = body.age
+    if body.alt_phone is not None:
+        candidate.alt_phone = body.alt_phone
+        
+    db.commit()
+    db.refresh(candidate)
+    return {"message": "Profile updated successfully"}
+
+
+@router.get("/candidates/applications")
+def get_candidate_applications(
+    wa_number: str,
+    session_token: str,
+    db: Session = Depends(get_db)
+):
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    apps = (
+        db.query(CandidateApplication, JobVacancy)
+        .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
+        .filter(CandidateApplication.candidate_id == candidate.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .all()
+    )
+    
+    results = []
+    for app, vac in apps:
+        results.append({
+            "application_id": app.id,
+            "status": app.status.value,
+            "applied_at": app.applied_at,
+            "job_title": vac.title,
+            "company": vac.company,
+            "location": vac.location,
+            "job_code": vac.job_code
+        })
+        
+    return {"applications": results}
