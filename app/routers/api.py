@@ -833,6 +833,8 @@ def update_candidate_profile(
 def get_candidate_applications(
     wa_number: str,
     session_token: str,
+    days: int | None = None,
+    status: str | None = None,
     db: Session = Depends(get_db)
 ):
     _require_session(wa_number, session_token, expected_role="seeker")
@@ -840,13 +842,21 @@ def get_candidate_applications(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
         
-    apps = (
+    query = (
         db.query(CandidateApplication, JobVacancy)
         .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
         .filter(CandidateApplication.candidate_id == candidate.id)
-        .order_by(CandidateApplication.applied_at.desc())
-        .all()
     )
+
+    if days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        query = query.filter(CandidateApplication.applied_at >= cutoff)
+        
+    if status is not None and status != "":
+        # Handle cases where status might not match exactly, or just exact match
+        query = query.filter(CandidateApplication.status == status)
+
+    apps = query.order_by(CandidateApplication.applied_at.desc()).all()
     
     results = []
     for app, vac in apps:
@@ -862,6 +872,50 @@ def get_candidate_applications(
         
     return {"applications": results}
 
+
+@router.get("/candidates/analytics")
+def get_candidate_analytics(
+    wa_number: str,
+    session_token: str,
+    db: Session = Depends(get_db)
+):
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    try:
+        from sqlalchemy import func
+        # Group by JobVacancy.title
+        stats = (
+            db.query(JobVacancy.title, func.count(CandidateApplication.id).label("count"))
+            .join(CandidateApplication, JobVacancy.id == CandidateApplication.vacancy_id)
+            .filter(CandidateApplication.candidate_id == candidate.id)
+            .group_by(JobVacancy.title)
+            .all()
+        )
+
+        total_apps = sum(count for _, count in stats)
+        
+        analytics = []
+        for title, count in stats:
+            pct = (count / total_apps * 100) if total_apps > 0 else 0
+            analytics.append({
+                "category": title or "Uncategorized",
+                "count": count,
+                "percentage": round(pct, 1)
+            })
+
+        # Sort by descending count
+        analytics.sort(key=lambda x: x["count"], reverse=True)
+
+        return {
+            "total_applications": total_apps,
+            "focus_areas": analytics
+        }
+    except Exception as e:
+        logger.error(f"Analytics Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/locations/{pin_code}")
 async def get_locations_by_pin(pin_code: str):
