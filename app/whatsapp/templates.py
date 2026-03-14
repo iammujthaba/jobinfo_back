@@ -16,16 +16,16 @@ settings = get_settings()
 
 def recruiter_welcome_components(recruiter: Recruiter) -> list[dict]:
     """
-    Utility template: shows recruiter info + 2 buttons.
+    Utility template: shows recruiter business info + 2 buttons.
     Template name (on Meta): jobinfo_welcome_recruiter
-    Variables: {{1}} = recruiter name, {{2}} = company, {{3}} = location
+    Variables: {{1}} = company_name, {{2}} = business_type, {{3}} = location
     """
     return [
         {
             "type": "body",
             "parameters": [
-                {"type": "text", "text": recruiter.name},
-                {"type": "text", "text": recruiter.company or "—"},
+                {"type": "text", "text": recruiter.company_name},
+                {"type": "text", "text": recruiter.business_type or "—"},
                 {"type": "text", "text": recruiter.location or "—"},
             ],
         },
@@ -60,9 +60,9 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
         f"🔔 *New Vacancy Submitted – Action Required*\n\n"
         f"*Job Code:* {vacancy.job_code}\n"
         f"*Title:* {vacancy.title}\n"
-        f"*Company:* {vacancy.company or recruiter.company or '—'}\n"
+        f"*Company:* {vacancy.company or recruiter.company_name or '—'}\n"
         f"*Location:* {vacancy.location}\n"
-        f"*Recruiter:* {recruiter.name} ({recruiter.wa_number})\n\n"
+        f"*Recruiter:* {recruiter.company_name} ({recruiter.wa_number})\n\n"
         f"*Description:*\n{vacancy.description or '—'}\n\n"
         f"👉 Approve/Reject at: {settings.app_base_url}/admin/vacancies"
     )
@@ -120,10 +120,10 @@ def plan_renewal_body(candidate: Candidate) -> str:
 def registration_confirmation_body(name: str, user_type: str = "candidate") -> str:
     if user_type == "recruiter":
         return (
-            f"🎉 *Welcome to JobInfo, {name}!*\n\n"
-            f"Your recruiter account is ready. You can now post vacancies and "
-            f"reach Kerala's talent pool directly via WhatsApp.\n\n"
-            f"_JobInfo – Connecting Kerala's talent_"
+            f"🎉 *Welcome to JobInfo!*\n\n"
+            f"*{name}* is now registered as a recruiter. You can post vacancies and "
+            f"reach talent directly via WhatsApp.\n\n"
+            f"_JobInfo – Connecting talent across Kerala, Karnataka & GCC_"
         )
     return (
         f"🎉 *Registration Successful, {name}!*\n\n"

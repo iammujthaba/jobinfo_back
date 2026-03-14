@@ -1,0 +1,81 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "RECRUITER_REGISTRATION": []
+  },
+  "screens": [
+    {
+      "id": "RECRUITER_REGISTRATION",
+      "title": "Recruiter Registration",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "registration_form",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "company_name",
+                "label": "Company / Shop Name",
+                "input-type": "text",
+                "required": true,
+                "helper-text": "Enter the name of your business"
+              },
+              {
+                "type": "Dropdown",
+                "name": "business_type",
+                "label": "Business Type",
+                "required": true,
+                "data-source": [
+                  { "id": "company",      "title": "Company / Pvt Ltd" },
+                  { "id": "agency",       "title": "Agency" },
+                  { "id": "shop",         "title": "Shop / Retail Outlet" },
+                  { "id": "startup",      "title": "Startup" },
+                  { "id": "partnership",  "title": "Partnership Firm" },
+                  { "id": "franchise",    "title": "Franchise" },
+                  { "id": "other",        "title": "Other" }
+                ]
+              },
+              {
+                "type": "Dropdown",
+                "name": "location",
+                "label": "Business Location",
+                "required": true,
+                "data-source": [
+                  { "id": "Kerala",    "title": "Kerala" },
+                  { "id": "Karnataka", "title": "Karnataka" },
+                  { "id": "GCC",       "title": "GCC (Gulf Countries)" },
+                  { "id": "Other",     "title": "Other" }
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "business_contact",
+                "label": "Contact Number",
+                "input-type": "phone",
+                "required": true,
+                "helper-text": "Enter the primary contact number for your business"
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Complete Registration",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "company_name":      "${form.company_name}",
+                "business_type":     "${form.business_type}",
+                "location":          "${form.location}",
+                "business_contact":  "${form.business_contact}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

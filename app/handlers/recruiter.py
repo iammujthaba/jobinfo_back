@@ -84,14 +84,14 @@ async def handle_registration_flow_completion(
 ) -> None:
     """
     Called when Meta sends the WhatsApp Flow completion event for recruiter registration.
-    flow_data keys (from your Flow): name, company, location, email
+    flow_data keys (from Flow): company_name, business_type, location, business_contact
     """
     recruiter = Recruiter(
         wa_number=wa_number,
-        name=flow_data.get("name", ""),
-        company=flow_data.get("company"),
-        location=flow_data.get("location"),
-        email=flow_data.get("email"),
+        company_name=flow_data.get("company_name", ""),
+        business_type=flow_data.get("business_type", ""),
+        location=flow_data.get("location", ""),
+        business_contact=flow_data.get("business_contact", ""),
     )
     db.add(recruiter)
     db.commit()
@@ -100,7 +100,7 @@ async def handle_registration_flow_completion(
     # Confirmation message with CTA button
     await wa_client.send_buttons(
         to=wa_number,
-        body_text=registration_confirmation_body(recruiter.name, "recruiter"),
+        body_text=registration_confirmation_body(recruiter.company_name, "recruiter"),
         buttons=[
             {"id": "btn_post_vacancy", "title": "Post Vacancy"}
         ]
@@ -135,7 +135,7 @@ async def handle_post_vacancy_flow_completion(
         job_code=job_code,
         recruiter_id=recruiter.id,
         title=flow_data.get("title", ""),
-        company=flow_data.get("company") or recruiter.company,
+        company=flow_data.get("company") or recruiter.company_name,
         location=flow_data.get("location", ""),
         description=flow_data.get("description"),
         salary_range=flow_data.get("salary_range"),

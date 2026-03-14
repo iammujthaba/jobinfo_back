@@ -276,7 +276,7 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
         # Legacy CV Update Flow (without category)
         await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
 
-    elif "company" in submitted and "location" in submitted:
+    elif "company_name" in submitted and "business_type" in submitted:
         # Recruiter Registration Flow
         await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
 

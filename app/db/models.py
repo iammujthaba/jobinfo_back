@@ -44,10 +44,10 @@ class Recruiter(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     wa_number = Column(String(20), unique=True, nullable=False, index=True)
-    name = Column(String(120), nullable=False)
-    company = Column(String(200))
-    location = Column(String(200))
-    email = Column(String(200))
+    company_name = Column(String(200), nullable=False)
+    business_type = Column(String(100), nullable=False)
+    location = Column(String(50), nullable=False)   # Kerala | Karnataka | GCC | Other
+    business_contact = Column(String(20), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     vacancies = relationship("JobVacancy", back_populates="recruiter")
