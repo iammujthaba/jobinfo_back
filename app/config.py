@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     flow_private_key_path: str = "keys/flow_private.pem"
     flow_private_key_passphrase: str = ""
 
+    # WhatsApp Flow IDs
+    FLOW_ID_SEEKER_REGISTER: str = ""
+    FLOW_ID_SELECT_PLAN: str = ""
+    FLOW_ID_CV_UPDATE: str = ""
+    FLOW_ID_MY_APPLICATIONS: str = ""
+    FLOW_ID_RECRUITER_REGISTER: str = ""
+    FLOW_ID_MY_VACANCIES: str = ""
+    FLOW_ID_POST_VACANCY: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = False

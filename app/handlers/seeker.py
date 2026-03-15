@@ -31,11 +31,7 @@ from app.whatsapp.templates import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# WhatsApp Flow IDs – replace after creating in Meta Flow Builder
-FLOW_ID_SEEKER_REGISTER = "778992404800985"
-FLOW_ID_SELECT_PLAN = "YOUR_SELECT_PLAN_FLOW_ID"
-FLOW_ID_CV_UPDATE = "1830313444154607"
-FLOW_ID_MY_APPLICATIONS = "YOUR_MY_APPLICATIONS_FLOW_ID"
+# Friendly display names for category keys
 
 # Friendly display names for category keys
 CATEGORY_DISPLAY_NAMES: dict[str, str] = {
@@ -266,7 +262,7 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
     """Launch the registration WhatsApp Flow."""
     await wa_client.send_flow(
         to=wa_number,
-        flow_id=FLOW_ID_SEEKER_REGISTER,
+        flow_id=settings.FLOW_ID_SEEKER_REGISTER,
         flow_cta="Register Now",
         body_text=(
             "📝 *Quick Registration*\n\n"
@@ -681,7 +677,7 @@ async def handle_upload_new_cv(wa_number: str, job_code: str, db: Session) -> No
     """Launch the CV Update Flow with the job_code attached for post-upload application."""
     await wa_client.send_flow(
         to=wa_number,
-        flow_id=FLOW_ID_CV_UPDATE,
+        flow_id=settings.FLOW_ID_CV_UPDATE,
         flow_cta="Upload CV",
         header_text="JobInfo – Upload Tailored CV",
         body_text=(
@@ -707,7 +703,7 @@ async def handle_update_cv_button(
     """Prompt to upload a new CV via WhatsApp Flow."""
     await wa_client.send_flow(
         to=wa_number,
-        flow_id=FLOW_ID_CV_UPDATE,
+        flow_id=settings.FLOW_ID_CV_UPDATE,
         flow_cta="Upload New CV",
         body_text=(
             "📄 *Update Your CV*\n\n"
@@ -1081,7 +1077,7 @@ async def handle_my_applications_menu(wa_number: str, db: Session) -> None:
     else:
         await wa_client.send_flow(
             to=wa_number,
-            flow_id=FLOW_ID_SEEKER_REGISTER,
+            flow_id=settings.FLOW_ID_SEEKER_REGISTER,
             flow_cta="Set Up Profile",
             header_text="JobInfo — Profile Required",
             body_text=(
@@ -1106,7 +1102,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
     if not candidate or not candidate.registration_complete:
         await wa_client.send_flow(
             to=wa_number,
-            flow_id=FLOW_ID_SEEKER_REGISTER,
+            flow_id=settings.FLOW_ID_SEEKER_REGISTER,
             flow_cta="Set Up Profile",
             header_text="JobInfo — Let Us Know Your Preferences",
             body_text=(

@@ -33,8 +33,14 @@ class WhatsAppClient:
             resp = await client.post(url, json=payload, headers=self.headers)
         if resp.status_code not in (200, 201):
             logger.error("WA API error %s: %s", resp.status_code, resp.text)
+            
+        data = resp.json()
+        if resp.status_code not in (200, 201):
+            # Safe return on error to prevent json indexing crashes
+            return data
+            
         resp.raise_for_status()
-        return resp.json()
+        return data
 
     # ─── Text message ────────────────────────────────────────────────────────
 

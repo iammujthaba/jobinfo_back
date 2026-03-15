@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.whatsapp.client import wa_client
 from app.db.models import ConversationState
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 HELP_MENU_TEXT = (
@@ -76,6 +78,7 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
         return True
 
     if button_id == "menu_seeker":
+        # Check if they have an active registration by importing seeker_handler
         from app.handlers import seeker as seeker_handler
         await seeker_handler.send_seeker_greeting_menu(wa_number)
         return True

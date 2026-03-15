@@ -28,10 +28,7 @@ from app.whatsapp.templates import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# IDs of WhatsApp Flows – create these in Meta's Flow Builder, paste IDs here
-FLOW_ID_RECRUITER_REGISTER = "1453423649718282"
-FLOW_ID_POST_VACANCY = "4438148733098809"
-FLOW_ID_MY_VACANCIES = "YOUR_MY_VACANCIES_FLOW_ID"
+# Template name for the utility template (create and approve on Meta)
 
 # Template name for the utility template (create and approve on Meta)
 TEMPLATE_RECRUITER_WELCOME = "jobinfo_welcome_recruiter"
@@ -67,7 +64,7 @@ async def start(wa_number: str, db: Session) -> None:
         # New recruiter – launch registration Flow
         await wa_client.send_flow(
             to=wa_number,
-            flow_id=FLOW_ID_RECRUITER_REGISTER,
+            flow_id=settings.FLOW_ID_RECRUITER_REGISTER,
             flow_cta="Register as Recruiter",
             body_text=(
                 "👋 Welcome to *JobInfo*!\n\n"
@@ -276,7 +273,7 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
 
     await wa_client.send_flow(
         to=wa_number,
-        flow_id=FLOW_ID_POST_VACANCY,
+        flow_id=settings.FLOW_ID_POST_VACANCY,
         flow_cta="Post Vacancy",
         body_text=(
             "📝 *Post a New Vacancy*\n\n"

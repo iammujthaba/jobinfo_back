@@ -53,11 +53,13 @@ async def dispatch(payload: dict, db: Session) -> None:
                     return
                     
                 elif inter_type == "button_reply":
-                    button_id = interactive["button_reply"]["id"]
-                    await _handle_button(wa_number, button_id, db)
+                    button_id = interactive.get("button_reply", {}).get("id")
+                    if button_id:
+                        await _handle_button(wa_number, button_id, db)
                 elif inter_type == "list_reply":
-                    list_id = interactive["list_reply"]["id"]
-                    await _handle_list_reply(wa_number, list_id, db)
+                    list_id = interactive.get("list_reply", {}).get("id")
+                    if list_id:
+                        await _handle_list_reply(wa_number, list_id, db)
 
             elif msg_type == "document":
                 # Direct document upload (CV)
