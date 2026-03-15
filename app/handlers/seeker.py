@@ -103,7 +103,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             to=wa_number,
             header_text="JobInfo – Apply for Jobs via WhatsApp",
             body_text=(
-                f"📋 *{vacancy.title}* | {vacancy.location}\n\n"
+                f"📋 *{vacancy.job_title}* | {vacancy.exact_location}, {vacancy.district_region}\n\n"
                 "To apply, you need to register first. It's quick and free!\n\n"
                 "Tap *Register Now* to continue or *Get Help* if you need assistance."
             ),
@@ -139,7 +139,7 @@ async def _show_job_apply_prompt(
     if existing:
         await wa_client.send_text(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing.status.value}_",
+            body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{existing.status.value}_",
         )
         return
 
@@ -168,7 +168,7 @@ async def _show_job_apply_prompt(
             to=wa_number,
             header_text="🌟 Stand Out to the Recruiter!",
             body_text=(
-                f"You're applying for an exciting *{job_label}* role — *{vacancy.title}*! "
+                f"You're applying for an exciting *{job_label}* role — *{vacancy.job_title}*! "
                 "We noticed you haven't added a CV to your profile yet.\n\n"
                 "Uploading a CV gives recruiters a complete picture of your skills "
                 "and dramatically boosts your chances of getting hired. 🚀"
@@ -531,7 +531,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
     if existing:
         await wa_client.send_text(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing.status.value}_",
+            body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
         )
         return
 
@@ -544,7 +544,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
         to=wa_number,
         header_text="✅ Application Submitted!",
         body_text=(
-            f"We've sent your profile to the recruiter for *{vacancy.title}* "
+            f"We've sent your profile to the recruiter for *{vacancy.job_title}* "
             "without a CV attached.\n\n"
             "💡 *Pro tip:* Uploading a tailored CV for future applications "
             "can dramatically boost your chances. Best of luck! 🍀"
@@ -650,7 +650,7 @@ async def handle_select_cv(
     if existing:
         await wa_client.send_text(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing.status.value}_",
+            body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
         )
         return
 
@@ -669,7 +669,7 @@ async def handle_select_cv(
         header_text="✅ Application Submitted!",
         body_text=(
             f"Excellent choice! We've updated your active CV to *{tag_label}* "
-            f"and successfully submitted your tailored application for *{vacancy.title}*.\n\n"
+            f"and successfully submitted your tailored application for *{vacancy.job_title}*.\n\n"
             "The recruiter will review your profile shortly. Keep an eye on your dashboard for updates! 🎯"
         ),
         buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
@@ -827,7 +827,7 @@ async def handle_cv_update_flow_completion(
         if existing_app:
             await wa_client.send_text(
                 to=wa_number,
-                body=f"ℹ️ You have already applied for *{vacancy.title}*. Status: _{existing_app.status.value}_",
+                body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{getattr(existing_app.status, 'value', existing_app.status)}_",
             )
             _set_state(wa_number, "idle", {}, db)
             return
@@ -847,7 +847,7 @@ async def handle_cv_update_flow_completion(
             header_text="🎉 CV Uploaded & Application Sent!",
             body_text=(
                 f"Your new *{tag_label}* CV has been securely uploaded Successfully!\n"
-                f"Your application for *{vacancy.title}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
+                f"Your application for *{vacancy.job_title}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
                 "You're one step closer to landing your dream role. "
                 "Keep the momentum going! 🚀"
             ),
@@ -965,10 +965,10 @@ async def _send_application_summary_cta(
     v = latest.vacancy
     emoji = status_emoji.get(latest.status.value, "❓")
     label = status_label.get(latest.status.value, latest.status.value.title())
-    company = f" — {v.company}" if v.company else ""
+    company = f" — {v.company_name}" if v.company_name else ""
 
     lines.append("📌 *Your Latest Application:*")
-    lines.append(f"  {emoji}  *{v.title}*{company} · _{label}_")
+    lines.append(f"  {emoji}  *{v.job_title}*{company} · _{label}_")
 
     lines.append(
         "\nTo view your complete history and track live recruiter updates, "
@@ -987,7 +987,7 @@ async def _send_application_summary_cta(
 
 def _infer_job_category(vacancy: JobVacancy) -> str:
     """Infer a category for a job vacancy by matching its title/description against keywords."""
-    text = f"{vacancy.title or ''} {vacancy.description or ''}".lower()
+    text = f"{vacancy.job_title or ''} {vacancy.job_description or ''}".lower()
     for cat, keywords in CATEGORY_KEYWORDS.items():
         if cat == "other":
             continue
@@ -1124,29 +1124,19 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         return
 
     # ── Find matching jobs based on candidate's category ──────────────────
+    from sqlalchemy import func
     category = (candidate.category or "").strip().lower()
-    keywords = CATEGORY_KEYWORDS.get(category, [])
 
-    matching_jobs: list[JobVacancy] = []
+    matching_jobs = (
+        db.query(JobVacancy)
+        .filter(JobVacancy.status == "approved")
+        .filter(func.lower(JobVacancy.job_category) == category)
+        .order_by(JobVacancy.approved_at.desc())
+        .limit(5)
+        .all()
+    )
 
-    if keywords:
-        # Build an OR query: title or description contains any keyword
-        from sqlalchemy import or_, func
-        filters = []
-        for kw in keywords:
-            filters.append(func.lower(JobVacancy.title).contains(kw))
-            filters.append(func.lower(JobVacancy.description).contains(kw))
-
-        matching_jobs = (
-            db.query(JobVacancy)
-            .filter(JobVacancy.status == "approved")
-            .filter(or_(*filters))
-            .order_by(JobVacancy.approved_at.desc())
-            .limit(3)
-            .all()
-        )
-
-    # Fallback: if no keyword matches or "other" category, show latest jobs
+    # Fallback: if no category match, show latest jobs
     if not matching_jobs:
         matching_jobs = (
             db.query(JobVacancy)
@@ -1162,7 +1152,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
             to=wa_number,
             header_text="JobInfo — Job Suggestions",
             body_text=(
-                "😔 *We're currently sourcing new roles in your field.*\n\n"
+                "*We're currently sourcing new roles in your field.*\n\n"
                 "Our team is working hard to bring fresh opportunities that match "
                 f"your expertise. In the meantime, keep an eye on our Jobs Channel "
                 "for daily walk-in interviews and urgent openings.\n\n"
@@ -1190,11 +1180,11 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         exp_line = f"📋  *Experience:* {job.experience_required}\n" if job.experience_required else ""
 
         body = (
-            f"🏢  *{job.title}*\n"
-            f"📍  {job.company or 'Company'} — {job.location}\n"
+            f"🏢  *{job.job_title}*\n"
+            f"📍  {job.company_name or 'Company'} — {job.exact_location}, {job.district_region}\n"
             f"{salary_line}"
             f"{exp_line}"
-            f"\n_{job.description[:120] + '…' if job.description and len(job.description) > 120 else job.description or ''}_"
+            f"\n_{job.job_description[:120] + '…' if job.job_description and len(job.job_description) > 120 else job.job_description or ''}_"
         )
 
         await wa_client.send_buttons(

@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
     ApplicationStatus, Candidate, CandidateApplication, JobVacancy,
-    Recruiter, SubscriptionPlan, UserQuestion, VacancyStatus, MagicLink
+    Recruiter, SubscriptionPlan, UserQuestion, MagicLink
 )
 from app.services import otp as otp_service
 from app.services.job_code import generate_job_code
@@ -65,10 +65,13 @@ class MagicTokenVerifyRequest(BaseModel):
 class RecruiterVacancyRequest(BaseModel):
     wa_number: str
     session_token: str   # from OTP verify step
-    title: str
-    company: str | None = None
-    location: str
-    description: str | None = None
+    job_category: str
+    company_name: str | None = None
+    district_region: str
+    exact_location: str
+    job_title: str
+    job_description: str | None = None
+    job_mode: str
     salary_range: str | None = None
     experience_required: str | None = None
 
@@ -284,15 +287,15 @@ def verify_magic_link(body: MagicTokenVerifyRequest, db: Session = Depends(get_d
 def list_vacancies(
     page: int = 1,
     page_size: int = 20,
-    location: str | None = None,
-    title: str | None = None,
+    district_region: str | None = None,
+    job_title: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(JobVacancy).filter_by(status=VacancyStatus.approved)
-    if location:
-        query = query.filter(JobVacancy.location.ilike(f"%{location}%"))
-    if title:
-        query = query.filter(JobVacancy.title.ilike(f"%{title}%"))
+    query = db.query(JobVacancy).filter_by(status="approved")
+    if district_region:
+        query = query.filter(JobVacancy.district_region.ilike(f"%{district_region}%"))
+    if job_title:
+        query = query.filter(JobVacancy.job_title.ilike(f"%{job_title}%"))
     total = query.count()
     vacancies = query.order_by(JobVacancy.approved_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -302,12 +305,15 @@ def list_vacancies(
             {
                 "id": v.id,
                 "job_code": v.job_code,
-                "title": v.title,
-                "company": v.company,
-                "location": v.location,
+                "job_category": v.job_category,
+                "job_title": v.job_title,
+                "company_name": v.company_name,
+                "district_region": v.district_region,
+                "exact_location": v.exact_location,
                 "salary_range": v.salary_range,
                 "experience_required": v.experience_required,
-                "description": v.description,
+                "job_mode": v.job_mode,
+                "job_description": v.job_description,
                 "apply_link": f"https://wa.me/{settings.business_wa_number}?text=Apply%20{v.job_code}",
             }
             for v in vacancies
@@ -324,9 +330,9 @@ def suggest_locations(
     if not query or len(query.strip()) < 1:
         return {"results": []}
     locations = (
-        db.query(JobVacancy.location)
-        .filter(JobVacancy.status == VacancyStatus.approved)
-        .filter(JobVacancy.location.ilike(f"{query.strip()}%"))
+        db.query(JobVacancy.district_region)
+        .filter(JobVacancy.status == "approved")
+        .filter(JobVacancy.district_region.ilike(f"{query.strip()}%"))
         .distinct()
         .limit(10)
         .all()
@@ -343,9 +349,9 @@ def suggest_titles(
     if not query or len(query.strip()) < 1:
         return {"results": []}
     titles = (
-        db.query(JobVacancy.title)
-        .filter(JobVacancy.status == VacancyStatus.approved)
-        .filter(JobVacancy.title.ilike(f"{query.strip()}%"))
+        db.query(JobVacancy.job_title)
+        .filter(JobVacancy.status == "approved")
+        .filter(JobVacancy.job_title.ilike(f"{query.strip()}%"))
         .distinct()
         .limit(10)
         .all()
@@ -355,18 +361,21 @@ def suggest_titles(
 
 @router.get("/vacancies/{vacancy_id}")
 def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
-    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status=VacancyStatus.approved).first()
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved").first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Vacancy not found")
     return {
         "id": vacancy.id,
         "job_code": vacancy.job_code,
-        "title": vacancy.title,
-        "company": vacancy.company,
-        "location": vacancy.location,
-        "description": vacancy.description,
+        "job_title": vacancy.job_title,
+        "company_name": vacancy.company_name,
+        "district_region": vacancy.district_region,
+        "exact_location": vacancy.exact_location,
+        "job_description": vacancy.job_description,
         "salary_range": vacancy.salary_range,
         "experience_required": vacancy.experience_required,
+        "job_mode": vacancy.job_mode,
+        "job_category": vacancy.job_category,
         "apply_link": f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
     }
 
@@ -418,10 +427,13 @@ async def post_vacancy_web(
     vacancy = JobVacancy(
         job_code=job_code,
         recruiter_id=recruiter.id,
-        title=body.title,
-        company=body.company or recruiter.company,
-        location=body.location,
-        description=body.description,
+        job_category=body.job_category,
+        company_name=body.company_name or recruiter.company_name,
+        district_region=body.district_region,
+        exact_location=body.exact_location,
+        job_title=body.job_title,
+        job_description=body.job_description,
+        job_mode=body.job_mode,
         salary_range=body.salary_range,
         experience_required=body.experience_required,
     )
@@ -494,7 +506,7 @@ async def apply_for_vacancy_web(
     if not candidate or not candidate.registration_complete:
         raise HTTPException(status_code=403, detail="Please complete registration first")
 
-    vacancy = db.query(JobVacancy).filter_by(id=body.vacancy_id, status=VacancyStatus.approved).first()
+    vacancy = db.query(JobVacancy).filter_by(id=body.vacancy_id, status="approved").first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Vacancy not found")
 
@@ -555,13 +567,16 @@ def recruiter_dashboard(
         vacancy_list.append({
             "id": v.id,
             "job_code": v.job_code,
-            "title": v.title,
-            "company": v.company or "",
-            "location": v.location,
-            "description": v.description or "",
+            "job_category": v.job_category,
+            "job_title": v.job_title,
+            "company_name": v.company_name or "",
+            "district_region": v.district_region,
+            "exact_location": v.exact_location,
+            "job_mode": v.job_mode,
+            "job_description": v.job_description or "",
             "salary_range": v.salary_range,
             "experience_required": v.experience_required,
-            "status": v.status.value,
+            "status": v.status,
             "rejection_reason": v.rejection_reason,
             "created_at": v.created_at.isoformat() if v.created_at else None,
             "approved_at": v.approved_at.isoformat() if v.approved_at else None,
@@ -659,8 +674,8 @@ def list_vacancy_applications(
         "vacancy": {
             "id": vacancy.id,
             "job_code": vacancy.job_code,
-            "title": vacancy.title,
-            "location": vacancy.location,
+            "job_title": vacancy.job_title,
+            "district_region": vacancy.district_region,
         },
         "total": len(results),
         "applications": results,
@@ -765,10 +780,13 @@ class EditVacancyRequest(BaseModel):
     wa_number: str
     session_token: str
     vacancy_id: int
-    title: str
-    company: str | None = None
-    location: str
-    description: str | None = None
+    job_category: str
+    company_name: str | None = None
+    district_region: str
+    exact_location: str
+    job_title: str
+    job_description: str | None = None
+    job_mode: str
     salary_range: str | None = None
     experience_required: str | None = None
 

@@ -242,7 +242,32 @@ class WhatsAppClient:
         })
 
 
-    # ─── Channel broadcast ───────────────────────────────────────────────────
+    async def send_interactive_cta_url(
+        self, to: str, body_text: str, button_display_text: str, button_url: str
+    ) -> dict:
+        """Send an interactive CTA URL message."""
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "cta_url",
+                "body": {
+                    "text": body_text
+                },
+                "action": {
+                    "name": "cta_url",
+                    "parameters": {
+                        "display_text": button_display_text,
+                        "url": button_url
+                    }
+                }
+            }
+        }
+        return await self._post(payload)
+
+
 
     async def send_to_channel(self, body: str) -> dict:
         """

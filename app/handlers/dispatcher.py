@@ -260,7 +260,7 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
         submitted = {}
 
     # Inspect the submitted data keys to determine which form was filled out
-    if "title" in submitted and "description" in submitted:
+    if "job_title" in submitted and "job_category" in submitted:
         # Post Vacancy Flow
         await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
 

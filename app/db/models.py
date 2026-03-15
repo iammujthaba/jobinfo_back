@@ -18,10 +18,7 @@ from app.db.base import Base
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
 
-class VacancyStatus(str, enum.Enum):
-    pending = "pending"
-    approved = "approved"
-    rejected = "rejected"
+# VacancyStatus enum has been removed. Vacancy status is now a standard String(20) ("pending", "approved", "rejected")
 
 
 class ApplicationStatus(str, enum.Enum):
@@ -60,17 +57,19 @@ class JobVacancy(Base):
     job_code = Column(String(20), unique=True, nullable=False, index=True)
     recruiter_id = Column(Integer, ForeignKey("recruiter_table.id"), nullable=False)
 
-    title = Column(String(200), nullable=False)
-    company = Column(String(200))
-    location = Column(String(200), nullable=False)
-    description = Column(Text)
-    salary_range = Column(String(100))
-    experience_required = Column(String(100))
-    contact_info = Column(String(200))  # hidden from public; for admin use
+    job_category = Column(String(50), nullable=False)
+    company_name = Column(String(200))
+    district_region = Column(String(100), nullable=False)
+    exact_location = Column(String(200), nullable=False)
+    job_title = Column(String(200), nullable=False)
+    job_description = Column(Text, nullable=False)
+    job_mode = Column(String(50), nullable=False)
+    experience_required = Column(String(100), nullable=False)
+    salary_range = Column(String(100), nullable=False)
 
     status = Column(
-        SAEnum(VacancyStatus, name="vacancy_status"),
-        default=VacancyStatus.pending,
+        String(20),
+        default="pending",
         nullable=False,
     )
     rejection_reason = Column(Text)

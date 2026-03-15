@@ -1,0 +1,185 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "JOB_DETAILS_ONE": ["JOB_DETAILS_TWO"],
+    "JOB_DETAILS_TWO": []
+  },
+  "screens": [
+    {
+      "id": "JOB_DETAILS_ONE",
+      "title": "Job Details (1/2)",
+      "terminal": false,
+      "data": {
+        "default_company_name": {
+          "type": "string",
+          "__example__": "Acme Corp"
+        },
+        "location_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id":    { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "Ernakulam",  "title": "Ernakulam" },
+            { "id": "Kozhikode", "title": "Kozhikode" }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "job_form_1",
+            "children": [
+              {
+                "type": "Dropdown",
+                "name": "job_category",
+                "label": "Job Category",
+                "required": true,
+                "data-source": [
+                  { "id": "retail",                "title": "Retail & Showrooms" },
+                  { "id": "hospitality",            "title": "Hospitality & Food Service" },
+                  { "id": "healthcare",             "title": "Healthcare & Caretaking" },
+                  { "id": "driving",                "title": "Driving & Logistics" },
+                  { "id": "office_admin",           "title": "Office & Admin" },
+                  { "id": "maintenance_technician", "title": "Maintenance & Technician" },
+                  { "id": "it_professional",        "title": "IT & Professional" },
+                  { "id": "gulf_abroad",            "title": "Gulf / Abroad Jobs" },
+                  { "id": "other",                  "title": "Other / General" }
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "company_name",
+                "label": "Company Name",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Leave blank to use your registered company name"
+              },
+              {
+                "type": "Dropdown",
+                "name": "district_region",
+                "label": "District / Region",
+                "required": true,
+                "data-source": "${data.location_options}"
+              },
+              {
+                "type": "TextInput",
+                "name": "exact_location",
+                "label": "Exact Location",
+                "input-type": "text",
+                "required": true,
+                "helper-text": "E.g. MG Road, Kakkanad, Near Bus Stand"
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Next",
+            "on-click-action": {
+              "name": "navigate",
+              "next": { "type": "screen", "name": "JOB_DETAILS_TWO" }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "JOB_DETAILS_TWO",
+      "title": "Job Details (2/2)",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "job_form_2",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "job_title",
+                "label": "Job Title",
+                "input-type": "text",
+                "required": true,
+                "helper-text": "E.g. Sales Executive, HR Manager, Delivery Driver"
+              },
+              {
+                "type": "TextArea",
+                "name": "job_description",
+                "label": "Job Description",
+                "required": true,
+                "helper-text": "Duties, skills, qualifications, timings, etc."
+              },
+              {
+                "type": "Dropdown",
+                "name": "job_mode",
+                "label": "Job Mode",
+                "required": true,
+                "data-source": [
+                  { "id": "full_time", "title": "Full-Time" },
+                  { "id": "part_time", "title": "Part-Time" },
+                  { "id": "remote",    "title": "Remote" },
+                  { "id": "hybrid",    "title": "Hybrid" }
+                ]
+              },
+              {
+                "type": "Dropdown",
+                "name": "experience_required",
+                "label": "Experience Required",
+                "required": true,
+                "data-source": [
+                  { "id": "no_experience", "title": "No Experience Required" },
+                  { "id": "fresher_or_exp", "title": "Fresher or Experienced" },
+                  { "id": "1_2_years",     "title": "1-2 Years" },
+                  { "id": "3_5_years",     "title": "3-5 Years" },
+                  { "id": "5_plus_years",  "title": "5+ Years" }
+                ]
+              },
+              {
+                "type": "Dropdown",
+                "name": "salary_range",
+                "label": "Salary Range",
+                "required": true,
+                "data-source": [
+                  { "id": "interview_based", "title": "Based on Interview" },
+                  { "id": "not_mentioned",   "title": "Not Mentioned" },
+                  { "id": "stipend",         "title": "Stipend" },
+                  { "id": "below_10k",       "title": "Below ₹10,000" },
+                  { "id": "10k_20k",         "title": "₹10,000 - ₹20,000" },
+                  { "id": "20k_30k",         "title": "₹20,000 - ₹30,000" },
+                  { "id": "30k_40k",         "title": "₹30,000 - ₹40,000" },
+                  { "id": "40k_50k",         "title": "₹40,000 - ₹50,000" },
+                  { "id": "above_50k",       "title": "Above ₹50,000" }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Post Vacancy",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "job_category":       "${screen.JOB_DETAILS_ONE.form.job_category}",
+                "company_name":       "${screen.JOB_DETAILS_ONE.form.company_name}",
+                "district_region":    "${screen.JOB_DETAILS_ONE.form.district_region}",
+                "exact_location":     "${screen.JOB_DETAILS_ONE.form.exact_location}",
+                "job_title":          "${form.job_title}",
+                "job_description":    "${form.job_description}",
+                "job_mode":           "${form.job_mode}",
+                "experience_required":"${form.experience_required}",
+                "salary_range":       "${form.salary_range}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

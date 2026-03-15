@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
-    CallbackRequest, Candidate, JobVacancy, VacancyStatus, ConversationState, UserQuestion
+    CallbackRequest, Candidate, JobVacancy, ConversationState, UserQuestion
 )
 from app.handlers import recruiter as recruiter_handler
 
@@ -52,7 +52,7 @@ async def admin_home(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    pending_count = db.query(JobVacancy).filter_by(status=VacancyStatus.pending).count()
+    pending_count = db.query(JobVacancy).filter_by(status="pending").count()
     callback_count = db.query(CallbackRequest).filter_by(resolved=False).count()
     abandoned_count = (
         db.query(Candidate).filter_by(registration_complete=False).count()
@@ -77,10 +77,11 @@ async def list_vacancies(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    status_enum = VacancyStatus(status_filter) if status_filter in VacancyStatus._value2member_map_ else VacancyStatus.pending
+    valid = {"pending", "approved", "rejected"}
+    status_filter = status_filter if status_filter in valid else "pending"
     vacancies = (
         db.query(JobVacancy)
-        .filter_by(status=status_enum)
+        .filter_by(status=status_filter)
         .order_by(JobVacancy.created_at.desc())
         .all()
     )
@@ -178,12 +179,12 @@ async def api_list_vacancies(
     _: str = Depends(require_admin),
 ):
     """Returns vacancies as JSON (used by admin.html frontend panel)."""
-    valid = {s.value for s in VacancyStatus}
-    status_enum = VacancyStatus(status_filter) if status_filter in valid else VacancyStatus.pending
+    valid = {"pending", "approved", "rejected"}
+    status_filter = status_filter if status_filter in valid else "pending"
 
     vacancies = (
         db.query(JobVacancy)
-        .filter_by(status=status_enum)
+        .filter_by(status=status_filter)
         .order_by(JobVacancy.created_at.desc())
         .all()
     )
@@ -193,13 +194,16 @@ async def api_list_vacancies(
         results.append({
             "id": v.id,
             "job_code": v.job_code,
-            "title": v.title,
-            "company": v.company or "",
-            "location": v.location,
-            "description": v.description or "",
+            "job_category": v.job_category,
+            "job_title": v.job_title,
+            "company_name": v.company_name or "",
+            "district_region": v.district_region,
+            "exact_location": v.exact_location,
+            "job_description": v.job_description or "",
+            "job_mode": v.job_mode,
             "salary_range": v.salary_range,
             "experience_required": v.experience_required,
-            "status": v.status.value,
+            "status": v.status,
             "rejection_reason": v.rejection_reason,
             "is_edited": bool(getattr(v, "is_edited", False)),
             "edited_at": v.edited_at.isoformat() if getattr(v, "edited_at", None) else None,
@@ -275,7 +279,7 @@ async def api_share_vacancy_to_channel(
             detail="The 24-hour free message window has expired. Please send a message from the designated channel number to the bot to reactivate it."
         )
 
-    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status=VacancyStatus.approved).first()
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved").first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Approved vacancy not found")
 
@@ -284,19 +288,19 @@ async def api_share_vacancy_to_channel(
     lines = [
         f"🚀 *New Job Alert – JobInfo*",
         f"",
-        f"🏷️ *{vacancy.title}*",
+        f"🏷️ *{vacancy.job_title}*",
     ]
-    if vacancy.company:
-        lines.append(f"🏢 Company: {vacancy.company}")
-    lines.append(f"📍 Location: {vacancy.location}")
+    if vacancy.company_name:
+        lines.append(f"🏢 Company: {vacancy.company_name}")
+    lines.append(f"📍 Location: {vacancy.exact_location}, {vacancy.district_region}")
     if vacancy.salary_range:
         lines.append(f"💰 Salary: {vacancy.salary_range}")
     if vacancy.experience_required:
         lines.append(f"🎓 Experience: {vacancy.experience_required}")
-    if vacancy.description:
+    if vacancy.job_description:
         lines.append(f"")
         lines.append(f"📋 *About the Role:*")
-        lines.append(vacancy.description[:400] + ("…" if len(vacancy.description) > 400 else ""))
+        lines.append(vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else ""))
     lines += [
         f"",
         f"📲 *Apply now:* {apply_link}",
@@ -325,7 +329,7 @@ async def api_analytics(
     # 👇 ADDED 'case' to this import
     from sqlalchemy import func as sqlfunc, case
     from app.db.models import (
-        Candidate, CandidateApplication, JobVacancy, Recruiter, VacancyStatus
+        Candidate, CandidateApplication, JobVacancy, Recruiter
     )
     from datetime import date, timedelta
 
@@ -335,9 +339,9 @@ async def api_analytics(
     total_candidates  = db.query(Candidate).count()
     total_applications = db.query(CandidateApplication).count()
 
-    pending_count  = db.query(JobVacancy).filter_by(status=VacancyStatus.pending).count()
-    approved_count = db.query(JobVacancy).filter_by(status=VacancyStatus.approved).count()
-    rejected_count = db.query(JobVacancy).filter_by(status=VacancyStatus.rejected).count()
+    pending_count  = db.query(JobVacancy).filter_by(status="pending").count()
+    approved_count = db.query(JobVacancy).filter_by(status="approved").count()
+    rejected_count = db.query(JobVacancy).filter_by(status="rejected").count()
 
     # ── Daily vacancy submissions – last 30 days ─────────────────────────────
     today = date.today()
@@ -379,11 +383,11 @@ async def api_analytics(
     recruiter_vac_rows = (
         db.query(
             Recruiter.name.label("name"),
-            Recruiter.company.label("company"),
+            Recruiter.company_name.label("company_name"),
             sqlfunc.count(JobVacancy.id).label("total"),
-            sqlfunc.sum(case((JobVacancy.status == VacancyStatus.approved, 1), else_=0)).label("approved"),
-            sqlfunc.sum(case((JobVacancy.status == VacancyStatus.pending, 1), else_=0)).label("pending"),
-            sqlfunc.sum(case((JobVacancy.status == VacancyStatus.rejected, 1), else_=0)).label("rejected"),
+            sqlfunc.sum(case((JobVacancy.status == "approved", 1), else_=0)).label("approved"),
+            sqlfunc.sum(case((JobVacancy.status == "pending", 1), else_=0)).label("pending"),
+            sqlfunc.sum(case((JobVacancy.status == "rejected", 1), else_=0)).label("rejected"),
         )
         .join(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
         .group_by(Recruiter.id)
@@ -393,7 +397,7 @@ async def api_analytics(
     )
     vacancies_per_recruiter = [
         {
-            "recruiter": f"{r.name}" + (f" ({r.company})" if r.company else ""),
+            "recruiter": f"{r.name}" + (f" ({r.company_name})" if r.company_name else ""),
             "total": r.total, 
             "approved": int(r.approved or 0),
             "pending": int(r.pending or 0), 
@@ -405,9 +409,9 @@ async def api_analytics(
     # ── Applications per vacancy (top 15 by apps) ────────────────────────────
     top_jobs_rows = (
         db.query(
-            JobVacancy.title.label("title"),
+            JobVacancy.job_title.label("job_title"),
             JobVacancy.job_code.label("job_code"),
-            JobVacancy.location.label("location"),
+            JobVacancy.district_region.label("district_region"),
             JobVacancy.status.label("status"),
             sqlfunc.count(CandidateApplication.id).label("apps"),
         )
@@ -419,10 +423,10 @@ async def api_analytics(
     )
     top_jobs = [
         {
-            "title": r.title,
+            "title": r.job_title,
             "job_code": r.job_code,
-            "location": r.location,
-            "status": r.status.value if r.status else "",
+            "location": r.district_region,
+            "status": r.status if r.status else "",
             "applications": r.apps,
         }
         for r in top_jobs_rows

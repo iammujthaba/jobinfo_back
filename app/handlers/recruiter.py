@@ -8,12 +8,12 @@ Manages the full recruiter lifecycle:
   - Handle button presses
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import ConversationState, JobVacancy, Recruiter
+from app.db.models import ConversationState, JobVacancy, Recruiter, CandidateApplication
 from app.services.job_code import generate_job_code
 from app.whatsapp.client import wa_client
 from app.whatsapp.templates import (
@@ -116,6 +116,48 @@ async def handle_registration_flow_completion(
     _set_state(wa_number, "recruiter_idle", {}, db)
 
 
+def _location_options_for(location_string: str) -> list[dict]:
+    """Return a subset of locations based on the recruiter's registered region."""
+    # Simplified logic: in production you could match the detailed cities/districts
+    # based on the broad location string (Kerala, Karnataka, GCC, Other)
+    if "Kerala" in location_string:
+        return [
+            {"id": "thiruvananthapuram", "title": "Thiruvananthapuram"},
+            {"id": "kollam", "title": "Kollam"},
+            {"id": "pathanamthitta", "title": "Pathanamthitta"},
+            {"id": "alappuzha", "title": "Alappuzha"},
+            {"id": "kottayam", "title": "Kottayam"},
+            {"id": "idukki", "title": "Idukki"},
+            {"id": "ernakulam", "title": "Ernakulam"},
+            {"id": "thrissur", "title": "Thrissur"},
+            {"id": "palakkad", "title": "Palakkad"},
+            {"id": "malappuram", "title": "Malappuram"},
+            {"id": "kozhikode", "title": "Kozhikode"},
+            {"id": "wayanad", "title": "Wayanad"},
+            {"id": "kannur", "title": "Kannur"},
+            {"id": "kasaragod", "title": "Kasaragod"}
+        ]
+    if "GCC" in location_string:
+        return [
+            {"id": "uae", "title": "United Arab Emirates"},
+            {"id": "saudi_arabia", "title": "Saudi Arabia"},
+            {"id": "qatar", "title": "Qatar"},
+            {"id": "oman", "title": "Oman"},
+            {"id": "kuwait", "title": "Kuwait"},
+            {"id": "bahrain", "title": "Bahrain"}
+        ]
+    if "Karnataka" in location_string:
+        return [
+            {"id": "bengaluru", "title": "Bengaluru"},
+            {"id": "mysuru", "title": "Mysuru"},
+            {"id": "mangalore", "title": "Mangaluru"},
+            {"id": "other_karnataka", "title": "Other Karnataka City"}
+        ]
+    return [
+        {"id": "other_location", "title": "Other / Anywhere"}
+    ]
+
+
 async def handle_post_vacancy_flow_completion(
     wa_number: str, flow_data: dict, db: Session
 ) -> None:
@@ -134,22 +176,26 @@ async def handle_post_vacancy_flow_completion(
     vacancy = JobVacancy(
         job_code=job_code,
         recruiter_id=recruiter.id,
-        title=flow_data.get("title", ""),
-        company=flow_data.get("company") or recruiter.company_name,
-        location=flow_data.get("location", ""),
-        description=flow_data.get("description"),
-        salary_range=flow_data.get("salary_range"),
-        experience_required=flow_data.get("experience_required"),
-        contact_info=flow_data.get("contact_info"),
+        job_category=flow_data.get("job_category", ""),
+        company_name=flow_data.get("company_name") or recruiter.company_name,
+        district_region=flow_data.get("district_region", ""),
+        exact_location=flow_data.get("exact_location", ""),
+        job_title=flow_data.get("job_title", ""),
+        job_description=flow_data.get("job_description", ""),
+        job_mode=flow_data.get("job_mode", ""),
+        experience_required=flow_data.get("experience_required", ""),
+        salary_range=flow_data.get("salary_range", ""),
     )
     db.add(vacancy)
     db.commit()
     db.refresh(vacancy)
 
     # Notify recruiter
-    await wa_client.send_text(
+    await wa_client.send_interactive_cta_url(
         to=wa_number,
-        body=vacancy_confirmation_body(vacancy),
+        body_text=vacancy_confirmation_body(vacancy),
+        button_display_text="View Dashboard",
+        button_url="https://jobinfo.club/recruiter"
     )
 
     # Notify admin (personal WA number)
@@ -164,42 +210,70 @@ async def handle_post_vacancy_flow_completion(
 
 async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
     """
-    Show the recruiter their vacancies list via a WhatsApp Flow.
+    Show the recruiter a mini dashboard summary of their recent vacancies via WhatsApp.
     """
     recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
     if not recruiter:
         await wa_client.send_text(to=wa_number, body="⚠️ You are not registered as a recruiter.")
         return
 
-    vacancies = (
+    # Total applications across all time for this recruiter's jobs
+    total_apps = (
+        db.query(CandidateApplication)
+        .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
+        .filter(JobVacancy.recruiter_id == recruiter.id)
+        .count()
+    )
+
+    # Last 7 days vacancies
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    recent_vacancies = (
         db.query(JobVacancy)
-        .filter_by(recruiter_id=recruiter.id)
+        .filter(JobVacancy.recruiter_id == recruiter.id)
+        .filter(JobVacancy.created_at >= seven_days_ago)
         .order_by(JobVacancy.created_at.desc())
-        .limit(10)
         .all()
     )
 
-    if not vacancies:
-        await wa_client.send_text(to=wa_number, body="You haven't posted any vacancies yet.")
-        return
+    # Focus Areas
+    categories = list(set([v.job_category for v in recent_vacancies if v.job_category]))
+    focus_areas_str = ", ".join(categories) if categories else "None in the last 7 days"
 
-    # If you have a dedicated "My Vacancies" Flow, launch it with vacancy data injected.
-    # Otherwise, send a formatted text summary.
-    lines = ["📋 *Your Vacancies:*\n"]
-    for v in vacancies:
-        status_emoji = {"approved": "✅", "pending": "⏳", "rejected": "❌"}.get(v.status, "❓")
-        lines.append(f"{status_emoji} *{v.title}* ({v.job_code}) – {v.status.value}")
-    lines.append(
-        "\n🖥️ *View on your dashboard:*\n"
-        "https://jobinfo.club/recruiter-dashboard.html"
+    # Most Recent Job
+    latest_job = recent_vacancies[0] if recent_vacancies else None
+
+    # Build body text
+    lines = [
+        "📊 *Your Recruiter Summary (Last 7 Days)*\n",
+        f"🎯 *Focus Areas:* {focus_areas_str}\n",
+        f"📥 *Applications Received:* {total_apps}\n",
+        "📌 *Most Recent Vacancy:*"
+    ]
+
+    if latest_job:
+        status_emoji = {"approved": "✅", "pending": "⏳", "rejected": "❌"}.get(latest_job.status, "❓")
+        status_label = latest_job.status.capitalize() if latest_job.status else "Unknown"
+        lines.append(f"💼 *{latest_job.job_title}* ({latest_job.job_code})")
+        lines.append(f"📍 {latest_job.exact_location}, {latest_job.district_region}")
+        lines.append(f"📊 Status: {status_emoji} {status_label}")
+    else:
+        lines.append("No new vacancies posted in the last 7 days.")
+
+    summary_text = "\n".join(lines)
+
+    await wa_client.send_interactive_cta_url(
+        to=wa_number,
+        body_text=summary_text,
+        button_display_text="View Full Dashboard",
+        button_url="https://jobinfo.club/recruiter"
     )
-
-
-    await wa_client.send_text(to=wa_number, body="\n".join(lines))
 
 
 async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
     """Launch the post vacancy WhatsApp Flow."""
+    recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+    loc_options = _location_options_for(recruiter.location if recruiter else "")
+
     await wa_client.send_flow(
         to=wa_number,
         flow_id=FLOW_ID_POST_VACANCY,
@@ -210,6 +284,12 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
             "It only takes a minute!"
         ),
         header_text="JobInfo – Post Vacancy",
+        flow_action_payload={
+            "screen": "JOB_DETAILS_ONE",
+            "data": {
+                "location_options": loc_options
+            }
+        }
     )
     _set_state(wa_number, "recruiter_posting_vacancy", {}, db)
 
