@@ -209,9 +209,9 @@ async def api_list_vacancies(
             "edited_at": v.edited_at.isoformat() if getattr(v, "edited_at", None) else None,
             "created_at": v.created_at.isoformat() if v.created_at else None,
             "recruiter": {
-                "name": v.recruiter.name,
+                "name": v.recruiter.company_name,
                 "wa_number": v.recruiter.wa_number,
-                "company": v.recruiter.company,
+                "company": v.recruiter.company_name,
             } if v.recruiter else None,
         })
 
@@ -382,8 +382,8 @@ async def api_analytics(
     # 👇 FIXED: Used 'case()' instead of 'sqlfunc.case()'
     recruiter_vac_rows = (
         db.query(
-            Recruiter.name.label("name"),
             Recruiter.company_name.label("company_name"),
+            Recruiter.wa_number.label("wa_number"),
             sqlfunc.count(JobVacancy.id).label("total"),
             sqlfunc.sum(case((JobVacancy.status == "approved", 1), else_=0)).label("approved"),
             sqlfunc.sum(case((JobVacancy.status == "pending", 1), else_=0)).label("pending"),
@@ -397,7 +397,7 @@ async def api_analytics(
     )
     vacancies_per_recruiter = [
         {
-            "recruiter": f"{r.name}" + (f" ({r.company_name})" if r.company_name else ""),
+            "recruiter": f"{r.company_name} ({r.wa_number})" if r.company_name else str(r.wa_number),
             "total": r.total, 
             "approved": int(r.approved or 0),
             "pending": int(r.pending or 0), 

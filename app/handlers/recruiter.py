@@ -44,6 +44,23 @@ def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
     return state
 
 
+def _generate_magic_dashboard_url(recruiter: Recruiter, db: Session) -> str:
+    import secrets
+    from datetime import datetime, timedelta, timezone
+    from app.db.models import MagicLink
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+    magic = MagicLink(
+        token=token,
+        wa_number=recruiter.wa_number,
+        role="recruiter",
+        expires_at=expires,
+    )
+    db.add(magic)
+    db.commit()
+    return f"https://jobinfo.club/recruiter?magic_token={token}"
+
+
 async def start(wa_number: str, db: Session) -> None:
     """
     Entry point: called when a recruiter sends 'My Vacancy' (or taps the menu button).
@@ -113,45 +130,38 @@ async def handle_registration_flow_completion(
     _set_state(wa_number, "recruiter_idle", {}, db)
 
 
-def _location_options_for(location_string: str) -> list[dict]:
-    """Return a subset of locations based on the recruiter's registered region."""
-    # Simplified logic: in production you could match the detailed cities/districts
-    # based on the broad location string (Kerala, Karnataka, GCC, Other)
-    if "Kerala" in location_string:
-        return [
-            {"id": "thiruvananthapuram", "title": "Thiruvananthapuram"},
-            {"id": "kollam", "title": "Kollam"},
-            {"id": "pathanamthitta", "title": "Pathanamthitta"},
-            {"id": "alappuzha", "title": "Alappuzha"},
-            {"id": "kottayam", "title": "Kottayam"},
-            {"id": "idukki", "title": "Idukki"},
-            {"id": "ernakulam", "title": "Ernakulam"},
-            {"id": "thrissur", "title": "Thrissur"},
-            {"id": "palakkad", "title": "Palakkad"},
-            {"id": "malappuram", "title": "Malappuram"},
-            {"id": "kozhikode", "title": "Kozhikode"},
-            {"id": "wayanad", "title": "Wayanad"},
-            {"id": "kannur", "title": "Kannur"},
-            {"id": "kasaragod", "title": "Kasaragod"}
-        ]
-    if "GCC" in location_string:
-        return [
-            {"id": "uae", "title": "United Arab Emirates"},
-            {"id": "saudi_arabia", "title": "Saudi Arabia"},
-            {"id": "qatar", "title": "Qatar"},
-            {"id": "oman", "title": "Oman"},
-            {"id": "kuwait", "title": "Kuwait"},
-            {"id": "bahrain", "title": "Bahrain"}
-        ]
-    if "Karnataka" in location_string:
-        return [
-            {"id": "bengaluru", "title": "Bengaluru"},
-            {"id": "mysuru", "title": "Mysuru"},
-            {"id": "mangalore", "title": "Mangaluru"},
-            {"id": "other_karnataka", "title": "Other Karnataka City"}
-        ]
+def _location_options_for() -> list[dict]:
+    """Return a master list of all available regions across all states."""
     return [
-        {"id": "other_location", "title": "Other / Anywhere"}
+        # Kerala
+        {"id": "trivandrum", "title": "Trivandrum"},
+        {"id": "kollam", "title": "Kollam"},
+        {"id": "pathanamthitta", "title": "Pathanamthitta"},
+        {"id": "alappuzha", "title": "Alappuzha"},
+        {"id": "kottayam", "title": "Kottayam"},
+        {"id": "idukki", "title": "Idukki"},
+        {"id": "ernakulam", "title": "Ernakulam"},
+        {"id": "thrissur", "title": "Thrissur"},
+        {"id": "palakkad", "title": "Palakkad"},
+        {"id": "malappuram", "title": "Malappuram"},
+        {"id": "kozhikode", "title": "Kozhikode"},
+        {"id": "wayanad", "title": "Wayanad"},
+        {"id": "kannur", "title": "Kannur"},
+        {"id": "kasaragod", "title": "Kasaragod"},
+        # Karnataka
+        {"id": "bangalore", "title": "Bangalore"},
+        {"id": "mangalore", "title": "Mangalore"},
+        {"id": "mysore", "title": "Mysore"},
+        {"id": "hubli", "title": "Hubli"},
+        # GCC
+        {"id": "uae", "title": "Dubai"},
+        {"id": "saudi_arabia", "title": "Riyadh"},
+        {"id": "qatar", "title": "Doha"},
+        {"id": "oman", "title": "Muscat"},
+        {"id": "kuwait", "title": "Kuwait"},
+        {"id": "bahrain", "title": "Manama"},
+        # Other
+        {"id": "other_location", "title": "Other Location"}
     ]
 
 
@@ -187,12 +197,14 @@ async def handle_post_vacancy_flow_completion(
     db.commit()
     db.refresh(vacancy)
 
+    magic_url = _generate_magic_dashboard_url(recruiter, db)
+
     # Notify recruiter
     await wa_client.send_interactive_cta_url(
         to=wa_number,
         body_text=vacancy_confirmation_body(vacancy),
         button_display_text="View Dashboard",
-        button_url="https://jobinfo.club/recruiter"
+        button_url=magic_url
     )
 
     # Notify admin (personal WA number)
@@ -234,14 +246,14 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
 
     # Focus Areas
     categories = list(set([v.job_category for v in recent_vacancies if v.job_category]))
-    focus_areas_str = ", ".join(categories) if categories else "None in the last 7 days"
+    focus_areas_str = ", ".join(categories) if categories else "No vacancies submitted in the last 7 days"
 
     # Most Recent Job
     latest_job = recent_vacancies[0] if recent_vacancies else None
 
     # Build body text
     lines = [
-        "📊 *Your Recruiter Summary (Last 7 Days)*\n",
+        "📊 *Your Summary in Last 7 Days*\n",
         f"🎯 *Focus Areas:* {focus_areas_str}\n",
         f"📥 *Applications Received:* {total_apps}\n",
         "📌 *Most Recent Vacancy:*"
@@ -258,18 +270,19 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
 
     summary_text = "\n".join(lines)
 
+    magic_url = _generate_magic_dashboard_url(recruiter, db)
+
     await wa_client.send_interactive_cta_url(
         to=wa_number,
         body_text=summary_text,
         button_display_text="View Full Dashboard",
-        button_url="https://jobinfo.club/recruiter"
+        button_url=magic_url
     )
 
 
 async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
     """Launch the post vacancy WhatsApp Flow."""
-    recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
-    loc_options = _location_options_for(recruiter.location if recruiter else "")
+    loc_options = _location_options_for()
 
     await wa_client.send_flow(
         to=wa_number,

@@ -416,8 +416,7 @@ async def post_vacancy_web(
     if not recruiter:
         recruiter = Recruiter(
             wa_number=body.wa_number,
-            name=body.wa_number,  # update after registration
-            company=body.company,
+            company_name=body.company_name,
         )
         db.add(recruiter)
         db.commit()
@@ -592,10 +591,10 @@ def recruiter_dashboard(
 
     return {
         "recruiter": {
-            "name": recruiter.name,
-            "company": recruiter.company or "",
+            "company_name": recruiter.company_name or "",
+            "business_type": recruiter.business_type or "",
             "location": recruiter.location or "",
-            "email": recruiter.email or "",
+            "business_contact": recruiter.business_contact or "",
             "wa_number": recruiter.wa_number,
         },
         "summary": {**counts, "total_applications": total_applications, "total_shortlisted": total_shortlisted},
@@ -814,30 +813,31 @@ def edit_rejected_vacancy(
     if not vacancy:
         raise HTTPException(status_code=404, detail="Vacancy not found or access denied")
 
-    if vacancy.status != VacancyStatus.rejected:
+    if vacancy.status != "rejected":
         raise HTTPException(
             status_code=400,
-            detail=f"Only rejected vacancies can be edited. Current status: {vacancy.status.value}"
+            detail=f"Only rejected vacancies can be edited. Current status: {vacancy.status}"
         )
 
     # Validate required fields
-    body.title = body.title.strip()
-    body.location = body.location.strip()
-    if not body.title:
+    if not body.job_title:
         raise HTTPException(status_code=422, detail="Title is required")
-    if not body.location:
+    if not body.exact_location:
         raise HTTPException(status_code=422, detail="Location is required")
 
     # Apply edits
-    vacancy.title = body.title
-    vacancy.company = (body.company or "").strip() or None
-    vacancy.location = body.location
-    vacancy.description = (body.description or "").strip() or None
+    vacancy.job_category = body.job_category
+    vacancy.job_title = body.job_title
+    vacancy.company_name = (body.company_name or "").strip() or None
+    vacancy.district_region = body.district_region
+    vacancy.exact_location = body.exact_location
+    vacancy.job_description = (body.job_description or "").strip() or None
+    vacancy.job_mode = body.job_mode
     vacancy.salary_range = (body.salary_range or "").strip() or None
     vacancy.experience_required = (body.experience_required or "").strip() or None
 
     # Reset to pending for re-review, clear rejection reason, mark as edited
-    vacancy.status = VacancyStatus.pending
+    vacancy.status = "pending"
     vacancy.rejection_reason = None
     vacancy.is_edited = True
     vacancy.edited_at = datetime.now(timezone.utc)
@@ -850,7 +850,7 @@ def edit_rejected_vacancy(
         "success": True,
         "vacancy_id": vacancy.id,
         "job_code": vacancy.job_code,
-        "status": vacancy.status.value,
+        "status": vacancy.status,
         "message": "Vacancy resubmitted for review. You will be notified via WhatsApp once reviewed.",
     }
 
@@ -952,9 +952,9 @@ def get_candidate_applications(
             "application_id": app.id,
             "status": app.status.value,
             "applied_at": app.applied_at,
-            "job_title": vac.title,
-            "company": vac.company,
-            "location": vac.location,
+            "job_title": vac.job_title,
+            "company": vac.company_name,
+            "location": vac.district_region,
             "job_code": vac.job_code
         })
         
@@ -974,12 +974,12 @@ def get_candidate_analytics(
 
     try:
         from sqlalchemy import func
-        # Group by JobVacancy.title
+        # Group by JobVacancy.job_category
         stats = (
-            db.query(JobVacancy.title, func.count(CandidateApplication.id).label("count"))
+            db.query(JobVacancy.job_category, func.count(CandidateApplication.id).label("count"))
             .join(CandidateApplication, JobVacancy.id == CandidateApplication.vacancy_id)
             .filter(CandidateApplication.candidate_id == candidate.id)
-            .group_by(JobVacancy.title)
+            .group_by(JobVacancy.job_category)
             .all()
         )
 
