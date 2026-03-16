@@ -212,6 +212,10 @@ async def api_list_vacancies(
                 "name": v.recruiter.company_name,
                 "wa_number": v.recruiter.wa_number,
                 "company": v.recruiter.company_name,
+                "business_type": v.recruiter.business_type,
+                "location": v.recruiter.location,
+                "business_contact": v.recruiter.business_contact,
+                "created_at": v.recruiter.created_at.isoformat() if v.recruiter.created_at else None,
             } if v.recruiter else None,
         })
 
