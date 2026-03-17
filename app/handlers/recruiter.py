@@ -31,7 +31,7 @@ settings = get_settings()
 # Template name for the utility template (create and approve on Meta)
 
 # Template name for the utility template (create and approve on Meta)
-TEMPLATE_RECRUITER_WELCOME = "jobinfo_welcome_recruiter"
+TEMPLATE_RECRUITER_WELCOME = "jobinfo_welcome_recruiter_v2"
 
 
 def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
@@ -44,7 +44,7 @@ def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
     return state
 
 
-def _generate_magic_dashboard_url(recruiter: Recruiter, db: Session) -> str:
+def _generate_magic_token(recruiter: Recruiter, db: Session) -> str:
     import secrets
     from datetime import datetime, timedelta, timezone
     from app.db.models import MagicLink
@@ -58,7 +58,11 @@ def _generate_magic_dashboard_url(recruiter: Recruiter, db: Session) -> str:
     )
     db.add(magic)
     db.commit()
-    return f"https://jobinfo.club/recruiter?magic_token={token}"
+    return token
+
+def _generate_magic_dashboard_url(recruiter: Recruiter, db: Session) -> str:
+    token = _generate_magic_token(recruiter, db)
+    return f"https://jobinfo.club/recruiter.html?magic_token={token}"
 
 
 async def start(wa_number: str, db: Session) -> None:
@@ -70,10 +74,11 @@ async def start(wa_number: str, db: Session) -> None:
 
     if recruiter:
         # Returning recruiter – send utility template with buttons
+        token = _generate_magic_token(recruiter, db)
         await wa_client.send_template(
             to=wa_number,
             template_name=TEMPLATE_RECRUITER_WELCOME,
-            components=recruiter_welcome_components(recruiter),
+            components=recruiter_welcome_components(recruiter, token),
             language_code="en"
         )
         _set_state(wa_number, "recruiter_idle", {}, db)
@@ -121,10 +126,11 @@ async def handle_registration_flow_completion(
     )
 
     # Follow up with the welcome template showing both buttons
+    token = _generate_magic_token(recruiter, db)
     await wa_client.send_template(
         to=wa_number,
         template_name=TEMPLATE_RECRUITER_WELCOME,
-        components=recruiter_welcome_components(recruiter),
+        components=recruiter_welcome_components(recruiter, token),
         language_code="en"
     )
     _set_state(wa_number, "recruiter_idle", {}, db)

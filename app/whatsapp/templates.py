@@ -14,10 +14,10 @@ settings = get_settings()
 
 # ─── Recruiter templates ─────────────────────────────────────────────────────
 
-def recruiter_welcome_components(recruiter: Recruiter) -> list[dict]:
+def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]:
     """
     Utility template: shows recruiter business info + 2 buttons.
-    Template name (on Meta): jobinfo_welcome_recruiter
+    Template name (on Meta): jobinfo_welcome_recruiter_v2
     Variables: {{1}} = company_name, {{2}} = business_type, {{3}} = location
     """
     return [
@@ -37,9 +37,9 @@ def recruiter_welcome_components(recruiter: Recruiter) -> list[dict]:
         },
         {
             "type": "button",
-            "sub_type": "quick_reply",
+            "sub_type": "url",
             "index": "1",
-            "parameters": [{"type": "payload", "payload": "btn_my_vacancies"}],
+            "parameters": [{"type": "text", "text": token}],
         },
     ]
 
