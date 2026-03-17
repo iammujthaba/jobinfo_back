@@ -120,10 +120,10 @@ def plan_renewal_body(candidate: Candidate) -> str:
 def registration_confirmation_body(name: str, user_type: str = "candidate") -> str:
     if user_type == "recruiter":
         return (
-            f"🎉 *Welcome to JobInfo!*\n\n"
+            f"✅ *Registration Successful!*\n\n"
             f"*{name}* is now registered as a recruiter. You can post vacancies and "
             f"reach talent directly via WhatsApp.\n\n"
-            f"_JobInfo – Connecting talent across Kerala, Karnataka & GCC_"
+            f"Tap the *Post Vacancy* button below to post your first vacancy and start hiring instantly."
         )
     return (
         f"🎉 *Registration Successful, {name}!*\n\n"
