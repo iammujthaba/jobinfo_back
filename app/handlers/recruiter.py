@@ -82,6 +82,7 @@ async def start(wa_number: str, db: Session) -> None:
             language_code="en"
         )
         _set_state(wa_number, "recruiter_idle", {}, db)
+        return
     else:
         # New recruiter – launch registration Flow
         await wa_client.send_flow(
@@ -96,6 +97,7 @@ async def start(wa_number: str, db: Session) -> None:
             header_text="JobInfo – Post Jobs via WhatsApp",
         )
         _set_state(wa_number, "recruiter_registering", {}, db)
+        return
 
 
 async def handle_registration_flow_completion(
@@ -124,16 +126,8 @@ async def handle_registration_flow_completion(
             {"id": "btn_post_vacancy", "title": "Post Vacancy"}
         ]
     )
-
-    # Follow up with the welcome template showing both buttons
-    token = _generate_magic_token(recruiter, db)
-    await wa_client.send_template(
-        to=wa_number,
-        template_name=TEMPLATE_RECRUITER_WELCOME,
-        components=recruiter_welcome_components(recruiter, token),
-        language_code="en"
-    )
     _set_state(wa_number, "recruiter_idle", {}, db)
+    return
 
 
 def _location_options_for() -> list[dict]:

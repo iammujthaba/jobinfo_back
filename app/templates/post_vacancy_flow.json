@@ -57,10 +57,9 @@
               {
                 "type": "TextInput",
                 "name": "company_name",
-                "label": "Company Name",
+                "label": "Company / Shop Name",
                 "input-type": "text",
-                "required": false,
-                "helper-text": "Leave blank to use your registered company name"
+                "required": true
               },
               {
                 "type": "Dropdown",
@@ -75,7 +74,7 @@
                 "label": "Exact Location",
                 "input-type": "text",
                 "required": true,
-                "helper-text": "E.g. MG Road, Kakkanad, Near Bus Stand"
+                "helper-text": "E.g. Vyttila, Mavoor Road, Edappally"
               }
             ]
           },

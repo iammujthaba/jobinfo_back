@@ -38,7 +38,7 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
         {
             "type": "button",
             "sub_type": "url",
-            "index": "1",
+            "index": "2",
             "parameters": [{"type": "text", "text": token}],
         },
     ]
