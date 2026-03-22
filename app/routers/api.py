@@ -62,6 +62,19 @@ class MagicTokenVerifyRequest(BaseModel):
     token: str
 
 
+class CheckRecruiterRequest(BaseModel):
+    wa_number: str
+
+
+class RegisterRecruiterRequest(BaseModel):
+    wa_number: str
+    otp_code: str
+    company_name: str
+    business_type: str
+    location: str
+    business_contact: str
+
+
 class RecruiterVacancyRequest(BaseModel):
     wa_number: str
     session_token: str   # from OTP verify step
@@ -217,6 +230,48 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
         "wa_number": body.wa_number,
         "role": body.role,
         "is_new_user": is_new_user
+    }
+
+
+@router.post("/auth/check-recruiter")
+async def check_recruiter(body: CheckRecruiterRequest, db: Session = Depends(get_db)):
+    """Check if a recruiter exists. If yes, trigger OTP."""
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if recruiter:
+        # Trigger OTP internally
+        otp_request = OTPSendRequest(wa_number=body.wa_number, role="recruiter")
+        await send_otp(otp_request, db)
+        return {"exists": True}
+    return {"exists": False}
+
+
+@router.post("/auth/recruiter/register")
+async def register_recruiter(body: RegisterRecruiterRequest, db: Session = Depends(get_db)):
+    """Verify OTP and register a new recruiter, returning a session token."""
+    if not otp_service.verify_otp(db, body.wa_number, body.otp_code):
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if recruiter:
+        raise HTTPException(status_code=400, detail="Recruiter already exists")
+        
+    recruiter = Recruiter(
+        wa_number=body.wa_number,
+        company_name=body.company_name,
+        business_type=body.business_type,
+        location=body.location,
+        business_contact=body.business_contact
+    )
+    db.add(recruiter)
+    db.commit()
+    db.refresh(recruiter)
+    
+    token = _create_session(body.wa_number, "recruiter")
+    return {
+        "session_token": token,
+        "wa_number": body.wa_number,
+        "role": "recruiter",
+        "is_new_user": True
     }
 
 
@@ -414,13 +469,7 @@ async def post_vacancy_web(
     # Ensure recruiter exists
     recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
     if not recruiter:
-        recruiter = Recruiter(
-            wa_number=body.wa_number,
-            company_name=body.company_name,
-        )
-        db.add(recruiter)
-        db.commit()
-        db.refresh(recruiter)
+        raise HTTPException(status_code=404, detail="Recruiter not found. Please register first.")
 
     job_code = generate_job_code(db)
     vacancy = JobVacancy(
