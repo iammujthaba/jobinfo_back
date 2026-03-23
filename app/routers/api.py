@@ -659,11 +659,70 @@ class VacancyApplicationsRequest(BaseModel):
     vacancy_id: int
 
 
+class AllApplicationsRequest(BaseModel):
+    wa_number: str
+    session_token: str
+
+
 class UpdateApplicationStatusRequest(BaseModel):
     wa_number: str
     session_token: str
     application_id: int
     status: str   # "applied" | "shortlisted" | "rejected"
+
+
+@router.post("/recruiters/all-applications")
+def list_all_applications(
+    body: AllApplicationsRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns all applications across all vacancies owned by the recruiter.
+    Includes job_code and job_title for frontend filtering.
+    """
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    applications = (
+        db.query(CandidateApplication)
+        .join(JobVacancy)
+        .filter(JobVacancy.recruiter_id == recruiter.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .all()
+    )
+
+    results = []
+    for app in applications:
+        c = app.candidate
+        v = app.vacancy
+        results.append({
+            "application_id": app.id,
+            "status": app.status.value,
+            "applied_at": app.applied_at.isoformat() if app.applied_at else None,
+            "job_code": v.job_code,
+            "job_title": v.job_title,
+            "candidate": {
+                "id": c.id,
+                "name": c.name,
+                "pin_code": c.pin_code or "",
+                "post_office": c.post_office or "",
+                "category": c.category or "",
+                "sub_category": c.sub_category or "",
+                "age": c.age,
+                "alt_phone": c.alt_phone or "",
+                "wa_number": c.wa_number,
+                "has_cv": bool(c.cv_path),
+                "cv_path": c.cv_path or None,
+            },
+        })
+
+    return {
+        "total": len(results),
+        "applications": results,
+    }
 
 
 @router.post("/recruiters/vacancy-applications")
@@ -815,6 +874,62 @@ def export_applications_csv(
 
     output.seek(0)
     filename = f"applications_{vacancy.job_code}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/recruiters/all-applications/export-csv")
+def export_all_applications_csv(
+    body: AllApplicationsRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Export all applications across all vacancies for a recruiter as a CSV file download.
+    Includes job code, job title, candidate name, location, skills, WA number, status.
+    """
+    import csv, io
+    from fastapi.responses import StreamingResponse
+
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    applications = (
+        db.query(CandidateApplication)
+        .join(JobVacancy)
+        .filter(JobVacancy.recruiter_id == recruiter.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["#", "Job Code", "Job Title", "Name", "PIN Code", "Location", "Category", "Role", "Age", "WhatsApp", "Status", "Applied On"])
+    for i, app in enumerate(applications, 1):
+        c = app.candidate
+        v = app.vacancy
+        writer.writerow([
+            i,
+            v.job_code,
+            v.job_title,
+            c.name,
+            c.pin_code or "",
+            c.post_office or "",
+            c.category or "",
+            c.sub_category or "",
+            c.age or "",
+            f"+{c.wa_number}",
+            app.status.value,
+            app.applied_at.strftime("%d %b %Y") if app.applied_at else "",
+        ])
+
+    output.seek(0)
+    filename = "all_applications.csv"
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
