@@ -83,7 +83,7 @@ def vacancy_rejected_body(vacancy: JobVacancy) -> str:
         f"❌ *Vacancy Not Approved*\n\n"
         f"*{vacancy.job_title}* ({vacancy.job_code}) could not be approved.\n\n"
         f"*Reason:* {vacancy.rejection_reason}\n\n"
-        f"Please review and resubmit via jobinfo.club or WhatsApp.\n_JobInfo_"
+        f"Please review and resubmit via jobinfo.pro or WhatsApp.\n_JobInfo_"
     )
 
 
@@ -113,7 +113,7 @@ def plan_renewal_body(candidate: Candidate) -> str:
         f"💰 *Basic* – ₹99 (30 days, 50 applications)\n"
         f"⭐ *Popular* – ₹299 (60 days, 100 applications)\n"
         f"🚀 *Advanced* – ₹499 (60 days, unlimited)\n\n"
-        f"Reply with *RENEW* or visit jobinfo.club to upgrade.\n_JobInfo_"
+        f"Reply with *RENEW* or visit jobinfo.pro to upgrade.\n_JobInfo_"
     )
 
 

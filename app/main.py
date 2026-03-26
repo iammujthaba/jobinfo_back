@@ -40,7 +40,7 @@ app = FastAPI(
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Allow the website and localhost dev to call the API.
-# Tighten origins to ["https://jobinfo.club", "https://www.jobinfo.club"] in production.
+# Tighten origins to ["https://jobinfo.pro", "https://www.jobinfo.pro"] in production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -311,7 +311,7 @@ async def api_share_vacancy_to_channel(
         f"🔖 Job Code: {vacancy.job_code}",
         f"",
         f"_JobInfo – Kerala's WhatsApp Job Platform_",
-        f"🌐 jobinfo.club | 📢 Follow our channel for daily jobs",
+        f"🌐 jobinfo.pro | 📢 Follow our channel for daily jobs",
     ]
 
     try:

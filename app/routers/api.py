@@ -1,5 +1,5 @@
 """
-Public REST API for jobinfo.club website.
+Public REST API for jobinfo.pro website.
 Handles OTP auth, vacancy listing/detail, recruiter vacancy posting,
 job seeker registration, and job applications.
 """

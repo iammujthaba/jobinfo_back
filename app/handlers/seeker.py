@@ -377,7 +377,7 @@ async def handle_registration_flow_completion(
                 {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
                 {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
             ],
-            footer_text="Powered by JobInfo.club",
+            footer_text="Powered by JobInfo.pro",
         )
         # If they were in the middle of applying, resume
         state = _get_or_create_state(wa_number, db)
@@ -1013,7 +1013,7 @@ def _generate_magic_dashboard_url(wa_number: str, db: Session) -> str:
     )
     db.add(magic)
     db.commit()
-    return f"https://jobinfo.club/index.html?magic_token={token}"
+    return f"https://jobinfo.pro/index.html?magic_token={token}"
 
 # Keywords used to match a seeker's category to vacancy title/description
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
@@ -1045,7 +1045,7 @@ async def send_seeker_greeting_menu(wa_number: str) -> None:
             {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
             {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
         ],
-        footer_text="Powered by JobInfo.club",
+        footer_text="Powered by JobInfo.pro",
     )
 
 

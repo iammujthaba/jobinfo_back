@@ -62,7 +62,7 @@ def _generate_magic_token(recruiter: Recruiter, db: Session) -> str:
 
 def _generate_magic_dashboard_url(recruiter: Recruiter, db: Session) -> str:
     token = _generate_magic_token(recruiter, db)
-    return f"https://jobinfo.club/recruiter.html?magic_token={token}"
+    return f"https://jobinfo.pro/recruiter.html?magic_token={token}"
 
 
 async def start(wa_number: str, db: Session) -> None:

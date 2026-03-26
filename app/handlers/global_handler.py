@@ -57,7 +57,7 @@ async def send_how_it_works(wa_number: str) -> None:
         to=wa_number,
         body_text=HOW_IT_WORKS_TEXT,
         button_text="🌐 Visit Website",
-        url="https://jobinfo.club"
+        url="https://jobinfo.pro"
     )
 
 
