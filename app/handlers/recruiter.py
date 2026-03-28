@@ -65,6 +65,23 @@ def _generate_magic_dashboard_url(recruiter: Recruiter, db: Session) -> str:
     return f"https://jobinfo.pro/recruiter.html?magic_token={token}"
 
 
+def _generate_admin_magic_url(db: Session) -> str:
+    """Generate a one-time magic login URL for the admin panel (role='admin')."""
+    import secrets
+    from app.db.models import MagicLink
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=30)  # 30-min window for admin
+    magic = MagicLink(
+        token=token,
+        wa_number=settings.admin_wa_number,
+        role="admin",
+        expires_at=expires,
+    )
+    db.add(magic)
+    db.commit()
+    return f"https://jobinfo.pro/admin.html?magic_token={token}"
+
+
 async def start(wa_number: str, db: Session) -> None:
     """
     Entry point: called when a recruiter sends 'My Vacancy' (or taps the menu button).
@@ -207,12 +224,22 @@ async def handle_post_vacancy_flow_completion(
         button_url=magic_url
     )
 
-    # Notify admin (personal WA number)
+    # Notify admin (personal WA number) — interactive CTA with magic link
     if settings.admin_wa_number:
-        await wa_client.send_text(
-            to=settings.admin_wa_number,
-            body=admin_vacancy_alert_body(vacancy, recruiter),
-        )
+        try:
+            admin_url = _generate_admin_magic_url(db)
+            await wa_client.send_interactive_cta_url(
+                to=settings.admin_wa_number,
+                body_text=admin_vacancy_alert_body(vacancy, recruiter),
+                button_display_text="Review Vacancy",
+                button_url=admin_url,
+            )
+        except Exception as e:
+            logger.warning("Admin CTA alert failed, falling back to text: %s", e)
+            await wa_client.send_text(
+                to=settings.admin_wa_number,
+                body=admin_vacancy_alert_body(vacancy, recruiter),
+            )
 
     _set_state(wa_number, "recruiter_idle", {}, db)
 

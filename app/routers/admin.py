@@ -32,16 +32,56 @@ templates = Jinja2Templates(directory="app/templates")
 
 # ─── Auth dependency ──────────────────────────────────────────────────────────
 
-def require_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_user = secrets.compare_digest(credentials.username, settings.admin_username)
-    correct_pass = secrets.compare_digest(credentials.password, settings.admin_password)
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
+def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
+    """
+    Dual-mode admin auth:
+    1. Bearer <session_token>  — issued by magic-link verify (role must be 'admin')
+    2. Basic base64(user:pass)  — classic username/password login
+    """
+    auth_header = request.headers.get("Authorization", "")
+
+    # ── Mode 1: Bearer token (magic-link session) ──────────────────────────────
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        # Import lazily to avoid circular imports
+        from app.routers.api import _get_session_data
+        session = _get_session_data(token)
+        if not session or session.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired admin session token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return session.get("wa_number", "admin")
+
+    # ── Mode 2: Basic Auth (username + password) ───────────────────────────────
+    import base64
+    if auth_header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+            username, password = decoded.split(":", 1)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Malformed Basic auth header",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        correct_user = secrets.compare_digest(username, settings.admin_username)
+        correct_pass = secrets.compare_digest(password, settings.admin_password)
+        if not (correct_user and correct_pass):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect credentials",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        return username
+
+    # ── No valid auth header ───────────────────────────────────────────────────
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Basic"},
+    )
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────

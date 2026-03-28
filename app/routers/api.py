@@ -25,6 +25,7 @@ from app.whatsapp.templates import (
     vacancy_confirmation_body,
     admin_vacancy_alert_body,
 )
+from app.handlers.recruiter import _generate_admin_magic_url
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -489,14 +490,25 @@ async def post_vacancy_web(
     db.commit()
     db.refresh(vacancy)
 
-    # WhatsApp confirmation
+    # WhatsApp confirmation to recruiter
     await wa_client.send_text(to=body.wa_number, body=vacancy_confirmation_body(vacancy))
-    # Alert admin
+
+    # Alert admin with interactive CTA magic link
     if settings.admin_wa_number:
-        await wa_client.send_text(
-            to=settings.admin_wa_number,
-            body=admin_vacancy_alert_body(vacancy, recruiter),
-        )
+        try:
+            admin_url = _generate_admin_magic_url(db)
+            await wa_client.send_interactive_cta_url(
+                to=settings.admin_wa_number,
+                body_text=admin_vacancy_alert_body(vacancy, recruiter),
+                button_display_text="Review Vacancy",
+                button_url=admin_url,
+            )
+        except Exception as e:
+            logger.warning("Admin CTA alert failed (web post), falling back to text: %s", e)
+            await wa_client.send_text(
+                to=settings.admin_wa_number,
+                body=admin_vacancy_alert_body(vacancy, recruiter),
+            )
 
     return {"job_code": vacancy.job_code, "status": "pending_review"}
 
