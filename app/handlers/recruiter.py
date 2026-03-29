@@ -23,6 +23,7 @@ from app.whatsapp.templates import (
     registration_confirmation_body,
     vacancy_approved_body,
     vacancy_rejected_body,
+    job_alert_text_body,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,7 +290,7 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
     if latest_job:
         status_emoji = {"approved": "✅", "pending": "⏳", "rejected": "❌"}.get(latest_job.status, "❓")
         status_label = latest_job.status.capitalize() if latest_job.status else "Unknown"
-        lines.append(f"💼 *{latest_job.job_title}* ({latest_job.job_code})")
+        lines.append(f"💼 *{latest_job.job_title.strip()}* ({latest_job.job_code})")
         lines.append(f"📍 {latest_job.exact_location}, {latest_job.district_region}")
         lines.append(f"📊 Status: {status_emoji} {status_label}")
     else:
@@ -332,7 +333,13 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
 
 
 async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
-    """Called by admin panel when a vacancy is approved."""
+    """Called by admin panel when a vacancy is approved.
+
+    Sends three messages:
+      A) Private CTA to recruiter – approval notice + magic dashboard link
+      B) Marketing template (job_alert) to recruiter — shareable card
+      C) Same marketing template to admin/channel WA number
+    """
     vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
     if not vacancy:
         return
@@ -341,11 +348,41 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     db.commit()
 
     recruiter = vacancy.recruiter
-    if recruiter:
-        await wa_client.send_text(
+    if not recruiter:
+        return
+
+    # ── Message A: Private recruiter alert with magic dashboard link ────────
+    magic_url = _generate_magic_dashboard_url(recruiter, db)
+    private_body = (
+        f"✅ Your vacancy for *{vacancy.job_title.strip()}* ({vacancy.job_code}) is approved and now live at kerala's first whatsapp automated job listing platform!\n\n"
+        f"👇 You can forward the following message to your contacts to gather more applicants!\n\n"
+        f"Thank you for choosing *jobinfo*"
+    )
+    try:
+        await wa_client.send_interactive_cta_url(
             to=recruiter.wa_number,
-            body=vacancy_approved_body(vacancy),
+            body_text=private_body,
+            button_display_text="View Dashboard",
+            button_url=magic_url,
         )
+    except Exception as e:
+        logger.warning("Private approval CTA failed, falling back to text: %s", e)
+        await wa_client.send_text(to=recruiter.wa_number, body=private_body)
+
+    # ── Message B: Recruiter card — clean redirect link (survives forwarding) ─
+    recruiter_card = job_alert_text_body(
+        vacancy,
+        apply_url=f"{settings.app_base_url}/api/apply/{vacancy.job_code}",
+    )
+    await wa_client.send_text(to=recruiter.wa_number, body=recruiter_card)
+
+    # ── Message C: Admin/channel card — wa.me deep-link (native WA button) ───
+    if settings.admin_wa_number:
+        admin_card = job_alert_text_body(
+            vacancy,
+            apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
+        )
+        await wa_client.send_text(to=settings.admin_wa_number, body=admin_card)
 
 
 async def notify_recruiter_rejection(

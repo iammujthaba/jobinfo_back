@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -1199,3 +1200,19 @@ async def get_locations_by_pin(pin_code: str):
         "api_failed": api_failed,
         "locations": locations
     }
+
+
+# ─── Public Apply Redirect ────────────────────────────────────────────────────
+
+@router.get("/apply/{job_code}", response_class=RedirectResponse)
+async def apply_redirect(job_code: str):
+    """
+    Public redirect bridge: instantly forwards the browser to the WhatsApp
+    deep-link for a given job_code.  Used in template URL buttons so Meta's
+    restrictions on custom domains don't block the flow.
+
+    Example: GET /api/apply/JB001
+      → 302 → https://wa.me/917025962176?text=Apply%20JB001
+    """
+    wa_url = f"https://wa.me/917025962176?text=Apply%20{job_code}"
+    return RedirectResponse(url=wa_url, status_code=302)

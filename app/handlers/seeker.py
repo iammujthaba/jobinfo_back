@@ -99,7 +99,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             to=wa_number,
             header_text="JobInfo – Apply for Jobs via WhatsApp",
             body_text=(
-                f"📋 *{vacancy.job_title}* | {vacancy.exact_location}, {vacancy.district_region}\n\n"
+                f"📋 *{vacancy.job_title.strip()}* | {vacancy.exact_location}, {vacancy.district_region}\n\n"
                 "To apply, you need to register first. It's quick and free!\n\n"
                 "Tap *Register Now* to continue or *Get Help* if you need assistance."
             ),
@@ -135,7 +135,7 @@ async def _show_job_apply_prompt(
     if existing:
         await wa_client.send_text(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{existing.status.value}_",
+            body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{existing.status.value}_",
         )
         return
 
@@ -164,7 +164,7 @@ async def _show_job_apply_prompt(
             to=wa_number,
             header_text="🌟 Stand Out to the Recruiter!",
             body_text=(
-                f"You're applying for an exciting *{job_label}* role — *{vacancy.job_title}*! "
+                f"You're applying for an exciting *{job_label}* role — *{vacancy.job_title.strip()}*! "
                 "We noticed you haven't added a CV to your profile yet.\n\n"
                 "Uploading a CV gives recruiters a complete picture of your skills "
                 "and dramatically boosts your chances of getting hired. 🚀"
@@ -198,8 +198,8 @@ async def _show_job_apply_prompt(
             to=wa_number,
             header_text="🌟 Maximize Your Chances!",
             body_text=(
-                f"We noticed your default CV is tailored for *{candidate_label}*, "
-                f"but you're applying for an exciting *{job_label}* role!\n\n"
+                f"We noticed your default CV is tailored for *{candidate_label.strip()}*, "
+                f"but you're applying for an exciting *{job_label.strip()}* role!\n\n"
                 "Sending a customized CV dramatically boosts your chances of "
                 "getting shortlisted. Choose how you'd like to proceed below:"
             ),
@@ -527,7 +527,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
     if existing:
         await wa_client.send_text(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
+            body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
         )
         return
 
@@ -540,7 +540,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
         to=wa_number,
         header_text="✅ Application Submitted!",
         body_text=(
-            f"We've sent your profile to the recruiter for *{vacancy.job_title}* "
+            f"We've sent your profile to the recruiter for *{vacancy.job_title.strip()}* "
             "without a CV attached.\n\n"
             "💡 *Pro tip:* Uploading a tailored CV for future applications "
             "can dramatically boost your chances. Best of luck! 🍀"
@@ -646,7 +646,7 @@ async def handle_select_cv(
     if existing:
         await wa_client.send_text(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
+            body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
         )
         return
 
@@ -665,7 +665,7 @@ async def handle_select_cv(
         header_text="✅ Application Submitted!",
         body_text=(
             f"Excellent choice! We've updated your active CV to *{tag_label}* "
-            f"and successfully submitted your tailored application for *{vacancy.job_title}*.\n\n"
+            f"and successfully submitted your tailored application for *{vacancy.job_title.strip()}*.\n\n"
             "The recruiter will review your profile shortly. Keep an eye on your dashboard for updates! 🎯"
         ),
         buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
@@ -823,7 +823,7 @@ async def handle_cv_update_flow_completion(
         if existing_app:
             await wa_client.send_text(
                 to=wa_number,
-                body=f"ℹ️ You have already applied for *{vacancy.job_title}*. Status: _{getattr(existing_app.status, 'value', existing_app.status)}_",
+                body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{getattr(existing_app.status, 'value', existing_app.status)}_",
             )
             _set_state(wa_number, "idle", {}, db)
             return
@@ -843,7 +843,7 @@ async def handle_cv_update_flow_completion(
             header_text="🎉 CV Uploaded & Application Sent!",
             body_text=(
                 f"Your new *{tag_label}* CV has been securely uploaded Successfully!\n"
-                f"Your application for *{vacancy.job_title}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
+                f"Your application for *{vacancy.job_title.strip()}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
                 "You're one step closer to landing your dream role. "
                 "Keep the momentum going! 🚀"
             ),
@@ -964,7 +964,7 @@ async def _send_application_summary_cta(
     company = f" — {v.company_name}" if v.company_name else ""
 
     lines.append("📌 *Your Latest Application:*")
-    lines.append(f"  {emoji}  *{v.job_title}*{company} · _{label}_")
+    lines.append(f"  {emoji}  *{v.job_title.strip()}*{company} · _{label}_")
 
     lines.append(
         "\nTo view your complete history and track live recruiter updates, "
@@ -1176,7 +1176,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         exp_line = f"📋  *Experience:* {job.experience_required}\n" if job.experience_required else ""
 
         body = (
-            f"🏢  *{job.job_title}*\n"
+            f"🏢  *{job.job_title.strip()}*\n"
             f"📍  {job.company_name or 'Company'} — {job.exact_location}, {job.district_region}\n"
             f"{salary_line}"
             f"{exp_line}"

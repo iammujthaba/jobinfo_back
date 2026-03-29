@@ -12,6 +12,59 @@ from app.config import get_settings
 settings = get_settings()
 
 
+# ─── Slug-to-label translation maps ──────────────────────────────────────────
+
+EXPERIENCE_LABELS: dict[str, str] = {
+    "no_experience":    "No Experience Required",
+    "fresher_or_exp":   "Fresher or Experienced",
+    "1_2_years":        "1-2 Years",
+    "3_5_years":        "3-5 Years",
+    "5_plus_years":     "5+ Years",
+}
+
+SALARY_LABELS: dict[str, str] = {
+    "interview_based":  "Based on Interview",
+    "not_mentioned":    "Not Mentioned",
+    "stipend":          "Stipend",
+    "below_10k":        "Below \u20b910,000",
+    "10k_20k":          "\u20b910,000 - \u20b920,000",
+    "20k_30k":          "\u20b920,000 - \u20b930,000",
+    "30k_40k":          "\u20b930,000 - \u20b940,000",
+    "40k_50k":          "\u20b940,000 - \u20b950,000",
+    "above_50k":        "Above \u20b950,000",
+}
+
+JOB_MODE_LABELS: dict[str, str] = {
+    "full_time":        "Full-Time",
+    "part_time":        "Part-Time",
+    "remote":           "Remote",
+    "hybrid":           "Hybrid",
+}
+
+
+def _label(mapping: dict[str, str], raw_value: str | None, fallback: str = "—") -> str:
+    """Translate a raw DB slug to a human-readable label.
+
+    Falls back to the raw value itself if the slug is not in the mapping,
+    and to *fallback* if *raw_value* is None/empty.
+    """
+    if not raw_value:
+        return fallback
+    return mapping.get(raw_value, raw_value)
+
+
+def _truncate(text: str | None, max_len: int = 200) -> str:
+    """Return *text* safely truncated to *max_len* characters.
+
+    Appends '...' when the text is cut.  Returns '—' for None/empty input.
+    """
+    if not text:
+        return "—"
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "..."
+
+
 # ─── Recruiter templates ─────────────────────────────────────────────────────
 
 def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]:
@@ -63,28 +116,71 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
         f"*Company:* {vacancy.company_name or recruiter.company_name or '—'}\n"
         f"*Location:* {vacancy.exact_location}, {vacancy.district_region}\n"
         f"*Recruiter:* {recruiter.company_name}\n"
-        f"*Contact:* {recruiter.wa_number}\n\n"
+        f"*Contact:* {recruiter.business_contact or 'None'}\n"
+        f"*Whatsapp:* {recruiter.wa_number}\n\n"
         f"*Description:*\n{vacancy.job_description or '—'}\n"
     )
 
 
 def vacancy_approved_body(vacancy: JobVacancy) -> str:
+    salary      = _label(SALARY_LABELS,     vacancy.salary_range)
+    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
+    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
+    description = _truncate(vacancy.job_description, 200)
     return (
         f"🎉 *Vacancy Approved!*\n\n"
-        f"*{vacancy.job_title}* ({vacancy.job_code}) has been approved and is now live.\n\n"
+        f"*{vacancy.job_title.strip()}* ({vacancy.job_code}) has been approved and is now live.\n\n"
+        f"💼 *Mode:* {job_mode}\n"
+        f"🎓 *Experience:* {experience}\n"
+        f"💰 *Salary:* {salary}\n\n"
+        f"📋 *Description:*\n{description}\n\n"
         f"Job seekers can apply via:\n"
-        f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}\n\n"
+        f"{settings.app_base_url}/api/apply/{vacancy.job_code}\n\n"
         f"_JobInfo_"
     )
 
 
+def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None) -> str:
+    """
+    Forwardable plain-text job card sent on vacancy approval.
+
+    ``apply_url`` lets the caller inject the right link per recipient:
+      - Recruiter  → {settings.app_base_url}/api/apply/{job_code}  (clean redirect, survives forwarding)
+      - Admin/Channel → wa.me deep-link  (triggers WhatsApp's native Apply button)
+
+    Falls back to the redirect URL if not supplied.
+    """
+    salary      = _label(SALARY_LABELS,     vacancy.salary_range)
+    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
+    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
+    description = _truncate(vacancy.job_description, 200)
+
+    link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
+
+    return (
+        f"🚀 *Jobinfo - New Job Alert*\n\n"
+        f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+        f"🏢 Company: {vacancy.company_name or '—'}\n"
+        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
+        f"💰 Salary: {salary}\n"
+        f"💼 Mode: {job_mode}\n"
+        f"🎓 Experience: {experience}\n"
+        f"🔖 Job Code: {vacancy.job_code}\n\n"
+        f"📋 *About the Role:*\n{description}\n\n"
+        f"_Tap the link below to apply instantly!_\n"
+        f"📲 Apply now: {link}\n\n"
+        f"_JobInfo.pro – Kerala's first WhatsApp automated job platform_"
+    )
+
+
+
 def vacancy_rejected_body(vacancy: JobVacancy) -> str:
     return (
-        f"❌ *Vacancy Not Approved*\n\n"
-        f"*{vacancy.job_title}* ({vacancy.job_code}) could not be approved.\n\n"
-        f"*Reason:* {vacancy.rejection_reason}\n\n"
-        f"Please review and resubmit via jobinfo.pro or WhatsApp.\n_JobInfo_"
+        f"❌ Your vacancy for *{vacancy.job_title.strip()}* has been rejected.\n\n"
+        f"Please contact support for details.\n_JobInfo_"
     )
+
+
 
 
 # ─── Job seeker templates ────────────────────────────────────────────────────
@@ -97,7 +193,7 @@ def application_confirmation_body(
         f"✅ *Application Submitted!*\n\n"
         f"Hi {candidate.name},\n\n"
         f"You have successfully applied for:\n"
-        f"*{vacancy.job_title}* at *{vacancy.company_name or '—'}*\n"
+        f"*{vacancy.job_title.strip()}* at *{vacancy.company_name.strip() or '—'}*\n"
         f"*Location:* {vacancy.district_region}\n\n"
         f"We'll notify you of any updates. Good luck! 🍀\n\n"
         f"_JobInfo_"
@@ -121,7 +217,7 @@ def registration_confirmation_body(name: str, user_type: str = "candidate") -> s
     if user_type == "recruiter":
         return (
             f"✅ *Registration Successful!*\n\n"
-            f"*{name}* is now registered as a recruiter. You can post vacancies and "
+            f"*{name.strip()}* is now registered as a recruiter. You can post vacancies and "
             f"reach talent directly via WhatsApp.\n\n"
             f"Tap the *Post Vacancy* button below to post your first vacancy and start hiring instantly."
         )
@@ -135,14 +231,19 @@ def registration_confirmation_body(name: str, user_type: str = "candidate") -> s
 
 
 def seeker_job_detail_body(vacancy: JobVacancy) -> str:
+    salary      = _label(SALARY_LABELS,     vacancy.salary_range,       fallback="Not disclosed")
+    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
+    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
+    description = _truncate(vacancy.job_description, 200)
     return (
         f"📋 *Job Details*\n\n"
         f"*Title:* {vacancy.job_title}\n"
         f"*Company:* {vacancy.company_name or '—'}\n"
         f"*Location:* {vacancy.district_region}\n"
-        f"*Experience:* {vacancy.experience_required or '—'}\n"
-        f"*Salary:* {vacancy.salary_range or 'Not disclosed'}\n\n"
-        f"*Description:*\n{vacancy.job_description or '—'}\n\n"
+        f"*Mode:* {job_mode}\n"
+        f"*Experience:* {experience}\n"
+        f"*Salary:* {salary}\n\n"
+        f"*Description:*\n{description}\n\n"
         f"Ready to apply? Tap *Apply Now* below."
     )
 
