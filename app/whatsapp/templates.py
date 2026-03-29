@@ -62,9 +62,9 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
         f"*Title:* {vacancy.job_title}\n"
         f"*Company:* {vacancy.company_name or recruiter.company_name or '—'}\n"
         f"*Location:* {vacancy.exact_location}, {vacancy.district_region}\n"
-        f"*Recruiter:* {recruiter.company_name} ({recruiter.wa_number})\n\n"
-        f"*Description:*\n{vacancy.job_description or '—'}\n\n"
-        f"👉 Approve/Reject at: {settings.app_base_url}/admin/vacancies"
+        f"*Recruiter:* {recruiter.company_name}\n"
+        f"*Contact:* {recruiter.wa_number}\n\n"
+        f"*Description:*\n{vacancy.job_description or '—'}\n"
     )
 
 
