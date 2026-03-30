@@ -950,7 +950,7 @@ async def _send_application_summary_cta(
                 emoji, label = CATEGORY_LABELS.get(cat, ("📌", cat.replace("_", " ").title()))
                 parts.append(f"{emoji} {label}: *{count}*")
             lines.append("📊 *Your Focus Areas:*")
-            lines.append(" | ".join(parts) + "\n")
+            lines.append("\n".join(parts) + "\n")
     else:
         lines.append("No new applications this week — it's a perfect time to explore fresh openings!\n")
 
