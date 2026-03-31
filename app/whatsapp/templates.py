@@ -41,6 +41,19 @@ JOB_MODE_LABELS: dict[str, str] = {
     "hybrid":           "Hybrid",
 }
 
+BUSINESS_TYPE_LABELS: dict[str, str] = {
+    "shop_retail":      "Shop / Retail",
+    "hotel_bakery":     "Hotel / Bakery",
+    "contractor":       "Contractor / Builder",
+    "individual":       "Individual / Household",
+    "petrol_pump":      "Petrol Pump",
+    "workshop_garage":  "Workshop / Garage",
+    "transport":        "Transport / Logistics",
+    "agency":           "Agency / Consultancy",
+    "company":          "Company / Pvt Ltd",
+    "other":            "Other",
+}
+
 
 def _label(mapping: dict[str, str], raw_value: str | None, fallback: str = "—") -> str:
     """Translate a raw DB slug to a human-readable label.
@@ -78,7 +91,7 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
             "type": "body",
             "parameters": [
                 {"type": "text", "text": recruiter.company_name},
-                {"type": "text", "text": recruiter.business_type or "—"},
+                {"type": "text", "text": _label(BUSINESS_TYPE_LABELS, recruiter.business_type)},
                 {"type": "text", "text": recruiter.location or "—"},
             ],
         },

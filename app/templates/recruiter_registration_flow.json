@@ -30,13 +30,16 @@
                 "label": "Business Type",
                 "required": true,
                 "data-source": [
-                  { "id": "company",      "title": "Company / Pvt Ltd" },
-                  { "id": "agency",       "title": "Agency" },
-                  { "id": "shop",         "title": "Shop / Retail Outlet" },
-                  { "id": "startup",      "title": "Startup" },
-                  { "id": "partnership",  "title": "Partnership Firm" },
-                  { "id": "franchise",    "title": "Franchise" },
-                  { "id": "other",        "title": "Other" }
+                  { "id": "company",          "title": "Company / Pvt Ltd" },
+                  { "id": "shop_retail",      "title": "Shop / Supermarket / Retail" },
+                  { "id": "hotel_bakery",     "title": "Hotel / Restaurant / Bakery" },
+                  { "id": "contractor",       "title": "Contractor / Builder" },
+                  { "id": "individual",       "title": "Individual / Household" },
+                  { "id": "petrol_pump",      "title": "Petrol Pump / Gas Station" },
+                  { "id": "workshop_garage",  "title": "Workshop / Garage" },
+                  { "id": "transport",        "title": "Travels / Transport / Logistics" },
+                  { "id": "agency",           "title": "Agency / Consultancy" },
+                  { "id": "other",            "title": "Other" }
                 ]
               },
               {
