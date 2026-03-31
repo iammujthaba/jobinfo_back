@@ -108,11 +108,11 @@ async def start(wa_number: str, db: Session) -> None:
             flow_id=settings.FLOW_ID_RECRUITER_REGISTER,
             flow_cta="Register as Recruiter",
             body_text=(
-                "👋 Welcome to *JobInfo* – Kerala's top placement network!\n\n"
-                "Hire the best local talent instantly. To start posting your job vacancies, please complete a quick 1-minute registration.\n\n"
+                "\n\n👋 *JobInfo* – Post Jobs via WhatsApp, Kerala's top WhatsApp autmated placement network!\n\n"
+                "Hire the best talent instantly. To start posting your job vacancies, please complete a quick 1-minute registration.\n\n"
                 "Tap the button below to begin 👇"
             ),
-            header_text="JobInfo – Post Jobs via WhatsApp",
+            header_text="Complete your registration First!",
         )
         _set_state(wa_number, "recruiter_registering", {}, db)
         return
