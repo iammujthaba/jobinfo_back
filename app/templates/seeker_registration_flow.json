@@ -143,7 +143,7 @@
               {
                 "type": "Dropdown",
                 "name": "post_office",
-                "label": "Select Nearby Location",
+                "label": "Select your locality",
                 "required": true,
                 "visible": "${data.api_success}",
                 "data-source": "${data.post_offices}"
@@ -151,11 +151,11 @@
               {
                 "type": "TextInput",
                 "name": "manual_location_input",
-                "label": "Type Preferred Job Location",
+                "label": "Type Your Job Location",
                 "input-type": "text",
                 "required": true,
                 "visible": "${data.api_failed}",
-                "helper-text": "E.g. Kozhikode, Kochi"
+                "helper-text": "E.g. Vyttila, Mavoor"
               },
               {
                 "type": "TextInput",
