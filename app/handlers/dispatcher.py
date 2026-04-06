@@ -162,8 +162,8 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         return
 
     # ── Seeker buttons ──────────────────────────────────────────────────────
-    if button_id == "btn_callback":
-        await seeker_handler.handle_callback_button(wa_number, db)
+    if button_id == "btn_gethelp":
+        await seeker_handler.handle_gethelp_button(wa_number, db)
         return
 
     if button_id == "btn_view_applications":
@@ -368,7 +368,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         
         # Condition C: Both Roles
         if is_recruiter and is_seeker and is_seeker.registration_complete:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\n  It's look like your session is pausing.\nWhether you're looking to hire great talent or find your next job, you can jump right back into your dashboards anytime!"
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nWhether you're looking to hire great talent or find your next job, you can jump right back into your dashboards anytime!"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
@@ -380,7 +380,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             
         # Condition A: Recruiter Only
         elif is_recruiter:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\n  It's look like your session is pausing, but your hiring doesn't have to stop. Tap below to check your latest candidate applications or post a new vacancy to reach more job seekers!"
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing, but your hiring doesn't have to stop. Tap below to check your latest candidate applications or post a new vacancy to reach more job seekers!"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
@@ -392,7 +392,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             
         # Condition B: Seeker Only
         elif is_seeker and is_seeker.registration_complete:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\n  It's look like your session is pausing.\nDon't miss out on your next big opportunity! Tap below to track your current applications or discover fresh job openings."
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nDon't miss out on your next big opportunity! Tap below to track your current applications or discover fresh job openings."
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,

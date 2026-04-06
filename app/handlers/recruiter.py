@@ -108,11 +108,11 @@ async def start(wa_number: str, db: Session) -> None:
             flow_id=settings.FLOW_ID_RECRUITER_REGISTER,
             flow_cta="Register as Recruiter",
             body_text=(
-                "\n\n👋 *JobInfo* – Post Jobs via WhatsApp, Kerala's top WhatsApp autmated placement network!\n\n"
+                "*⏳Complete your registration!*\n\n"
+                "*JobInfo* – Post Jobs via WhatsApp, Kerala's top WhatsApp autmated placement network!\n\n"
                 "Hire the best talent instantly. To start posting your job vacancies, please complete a quick 1-minute registration.\n\n"
-                "Tap the button below to begin 👇"
+                "_Tap the button below to begin 👇_"
             ),
-            header_text="Complete your registration First!",
         )
         _set_state(wa_number, "recruiter_registering", {}, db)
         return
@@ -323,11 +323,11 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
         flow_id=settings.FLOW_ID_POST_VACANCY,
         flow_cta="Post Vacancy",
         body_text=(
-            "📝 *Post a New Vacancy*\n\n"
-            "Fill in your job details in the form below.\n"
-            "It only takes a minute!"
+            "📝 *Post a New Vacancy!*\n\n"
+            "Reach thousands of active job seekers across Kerala instantly. 🚀\n\n"
+            "Tap the button below to fill in your job details. It takes less than a minute and is 100% free!\n\n"
+            "_Ready to hire? Click below to begin._ 👇"
         ),
-        header_text="JobInfo – Post Vacancy",
         flow_action_payload={
             "screen": "JOB_DETAILS_ONE",
             "data": {

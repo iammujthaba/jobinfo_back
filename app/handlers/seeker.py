@@ -2,7 +2,7 @@
 Job Seeker conversation handler (state machine).
 Manages the full job seeker lifecycle:
   - Apply link tap → check if registered
-  - New seeker: register or callback
+  - New seeker: register or gethelp
   - Registered: check active plan → show job + apply/update CV buttons
   - Handle flow completions for registration and CV update
   - Application submission
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.models import (
-    Candidate, CandidateApplication, CandidateResume, CallbackRequest,
+    Candidate, Recruiter, CandidateApplication, CandidateResume, GetHelpRequest,
     ConversationState, JobVacancy, SubscriptionPlan, SubscriptionPlanName,
     MAX_CANDIDATE_RESUMES, MagicLink
 )
@@ -118,7 +118,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
 
     if not candidate or not candidate.registration_complete:
-        # Unregistered – show register / callback buttons
+        # Unregistered – show register / gethelp buttons
         await wa_client.send_buttons(
             to=wa_number,
             header_text="JobInfo – Apply for Jobs via WhatsApp",
@@ -129,7 +129,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             ),
             buttons=[
                 {"id": f"btn_register_{job_code}", "title": "Register Now"},
-                {"id": "btn_callback", "title": "Get Help"},
+                {"id": "btn_gethelp", "title": "Get Help"},
             ],
         )
         # Save job_code in state so we know what to apply for after registration
@@ -267,16 +267,57 @@ async def _show_job_apply_prompt(
     )
 
 
-async def handle_callback_button(wa_number: str, db: Session) -> None:
-    """Save a callback request when user taps 'Get Help'."""
-    req = CallbackRequest(wa_number=wa_number)
+async def handle_gethelp_button(wa_number: str, db: Session) -> None:
+    """Save a gethelp request when user taps 'Get Help'."""
+    req = GetHelpRequest(wa_number=wa_number)
     db.add(req)
     db.commit()
+
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+
+    if candidate and recruiter:
+        status = "Job Seeker & Recruiter"
+        name = f"{candidate.name} / {recruiter.company_name}"
+        location = f"{candidate.post_office} / {recruiter.location}"
+        context = f"{candidate.category} / {recruiter.business_type}"
+    elif recruiter:
+        status = "Recruiter"
+        name = recruiter.company_name
+        location = recruiter.location
+        context = recruiter.business_type
+    elif candidate:
+        status = "Job Seeker"
+        name = candidate.name
+        location = candidate.post_office
+        context = candidate.category
+    else:
+        status = "Unregistered User"
+        name = "Unknown"
+        location = "Unknown"
+        context = "N/A"
+
+    admin_alert = (
+        "🚨 *New Help Request*\n"
+        f"Number: {wa_number}\n"
+        f"User Type: {status}\n"
+        f"Name: {name}\n"
+        f"Location: {location}\n"
+        f"Context: {context}"
+    )
+
+    await wa_client.send_text(
+        to="917025962175",
+        body=admin_alert
+    )
+
     await wa_client.send_text(
         to=wa_number,
         body=(
-            "📞 *Callback Requested!*\n\n"
-            "Our team will contact you shortly to help you register.\n_JobInfo_"
+            "📞 *Help Request Received!*\n\n"
+            "Thanks for reaching out! We've notified our support team, and one of our dedicated agents will contact you shortly to assist you.\n\n"
+            "_We appreciate your patience._ 😊\n"
+            "– *Team JobInfo*"
         ),
     )
     _set_state(wa_number, "idle", {}, db)

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
-    CallbackRequest, Candidate, JobVacancy, ConversationState, UserQuestion
+    GetHelpRequest, Candidate, JobVacancy, ConversationState, UserQuestion
 )
 from app.handlers import recruiter as recruiter_handler
 
@@ -93,7 +93,7 @@ async def admin_home(
     _: str = Depends(require_admin),
 ):
     pending_count = db.query(JobVacancy).filter_by(status="pending").count()
-    callback_count = db.query(CallbackRequest).filter_by(resolved=False).count()
+    gethelp_count = db.query(GetHelpRequest).filter_by(resolved=False).count()
     abandoned_count = (
         db.query(Candidate).filter_by(registration_complete=False).count()
     )
@@ -102,7 +102,7 @@ async def admin_home(
         {
             "request": request,
             "pending_count": pending_count,
-            "callback_count": callback_count,
+            "gethelp_count": gethelp_count,
             "abandoned_count": abandoned_count,
         },
     )
@@ -156,37 +156,37 @@ async def reject_vacancy(
     return RedirectResponse(url="/admin/vacancies?status_filter=pending", status_code=303)
 
 
-# ─── Callbacks ────────────────────────────────────────────────────────────────
+# ─── Get Help Requests ────────────────────────────────────────────────────────
 
-@router.get("/callbacks", response_class=HTMLResponse)
-async def list_callbacks(
+@router.get("/gethelp", response_class=HTMLResponse)
+async def list_gethelp(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    callbacks = (
-        db.query(CallbackRequest)
+    gethelp_requests = (
+        db.query(GetHelpRequest)
         .filter_by(resolved=False)
-        .order_by(CallbackRequest.created_at.desc())
+        .order_by(GetHelpRequest.created_at.desc())
         .all()
     )
     return templates.TemplateResponse(
-        "admin/callbacks.html",
-        {"request": request, "callbacks": callbacks},
+        "admin/gethelp.html",
+        {"request": request, "gethelp_requests": gethelp_requests},
     )
 
 
-@router.post("/callbacks/{callback_id}/resolve")
-async def resolve_callback(
-    callback_id: int,
+@router.post("/gethelp/{gethelp_id}/resolve")
+async def resolve_gethelp(
+    gethelp_id: int,
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    req = db.query(CallbackRequest).filter_by(id=callback_id).first()
+    req = db.query(GetHelpRequest).filter_by(id=gethelp_id).first()
     if req:
         req.resolved = True
         db.commit()
-    return RedirectResponse(url="/admin/callbacks", status_code=303)
+    return RedirectResponse(url="/admin/gethelp", status_code=303)
 
 
 # ─── Abandoned candidates ─────────────────────────────────────────────────────
@@ -547,6 +547,59 @@ async def api_resolve_question(
     q.is_resolved = True
     db.commit()
     return {"success": True, "question_id": question_id}
+
+
+@router.get("/api/help-requests")
+async def api_list_help_requests(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns submitted Get Help requests."""
+    from app.db.models import Candidate, Recruiter
+    requests = db.query(GetHelpRequest).order_by(GetHelpRequest.created_at.desc()).all()
+    results = []
+    
+    for req in requests:
+        candidate = db.query(Candidate).filter_by(wa_number=req.wa_number).first()
+        recruiter = db.query(Recruiter).filter_by(wa_number=req.wa_number).first()
+        
+        if candidate and recruiter:
+            user_type = "Both"
+            name = f"{candidate.name} / {recruiter.company_name}"
+        elif recruiter:
+            user_type = "Recruiter"
+            name = recruiter.company_name
+        elif candidate:
+            user_type = "Seeker"
+            name = candidate.name
+        else:
+            user_type = "Unregistered"
+            name = "Unknown"
+        
+        results.append({
+            "id": req.id,
+            "wa_number": req.wa_number,
+            "user_type": user_type,
+            "name": name,
+            "resolved": req.resolved,
+            "created_at": req.created_at.isoformat() if req.created_at else None,
+        })
+    return {"total": len(results), "results": results}
+
+
+@router.patch("/api/help-requests/{request_id}/resolve")
+async def api_resolve_help_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Marks a help request as resolved."""
+    req = db.query(GetHelpRequest).filter_by(id=request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Help request not found")
+    req.resolved = True
+    db.commit()
+    return {"success": True, "request_id": request_id}
 
 
 # ─── Users Phase 2 API Endpoints ─────────────────────────────────────────────

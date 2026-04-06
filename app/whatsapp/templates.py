@@ -230,8 +230,8 @@ def registration_confirmation_body(name: str, user_type: str = "candidate") -> s
     if user_type == "recruiter":
         return (
             f"✅ *Registration Successful!*\n\n"
-            f"*{name.strip()}* is now registered as a recruiter. You can post vacancies and "
-            f"reach talent directly via WhatsApp.\n\n"
+            f"*{name.strip()}* is now registered as a _recruiter_. You can post vacancies and "
+            f"reach Kerala's talent directly via WhatsApp.\n\n"
             f"Tap the *Post Vacancy* button below to post your first vacancy and start hiring instantly."
         )
     return (

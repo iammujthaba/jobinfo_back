@@ -1,7 +1,7 @@
 """
 All ORM models for the JobInfo platform.
 Tables: Recruiter, JobVacancy, Candidate, CandidateApplication,
-        SubscriptionPlan, CallbackRequest, OTPRecord, ConversationState
+        SubscriptionPlan, GetHelpRequest, OTPRecord, ConversationState
 """
 import enum
 from datetime import datetime
@@ -169,8 +169,8 @@ class CandidateApplication(Base):
     vacancy = relationship("JobVacancy", back_populates="applications")
 
 
-class CallbackRequest(Base):
-    __tablename__ = "callback_requests"
+class GetHelpRequest(Base):
+    __tablename__ = "gethelp_requests"
 
     id = Column(Integer, primary_key=True, index=True)
     wa_number = Column(String(20), nullable=False, index=True)

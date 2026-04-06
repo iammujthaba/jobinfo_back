@@ -19,8 +19,8 @@ HELP_MENU_TEXT = (
     "What would you like to do?\n\n"
     "🏢 *I am a Recruiter* – Post a job vacancy\n"
     "🔍 *I am a Job Seeker* – Find jobs and apply\n"
-    "ℹ️ *How it works* – Learn about JobInfo\n\n"
-    "_JobInfo – Kerala's WhatsApp Job Platform_"
+    "ℹ️ *Help/Support* – Get support from our team\n\n"
+    "_JobInfo – Kerala's First WhatsApp powered Career Portal_"
 )
 
 HOW_IT_WORKS_TEXT = (
@@ -47,7 +47,7 @@ async def send_help_menu(wa_number: str) -> None:
         buttons=[
             {"id": "menu_recruiter", "title": "I am a Recruiter"},
             {"id": "menu_seeker", "title": "I am a Job Seeker"},
-            {"id": "menu_how_it_works", "title": "How it works"},
+            {"id": "help_support", "title": "Help/Support"},
         ],
     )
 
@@ -61,6 +61,20 @@ async def send_how_it_works(wa_number: str) -> None:
     )
 
 
+async def send_help_support_menu(wa_number: str) -> None:
+    """Send a sub-menu containing How It Works and Get Help buttons."""
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            "🤔 *Need Help?*\n\n"
+            "Choose an option below to learn how JobInfo works, or connect directly with our support team."
+        ),
+        buttons=[
+            {"id": "menu_how_it_works", "title": "How it works"},
+            {"id": "btn_gethelp", "title": "Get Help"},
+        ],
+    )
+
 async def handle_global_button(wa_number: str, button_id: str, db: Session) -> bool:
     """
     Handle top-level menu buttons.
@@ -68,6 +82,11 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
     """
     if button_id == "menu_how_it_works":
         await send_how_it_works(wa_number)
+        _reset_state(wa_number, db)
+        return True
+
+    if button_id == "help_support":
+        await send_help_support_menu(wa_number)
         _reset_state(wa_number, db)
         return True
 
