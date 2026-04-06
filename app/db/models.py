@@ -74,6 +74,9 @@ class JobVacancy(Base):
     )
     rejection_reason = Column(Text)
 
+    # CV requirement — set by recruiter when posting a vacancy
+    cv_required = Column(Boolean, default=False, nullable=False)
+
     # Edit tracking — set when recruiter edits a rejected vacancy and resubmits
     is_edited = Column(Boolean, default=False, nullable=False)
     edited_at = Column(DateTime(timezone=True))

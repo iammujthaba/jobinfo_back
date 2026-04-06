@@ -79,6 +79,30 @@ def _has_active_plan(candidate: Candidate) -> bool:
     return True
 
 
+async def _send_cv_required_message(
+    wa_number: str,
+    vacancy: JobVacancy,
+    job_code: str,
+) -> None:
+    """
+    Sent when vacancy.cv_required is True but the seeker has no CV.
+    Prompts them to upload a CV before they can complete the application.
+    """
+    await wa_client.send_buttons(
+        to=wa_number,
+        header_text="📄 CV Required for This Role",
+        body_text=(
+            f"The recruiter requires a CV for the *{vacancy.job_title.strip()}* role.\n\n"
+            "Please upload your CV to complete your application. "
+            "It only takes a moment and dramatically boosts your chances! 🚀"
+        ),
+        buttons=[
+            {"id": f"UPLOAD_NEW_CV_{job_code}", "title": "📤 Upload CV Now"},
+        ],
+        footer_text="Upload once — apply to multiple roles with the same CV",
+    )
+
+
 async def start(wa_number: str, job_code: str, db: Session) -> None:
     """
     Entry point: called when a user taps an apply link (e.g. Apply JC:1002).
@@ -478,6 +502,14 @@ async def handle_apply_now_button(
         await wa_client.send_text(to=wa_number, body=plan_renewal_body(candidate))
         return
 
+    # ── CV-required gate ───────────────────────────────────────────────────
+    if vacancy.cv_required:
+        resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+        has_cv = resume_count > 0 or bool(candidate.cv_path)
+        if not has_cv:
+            await _send_cv_required_message(wa_number, vacancy, vacancy.job_code)
+            return
+
     application = CandidateApplication(
         candidate_id=candidate.id,
         vacancy_id=vacancy.id,
@@ -498,16 +530,35 @@ async def handle_apply_now_button(
 async def handle_confirm_apply_button(
     wa_number: str, job_code: str, db: Session
 ) -> None:
-    """User chose 'Apply Anyway' from the CV mismatch warning — proceed with application."""
+    """
+    User chose 'Apply Anyway' / 'Submit Application' from the CV prompt.
+    Runs the CV-required check again before creating the application record
+    (guards the case where the recruiter requires a CV and the seeker
+    deliberately taps 'Apply Without CV').
+    """
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     if not vacancy:
         await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
         return
+
+    # ── CV-required gate ───────────────────────────────────────────────────
+    if vacancy.cv_required:
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate:
+            resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+            has_cv = resume_count > 0 or bool(candidate.cv_path)
+            if not has_cv:
+                await _send_cv_required_message(wa_number, vacancy, job_code)
+                return
+
     await handle_apply_now_button(wa_number, vacancy.id, db)
 
 
 async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None:
-    """Apply for a job explicitly without attaching any CV."""
+    """
+    User explicitly chose to apply without a CV.
+    If the recruiter has made a CV mandatory, block and prompt upload.
+    """
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
 
@@ -518,6 +569,14 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
     if not _has_active_plan(candidate):
         await wa_client.send_text(to=wa_number, body=plan_renewal_body(candidate))
         return
+
+    # ── CV-required gate ───────────────────────────────────────────────────
+    if vacancy.cv_required:
+        resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+        has_cv = resume_count > 0 or bool(candidate.cv_path)
+        if not has_cv:
+            await _send_cv_required_message(wa_number, vacancy, job_code)
+            return
 
     existing = (
         db.query(CandidateApplication)

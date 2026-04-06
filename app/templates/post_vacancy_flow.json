@@ -156,6 +156,16 @@
                   { "id": "40k_50k",         "title": "₹40,000 - ₹50,000" },
                   { "id": "above_50k",       "title": "Above ₹50,000" }
                 ]
+              },
+              {
+                "type": "Dropdown",
+                "name": "cv_required",
+                "label": "Require a CV/Resume from applicants?",
+                "required": true,
+                "data-source": [
+                  { "id": "no",  "title": "No – CV is optional" },
+                  { "id": "yes", "title": "Yes – CV is mandatory" }
+                ]
               }
             ]
           },
@@ -173,7 +183,8 @@
                 "job_description":    "${form.job_description}",
                 "job_mode":           "${form.job_mode}",
                 "experience_required":"${form.experience_required}",
-                "salary_range":       "${form.salary_range}"
+                "salary_range":       "${form.salary_range}",
+                "cv_required":        "${form.cv_required}"
               }
             }
           }

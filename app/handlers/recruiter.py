@@ -198,6 +198,11 @@ async def handle_post_vacancy_flow_completion(
         return
 
     job_code = generate_job_code(db)
+
+    # The WhatsApp Flow dropdown sends the *id* string ("yes" or "no")
+    cv_required_raw = flow_data.get("cv_required", "no")
+    cv_required: bool = str(cv_required_raw).strip().lower() == "yes"
+
     vacancy = JobVacancy(
         job_code=job_code,
         recruiter_id=recruiter.id,
@@ -210,6 +215,7 @@ async def handle_post_vacancy_flow_completion(
         job_mode=flow_data.get("job_mode", ""),
         experience_required=flow_data.get("experience_required", ""),
         salary_range=flow_data.get("salary_range", ""),
+        cv_required=cv_required,
     )
     db.add(vacancy)
     db.commit()
