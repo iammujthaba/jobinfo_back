@@ -284,8 +284,8 @@ def generate_magic_link(body: MagicTokenGenerateRequest, db: Session = Depends(g
     """Internal use: generates a short-lived magic token for a user."""
     import secrets
     token = secrets.token_urlsafe(32)
-    # 15 minute expiry
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+    # 365 days expiry for persistent usage
+    expires = datetime.now(timezone.utc) + timedelta(days=365)
 
     magic = MagicLink(
         token=token,
@@ -303,7 +303,7 @@ def generate_magic_link(body: MagicTokenGenerateRequest, db: Session = Depends(g
 @router.post("/auth/magic/verify")
 def verify_magic_link(body: MagicTokenVerifyRequest, db: Session = Depends(get_db)):
     """Public use: verifies a magic token and issues a session."""
-    magic = db.query(MagicLink).filter_by(token=body.token, is_used=False).first()
+    magic = db.query(MagicLink).filter_by(token=body.token).first()
     if not magic:
         raise HTTPException(status_code=400, detail="Invalid or expired link")
     
@@ -316,9 +316,7 @@ def verify_magic_link(body: MagicTokenVerifyRequest, db: Session = Depends(get_d
     if now > expires_at:
         raise HTTPException(status_code=400, detail="Magic link has expired")
 
-    # Mark as used     
-    magic.is_used = True
-    db.commit()
+    # Removed marking the token as used so it remains endlessly reusable.
 
     # Create session
     session_token = _create_session(magic.wa_number, magic.role)

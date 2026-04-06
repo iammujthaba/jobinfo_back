@@ -50,7 +50,7 @@ def _generate_magic_token(recruiter: Recruiter, db: Session) -> str:
     from datetime import datetime, timedelta, timezone
     from app.db.models import MagicLink
     token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+    expires = datetime.now(timezone.utc) + timedelta(days=365)
     magic = MagicLink(
         token=token,
         wa_number=recruiter.wa_number,
