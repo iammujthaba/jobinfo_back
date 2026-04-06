@@ -5,7 +5,7 @@ POST /webhook  – Incoming events (messages, status, flow callbacks)
 """
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -38,7 +38,7 @@ async def verify_webhook(request: Request):
 
 
 @router.post("/webhook")
-async def receive_webhook(request: Request, db: Session = Depends(get_db)):
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Receives WhatsApp Cloud API events.
     Verifies HMAC signature, then dispatches to business logic.
@@ -74,7 +74,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
 
     # Dispatch asynchronously
     try:
-        await dispatch(payload, db)
+        await dispatch(payload, db, background_tasks)
     except Exception as exc:
         logger.exception("Error dispatching webhook: %s", exc)
 

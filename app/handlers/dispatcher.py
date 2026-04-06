@@ -21,7 +21,9 @@ from app.handlers import global_handler
 logger = logging.getLogger(__name__)
 
 
-async def dispatch(payload: dict, db: Session) -> None:
+from fastapi import BackgroundTasks
+
+async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTasks") -> None:
     """
     Main entry point called by the webhook POST handler.
     Parses the WhatsApp Cloud API payload and routes to the right handler.
@@ -38,6 +40,7 @@ async def dispatch(payload: dict, db: Session) -> None:
             msg_type = message.get("type")
 
             _track_user_message(wa_number, db)
+            background_tasks.add_task(send_delayed_session_menu, wa_number)
 
             logger.info("Incoming %s from %s", msg_type, wa_number)
 
@@ -330,3 +333,89 @@ def candidate_handler_renew(wa_number: str, db: Session) -> None:
     import asyncio
     from app.handlers.seeker import _send_plan_selection
     asyncio.create_task(_send_plan_selection(wa_number, db))
+
+
+async def send_delayed_session_menu(wa_number: str) -> None:
+    """
+    Waits 5 minutes, validates debounce,
+    spins up an independent DB session, and dispatches the correct 'Session Closing'
+    button menu based on their profile combinations.
+    """
+    import asyncio
+    from datetime import datetime, timezone
+    from app.db.base import SessionLocal
+    from app.db.models import ConversationState, Recruiter, Candidate
+    from app.whatsapp.client import wa_client
+
+    await asyncio.sleep(300)
+    
+    db = SessionLocal()
+    try:
+        state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+        if not state or not state.last_user_message_at:
+            return
+            
+        last_msg = state.last_user_message_at
+        if last_msg.tzinfo is None:
+            last_msg = last_msg.replace(tzinfo=timezone.utc)
+            
+        if (datetime.now(timezone.utc) - last_msg).total_seconds() < 300:
+            # User sent another message during the 5min wait, debounce.
+            return
+            
+        is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+        is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        
+        # Condition C: Both Roles
+        if is_recruiter and is_seeker and is_seeker.registration_complete:
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\n  It's look like your session is pausing.\nWhether you're looking to hire great talent or find your next job, you can jump right back into your dashboards anytime!"
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=text,
+                buttons=[
+                    {"id": "btn_my_vacancies", "title": "Recruiter Dashboard"},
+                    {"id": "ACTION_MY_APPLICATIONS", "title": "Seeker Dashboard"}
+                ]
+            )
+            
+        # Condition A: Recruiter Only
+        elif is_recruiter:
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\n  It's look like your session is pausing, but your hiring doesn't have to stop. Tap below to check your latest candidate applications or post a new vacancy to reach more job seekers!"
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=text,
+                buttons=[
+                    {"id": "btn_my_vacancies", "title": "My Dashboard"},
+                    {"id": "btn_post_vacancy", "title": "Post Vacancy"}
+                ]
+            )
+            
+        # Condition B: Seeker Only
+        elif is_seeker and is_seeker.registration_complete:
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\n  It's look like your session is pausing.\nDon't miss out on your next big opportunity! Tap below to track your current applications or discover fresh job openings."
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=text,
+                buttons=[
+                    {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"}
+                ]
+            )
+            
+        # Condition D: Unregistered / None
+        else:
+            text = "Welcome to JobInfo! 🚀 We noticed you haven't set up your profile yet. It only takes a minute to get started. Let us know what you're looking for to unlock jobs or hire great staff!"
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=text,
+                buttons=[
+                    {"id": "menu_recruiter", "title": "I am a Recruiter"},
+                    {"id": "menu_seeker", "title": "I am a Job Seeker"}
+                ]
+            )
+            
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error in send_delayed_session_menu: {e}")
+    finally:
+        db.close()
