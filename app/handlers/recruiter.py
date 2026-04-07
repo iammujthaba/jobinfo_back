@@ -108,10 +108,15 @@ async def start(wa_number: str, db: Session) -> None:
             flow_id=settings.FLOW_ID_RECRUITER_REGISTER,
             flow_cta="Register as Recruiter",
             body_text=(
-                "*⏳Complete your registration!*\n\n"
-                "*JobInfo* – Post Jobs via WhatsApp, Kerala's First WhatsApp autmated placement network!\n\n"
-                "Hire the best talent instantly. To start posting your job vacancies, please complete a quick 1-minute registration.\n\n"
-                "_Tap the button below to begin 👇_"
+                "*⏳Recruiter Registration!*\n\n"
+                "_One Step Away from best talent!_\n\n"
+                "Tap the button below to set up your profile and post vacancies.\n\n"
+
+                "✅ *100% Free & Spam Free*\n"
+                "✅ *Simple & Easy to Use*\n"
+                "✅ *WhatsApp-autmated hiring*\n"
+                "✅ *Kerala's best placement network*\n\n"
+                "Takes less than 1 minute! Let’s get started.✨"
             ),
         )
         _set_state(wa_number, "recruiter_registering", {}, db)
@@ -360,9 +365,13 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     # ── Message A: Private recruiter alert with magic dashboard link ────────
     magic_url = _generate_magic_dashboard_url(recruiter, db)
     private_body = (
-        f"✅ Your vacancy for *{vacancy.job_title.strip()}* ({vacancy.job_code}) has been approved and now live at Jobinfo Career Portal!\n\n"
+        f"✅ Your vacancy for *{vacancy.job_title.strip()}* has been approved and now live at Jobinfo Career Portal!\n\n"
+        f"*Title:* {vacancy.job_title}\n"
+        f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
+        f"*Job Code:* {vacancy.job_code}\n"
+        f"*Status:* {vacancy.status}⏳\n\n"
         f"👇 You can forward the following message to your contacts to gather more applicants!\n\n"
-        f"_Thank you for choosing *jobinfo*_"
+        f"_Thank you for choosing *jobinfo!*_"
     )
     try:
         await wa_client.send_interactive_cta_url(
@@ -387,6 +396,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
         admin_card = job_alert_text_body(
             vacancy,
             apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
+            is_admin=True,
         )
         await wa_client.send_text(to=settings.admin_wa_number, body=admin_card)
 

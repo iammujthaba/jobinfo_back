@@ -24,18 +24,18 @@ HELP_MENU_TEXT = (
 )
 
 HOW_IT_WORKS_TEXT = (
-    "ℹ️ *How JobInfo Works*\n\n"
-    "*For Recruiters:*\n"
-    "1️⃣ Send *My Vacancy* to this number\n"
-    "2️⃣ Register once (takes < 2 minutes)\n"
-    "3️⃣ Post vacancies directly from WhatsApp\n"
-    "4️⃣ We broadcast to thousands of job seekers\n\n"
-    "*For Job Seekers:*\n"
-    "1️⃣ Join our WhatsApp Channel\n"
-    "2️⃣ See daily job posts with apply links\n"
-    "3️⃣ Tap the link → register once → apply!\n"
-    "4️⃣ Track your applications right here\n\n"
-    "_JobInfo – Connecting Kerala's talent_"
+    "ℹ️ *How JobInfo Works* 🚀\n\n"
+    "*For Recruiters or Employers:* 🏢\n"
+    "1️⃣ Tap *I am a Recruiter* to set up your Recruiter profile in seconds.\n"
+    "2️⃣ Post jobs instantly via whatsapp or jobinfo.pro\n"
+    "3️⃣ Use your Web Dashboard on whatsapp or jobinfo.pro to review applicants.\n"
+    "4️⃣ Shortlist or review applications and chat directly with candidates via WhatsApp!\n\n"
+    "*For Job Seekers:* 🎓\n"
+    "1️⃣ Tap *I am a Job Seeker* to set up your profile.\n"
+    "2️⃣ Get matched with best jobs right here on WhatsApp.\n"
+    "3️⃣ Apply with one tap and upload a CV only when needed.\n"
+    "4️⃣ Track your application status anytime using your Dashboard link.\n\n"
+    "_JobInfo – Connecting Kerala's Talent, Instantly._ 🤝"
 )
 
 

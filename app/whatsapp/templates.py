@@ -113,10 +113,11 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
 def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
     return (
         f"✅ *Vacancy Posted Successfully!*\n\n"
-        f"*Job Code:* {vacancy.job_code}\n"
         f"*Title:* {vacancy.job_title}\n"
-        f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n\n"
-        f"Your vacancy is under review. You'll be notified once it's approved.\n\n"
+        f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
+        f"*Job Code:* {vacancy.job_code}\n"
+        f"*Status:* {vacancy.status}⏳\n\n"
+        f"Your vacancy is *under review*. You'll be notified once it's approved.\n\n"
         f"_JobInfo – Connecting Kerala's talent_"
     )
 
@@ -153,7 +154,7 @@ def vacancy_approved_body(vacancy: JobVacancy) -> str:
     )
 
 
-def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None) -> str:
+def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_admin: bool = False) -> str:
     """
     Forwardable plain-text job card sent on vacancy approval.
 
@@ -170,6 +171,12 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None) -> st
 
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
+    cta_text = (
+        "_Tap the link below or click the 'Start Chatting' button to apply this job!_"
+        if is_admin else
+        "_Tap the link below to apply this position!_"
+    )
+
     return (
         f"🚀 *Jobinfo - New Job Alert*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
@@ -180,7 +187,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None) -> st
         f"🎓 Experience: {experience}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
-        f"_Tap the link below to apply instantly!_\n"
+        f"{cta_text}\n"
         f"📲 Apply now: {link}\n\n"
         f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
     )

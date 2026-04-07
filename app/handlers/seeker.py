@@ -335,8 +335,10 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
             "⏳ *Job Seeker Registration*\n\n"
             "_One Step Away from Your Dream Job!_\n\n"
             "Tap the button below to set up your profile and apply instantly.\n\n"
-            "✅ *100% Free & Quick*\n"
-            "✅ *Reach Top Employers*\n\n"
+            "✅ *100% Free & Spam Free*\n"
+            "✅ *Simple & Easy to Use*\n"
+            "✅ *WhatsApp-autmated Application*\n"
+            "✅ *Kerala's best placement network*\n\n"
             "Takes less than 1 minute! Let’s get started. ✨"
         ),
         # 👇 We wrapped the variable in 'data' and added a 'screen' name
