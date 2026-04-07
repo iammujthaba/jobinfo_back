@@ -121,15 +121,17 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
         # Unregistered – show register / gethelp buttons
         await wa_client.send_buttons(
             to=wa_number,
-            header_text="JobInfo – Apply for Jobs via WhatsApp",
             body_text=(
-                f"📋 *{vacancy.job_title.strip()}* | {vacancy.exact_location}, {vacancy.district_region}\n\n"
-                "To apply, you need to register first. It's quick and free!\n\n"
-                "Tap *Register Now* to continue or *Get Help* if you need assistance."
+                "*🚀Apply for this position via WhatsApp!*\n\n"
+                f"📋 *{vacancy.job_title.strip()}*\n"
+                f"🏢 {vacancy.company_name or '—'}\n"
+                f"📍 {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
+                "To apply, you need to setup your profile. It's quick and free!\n\n"
+                "Tap *Register Now* to complete application or *Get Help* if you need assistance."
             ),
             buttons=[
                 {"id": f"btn_register_{job_code}", "title": "Register Now"},
-                {"id": "btn_gethelp", "title": "Get Help"},
+                {"id": "help_support", "title": "Help/Support"},
             ],
         )
         # Save job_code in state so we know what to apply for after registration
@@ -330,11 +332,13 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
         flow_id=settings.FLOW_ID_SEEKER_REGISTER,
         flow_cta="Register Now",
         body_text=(
-            "📝 *Quick Registration*\n\n"
-            "Fill in your details and upload your CV.\n"
-            "Takes less than 2 minutes!"
+            "⏳ *Job Seeker Registration*\n\n"
+            "_One Step Away from Your Dream Job!_\n\n"
+            "Tap the button below to set up your profile and apply instantly.\n\n"
+            "✅ *100% Free & Quick*\n"
+            "✅ *Reach Top Employers*\n\n"
+            "Takes less than 1 minute! Let’s get started. ✨"
         ),
-        header_text="JobInfo – Job Seeker Registration",
         # 👇 We wrapped the variable in 'data' and added a 'screen' name
         flow_action_payload={
             "screen": "SEEKER_REGISTRATION",
@@ -779,7 +783,6 @@ async def handle_upload_new_cv(wa_number: str, job_code: str, db: Session) -> No
         to=wa_number,
         flow_id=settings.FLOW_ID_CV_UPDATE,
         flow_cta="Upload CV",
-        header_text="JobInfo – Upload Tailored CV",
         body_text=(
             "📄 *Upload Your Tailored CV*\n\n"
             "Tap the button below to securely upload your newly tailored CV. "
@@ -1036,7 +1039,7 @@ async def _send_application_summary_cta(
 
     # ── Build message ─────────────────────────────────────────────────────
     name = candidate.name.split()[0] if candidate.name else "there"
-    lines = [f"🌟 *Great momentum, {name}!*\n"]
+    lines = [f"*Great momentum, {name}!✨*\n"]
 
     if total_7d > 0:
         lines.append(
@@ -1049,7 +1052,7 @@ async def _send_application_summary_cta(
             for cat, count in sorted(cat_counts.items(), key=lambda x: -x[1]):
                 emoji, label = CATEGORY_LABELS.get(cat, ("📌", cat.replace("_", " ").title()))
                 parts.append(f"{emoji} {label}: *{count}*")
-            lines.append("📊 *Your Focus Areas:*")
+            lines.append("*Your Focus Areas:*")
             lines.append("\n".join(parts) + "\n")
     else:
         lines.append("No new applications this week — it's a perfect time to explore fresh openings!\n")
@@ -1063,7 +1066,7 @@ async def _send_application_summary_cta(
     label = status_label.get(latest.status.value, latest.status.value.title())
     company = f" — {v.company_name}" if v.company_name else ""
 
-    lines.append("📌 *Your Latest Application:*")
+    lines.append("*Your Latest Application:*")
     lines.append(f"  {emoji}  *{v.job_title.strip()}*{company} · _{label}_")
 
     lines.append(
@@ -1133,9 +1136,8 @@ async def send_seeker_greeting_menu(wa_number: str) -> None:
     """Send the main 3-button seeker welcome menu."""
     await wa_client.send_buttons(
         to=wa_number,
-        header_text="JobInfo — Your Career Partner 🌟",
         body_text=(
-            "👋 *Welcome to JobInfo!*\n\n"
+            "✨ *JobInfo — Your Career Partner!*\n\n"
             "We're thrilled to help you take the next step in your career. "
             "Whether you're looking for your dream job or just exploring options — we've got you covered.\n\n"
             "Choose how you'd like to start 👇"
@@ -1276,10 +1278,11 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         exp_line = f"📋  *Experience:* {job.experience_required}\n" if job.experience_required else ""
 
         body = (
-            f"🏢  *{job.job_title.strip()}*\n"
-            f"📍  {job.company_name or 'Company'} — {job.exact_location}, {job.district_region}\n"
-            f"{salary_line}"
-            f"{exp_line}"
+            f"🏷️ *{job.job_title.strip()}*\n"
+            f"🏢 {job.company_name or 'Company'}\n"
+            f"📍 {job.exact_location or '—'}, {job.district_region or '—'}\n"
+            f"💰 {salary_line}"
+            f"🎓 {exp_line}"
             f"\n_{job.job_description[:120] + '…' if job.job_description and len(job.job_description) > 120 else job.job_description or ''}_"
         )
 

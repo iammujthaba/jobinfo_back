@@ -109,7 +109,7 @@ async def start(wa_number: str, db: Session) -> None:
             flow_cta="Register as Recruiter",
             body_text=(
                 "*⏳Complete your registration!*\n\n"
-                "*JobInfo* – Post Jobs via WhatsApp, Kerala's top WhatsApp autmated placement network!\n\n"
+                "*JobInfo* – Post Jobs via WhatsApp, Kerala's First WhatsApp autmated placement network!\n\n"
                 "Hire the best talent instantly. To start posting your job vacancies, please complete a quick 1-minute registration.\n\n"
                 "_Tap the button below to begin 👇_"
             ),
@@ -324,8 +324,8 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
         flow_cta="Post Vacancy",
         body_text=(
             "📝 *Post a New Vacancy!*\n\n"
-            "Reach thousands of active job seekers across Kerala instantly. 🚀\n\n"
-            "Tap the button below to fill in your job details. It takes less than a minute and is 100% free!\n\n"
+            "Reach thousands of active job seekers across Kerala instantly.\n\n"
+            "Tap the button below to fill in your job details. It takes less than a minute and it's 100% free!\n\n"
             "_Ready to hire? Click below to begin._ 👇"
         ),
         flow_action_payload={
@@ -360,9 +360,9 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     # ── Message A: Private recruiter alert with magic dashboard link ────────
     magic_url = _generate_magic_dashboard_url(recruiter, db)
     private_body = (
-        f"✅ Your vacancy for *{vacancy.job_title.strip()}* ({vacancy.job_code}) is approved and now live at kerala's first whatsapp automated job listing platform!\n\n"
+        f"✅ Your vacancy for *{vacancy.job_title.strip()}* ({vacancy.job_code}) has been approved and now live at Jobinfo Career Portal!\n\n"
         f"👇 You can forward the following message to your contacts to gather more applicants!\n\n"
-        f"Thank you for choosing *jobinfo*"
+        f"_Thank you for choosing *jobinfo*_"
     )
     try:
         await wa_client.send_interactive_cta_url(

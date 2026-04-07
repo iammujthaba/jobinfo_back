@@ -115,7 +115,7 @@ def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
         f"✅ *Vacancy Posted Successfully!*\n\n"
         f"*Job Code:* {vacancy.job_code}\n"
         f"*Title:* {vacancy.job_title}\n"
-        f"*Location:* {vacancy.district_region}\n\n"
+        f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n\n"
         f"Your vacancy is under review. You'll be notified once it's approved.\n\n"
         f"_JobInfo – Connecting Kerala's talent_"
     )
@@ -182,7 +182,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None) -> st
         f"📋 *About the Role:*\n{description}\n\n"
         f"_Tap the link below to apply instantly!_\n"
         f"📲 Apply now: {link}\n\n"
-        f"_JobInfo.pro – Kerala's first WhatsApp automated job platform_"
+        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
     )
 
 
