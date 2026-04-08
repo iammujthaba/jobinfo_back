@@ -780,12 +780,12 @@ async def api_seekers_stats(
 
     # Chart Data: Seekers by Location
     location_rows = db.query(
-        Candidate.post_office, sqlfunc.count(Candidate.id).label("count")
-    ).group_by(Candidate.post_office).all()
+        Candidate.district, sqlfunc.count(Candidate.id).label("count")
+    ).group_by(Candidate.district).all()
     
     locations = {}
     for r in location_rows:
-        loc = r.post_office if r.post_office else "Unknown"
+        loc = r.district if r.district else "Unknown"
         locations[loc] = locations.get(loc, 0) + r.count
     
     # Chart Data: Seekers by Job Category
@@ -804,7 +804,7 @@ async def api_seekers_stats(
             Candidate.id,
             Candidate.name,
             Candidate.wa_number,
-            Candidate.post_office,
+            Candidate.district,
             Candidate.category,
             Candidate.sub_category,
             Candidate.created_at,
@@ -826,7 +826,7 @@ async def api_seekers_stats(
         seekers_table.append({
             "name": s.name,
             "wa_number": s.wa_number,
-            "location": s.post_office or "Unknown",
+            "location": s.district or "Unknown",
             "skills": skills or "Unknown",
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "total_applications": s.total_applications

@@ -32,14 +32,34 @@
                 "helper-text": "Enter your full name"
               },
               {
-                "type": "TextInput",
-                "name": "pin_code",
-                "label": "PIN Code",
-                "input-type": "number",
+                "type": "Dropdown",
+                "name": "district",
+                "label": "Select Your District",
                 "required": true,
-                "helper-text": "Your 6-digit area PIN code (e.g. 673014)",
-                "min-chars": 6,
-                "max-chars": 6
+                "data-source": [
+                  {"id": "Thiruvananthapuram", "title": "Thiruvananthapuram"},
+                  {"id": "Kollam", "title": "Kollam"},
+                  {"id": "Pathanamthitta", "title": "Pathanamthitta"},
+                  {"id": "Alappuzha", "title": "Alappuzha"},
+                  {"id": "Kottayam", "title": "Kottayam"},
+                  {"id": "Idukki", "title": "Idukki"},
+                  {"id": "Ernakulam", "title": "Ernakulam"},
+                  {"id": "Thrissur", "title": "Thrissur"},
+                  {"id": "Palakkad", "title": "Palakkad"},
+                  {"id": "Malappuram", "title": "Malappuram"},
+                  {"id": "Kozhikode", "title": "Kozhikode"},
+                  {"id": "Wayanad", "title": "Wayanad"},
+                  {"id": "Kannur", "title": "Kannur"},
+                  {"id": "Kasaragod", "title": "Kasaragod"}
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "exact_location",
+                "label": "Location / Town Name",
+                "input-type": "text",
+                "required": true,
+                "helper-text": "E.g. Vyttila, Mavoor"
               },
               {
                 "type": "Dropdown",
@@ -74,7 +94,8 @@
               "name": "data_exchange",
               "payload": {
                 "name": "${form.name}",
-                "pin_code": "${form.pin_code}",
+                "district": "${form.district}",
+                "exact_location": "${form.exact_location}",
                 "category": "${form.category}",
                 "cv_file": "${form.cv_file}",
                 "pending_job_code": "${data.pending_job_code}"
@@ -89,20 +110,6 @@
       "title": "Final Details",
       "terminal": true,
       "data": {
-        "post_offices": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "string" },
-              "title": { "type": "string" }
-            }
-          },
-          "__example__": [
-            { "id": "Thondayad", "title": "Thondayad" },
-            { "id": "Kozhikode H.O", "title": "Kozhikode H.O" }
-          ]
-        },
         "sub_categories": {
           "type": "array",
           "items": {
@@ -116,14 +123,6 @@
             { "id": "sales_executive", "title": "Sales Executive" },
             { "id": "cashier", "title": "Cashier / Billing" }
           ]
-        },
-        "api_failed": {
-          "type": "boolean",
-          "__example__": false
-        },
-        "api_success": {
-          "type": "boolean",
-          "__example__": true
         }
       },
       "layout": {
@@ -141,23 +140,6 @@
                 "data-source": "${data.sub_categories}"
               },
               {
-                "type": "Dropdown",
-                "name": "post_office",
-                "label": "Select your locality",
-                "required": true,
-                "visible": "${data.api_success}",
-                "data-source": "${data.post_offices}"
-              },
-              {
-                "type": "TextInput",
-                "name": "manual_location_input",
-                "label": "Type Your Job Location",
-                "input-type": "text",
-                "required": true,
-                "visible": "${data.api_failed}",
-                "helper-text": "E.g. Vyttila, Mavoor"
-              },
-              {
                 "type": "TextInput",
                 "name": "age",
                 "label": "Your Age",
@@ -165,6 +147,17 @@
                 "required": true,
                 "helper-text": "E.g., 25, 30, 35",
                 "max-chars": 2
+              },
+              {
+                "type": "Dropdown",
+                "name": "gender",
+                "label": "Select Your Gender",
+                "required": true,
+                "data-source": [
+                  {"id": "male", "title": "Male"},
+                  {"id": "female", "title": "Female"},
+                  {"id": "other", "title": "Other"}
+                ]
               },
               {
                 "type": "TextInput",
@@ -182,14 +175,14 @@
             "on-click-action": {
               "name": "complete",
               "payload": {
-                "post_office": "${form.post_office}",
-                "manual_location_input": "${form.manual_location_input}",
                 "sub_category": "${form.sub_category}",
                 "age": "${form.age}",
                 "alt_phone": "${form.alt_phone}",
+                "gender": "${form.gender}",
                 "category": "${screen.SEEKER_REGISTRATION.form.category}",
                 "name": "${screen.SEEKER_REGISTRATION.form.name}",
-                "pin_code": "${screen.SEEKER_REGISTRATION.form.pin_code}",
+                "district": "${screen.SEEKER_REGISTRATION.form.district}",
+                "exact_location": "${screen.SEEKER_REGISTRATION.form.exact_location}",
                 "media_id": "${screen.SEEKER_REGISTRATION.form.cv_file}",
                 "mime_type": "application/pdf",
                 "pending_job_code": "${screen.SEEKER_REGISTRATION.data.pending_job_code}"

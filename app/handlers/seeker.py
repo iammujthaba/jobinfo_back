@@ -281,7 +281,8 @@ async def handle_gethelp_button(wa_number: str, db: Session) -> None:
     if candidate and recruiter:
         status = "Job Seeker & Recruiter"
         name = f"{candidate.name} / {recruiter.company_name}"
-        location = f"{candidate.post_office} / {recruiter.location}"
+        loc_parts = [candidate.exact_location, candidate.district]
+        location = f"{', '.join(p for p in loc_parts if p)} / {recruiter.location}"
         context = f"{candidate.category} / {recruiter.business_type}"
     elif recruiter:
         status = "Recruiter"
@@ -291,7 +292,8 @@ async def handle_gethelp_button(wa_number: str, db: Session) -> None:
     elif candidate:
         status = "Job Seeker"
         name = candidate.name
-        location = candidate.post_office
+        loc_parts = [candidate.exact_location, candidate.district]
+        location = ", ".join(p for p in loc_parts if p) or "Unknown"
         context = candidate.category
     else:
         status = "Unregistered User"
@@ -357,7 +359,7 @@ async def handle_registration_flow_completion(
     """
     Called when the seeker registration Flow completes.
     Saves candidate, optionally offers plan selection.
-    flow_data keys: name, pin_code, post_office, category, sub_category, age, alt_phone, cv_file, pending_job_code
+    flow_data keys: name, district, exact_location, category, sub_category, age, alt_phone, gender, cv_file, pending_job_code
     """
     # Save CV
     cv_path = None
@@ -384,28 +386,30 @@ async def handle_registration_flow_completion(
         candidate = Candidate(
             wa_number=wa_number,
             name=flow_data.get("name", ""),
-            pin_code=flow_data.get("pin_code"),
-            post_office=flow_data.get("manual_location_input") or flow_data.get("post_office"),
+            district=flow_data.get("district"),
+            exact_location=flow_data.get("exact_location"),
             category=flow_data.get("category"),
             sub_category=flow_data.get("sub_category"),
             age=int(flow_data["age"]) if flow_data.get("age") else None,
             alt_phone=flow_data.get("alt_phone"),
+            gender=flow_data.get("gender"),
             cv_path=cv_path,
             registration_complete=False,
         )
         db.add(candidate)
     else:
         candidate.name = flow_data.get("name", candidate.name)
-        candidate.pin_code = flow_data.get("pin_code", candidate.pin_code)
-        
-        new_loc = flow_data.get("manual_location_input") or flow_data.get("post_office")
-        if new_loc:
-            candidate.post_office = new_loc
+        if flow_data.get("district"):
+            candidate.district = flow_data["district"]
+        if flow_data.get("exact_location"):
+            candidate.exact_location = flow_data["exact_location"]
         candidate.category = flow_data.get("category", candidate.category)
         candidate.sub_category = flow_data.get("sub_category", candidate.sub_category)
         if flow_data.get("age"):
             candidate.age = int(flow_data["age"])
         candidate.alt_phone = flow_data.get("alt_phone", candidate.alt_phone)
+        if flow_data.get("gender"):
+            candidate.gender = flow_data["gender"]
         if cv_path:
             candidate.cv_path = cv_path
 

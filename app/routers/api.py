@@ -95,13 +95,13 @@ class CandidateRegisterRequest(BaseModel):
     wa_number: str
     session_token: str
     name: str
-    pin_code: str | None = None
-    post_office: str | None = None
-    manual_location_input: str | None = None
+    district: str | None = None
+    exact_location: str | None = None
     category: str | None = None
     sub_category: str | None = None
     age: int | None = None
     alt_phone: str | None = None
+    gender: str | None = None
     # CV is uploaded as a separate multipart request (see /api/candidates/upload-cv)
 
 
@@ -109,13 +109,13 @@ class CandidateUpdateRequest(BaseModel):
     wa_number: str
     session_token: str
     name: str | None = None
-    pin_code: str | None = None
-    post_office: str | None = None
-    manual_location_input: str | None = None
+    district: str | None = None
+    exact_location: str | None = None
     category: str | None = None
     sub_category: str | None = None
     age: int | None = None
     alt_phone: str | None = None
+    gender: str | None = None
 
 
 class CandidateApplyRequest(BaseModel):
@@ -526,25 +526,28 @@ async def register_candidate_web(
         candidate = Candidate(
             wa_number=body.wa_number,
             name=body.name,
-            pin_code=body.pin_code,
-            post_office=body.manual_location_input or body.post_office,
+            district=body.district,
+            exact_location=body.exact_location,
             category=body.category,
             sub_category=body.sub_category,
             age=body.age,
             alt_phone=body.alt_phone,
+            gender=body.gender,
             registration_complete=not settings.subscription_enabled,
         )
         db.add(candidate)
     else:
         candidate.name = body.name
-        candidate.pin_code = body.pin_code
-        new_loc = body.manual_location_input or body.post_office
-        if new_loc is not None:
-            candidate.post_office = new_loc
+        if body.district is not None:
+            candidate.district = body.district
+        if body.exact_location is not None:
+            candidate.exact_location = body.exact_location
         candidate.category = body.category
         candidate.sub_category = body.sub_category
         candidate.age = body.age
         candidate.alt_phone = body.alt_phone
+        if body.gender is not None:
+            candidate.gender = body.gender
     db.commit()
 
     await wa_client.send_text(
@@ -718,12 +721,13 @@ def list_all_applications(
             "candidate": {
                 "id": c.id,
                 "name": c.name,
-                "pin_code": c.pin_code or "",
-                "post_office": c.post_office or "",
+                "district": c.district or "",
+                "exact_location": c.exact_location or "",
                 "category": c.category or "",
                 "sub_category": c.sub_category or "",
                 "age": c.age,
                 "alt_phone": c.alt_phone or "",
+                "gender": c.gender or "",
                 "wa_number": c.wa_number,
                 "has_cv": bool(c.cv_path),
                 "cv_path": c.cv_path or None,
@@ -776,12 +780,13 @@ def list_vacancy_applications(
             "candidate": {
                 "id": c.id,
                 "name": c.name,
-                "pin_code": c.pin_code or "",
-                "post_office": c.post_office or "",
+                "district": c.district or "",
+                "exact_location": c.exact_location or "",
                 "category": c.category or "",
                 "sub_category": c.sub_category or "",
                 "age": c.age,
                 "alt_phone": c.alt_phone or "",
+                "gender": c.gender or "",
                 "wa_number": c.wa_number,
                 "has_cv": bool(c.cv_path),
                 "cv_path": c.cv_path or None,
@@ -866,14 +871,15 @@ def export_applications_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["#", "Name", "PIN Code", "Post Office", "Category", "Role", "Age", "Alt Phone", "WhatsApp", "Status", "Applied On"])
+    writer.writerow(["#", "Name", "Gender", "District", "Exact Location", "Category", "Role", "Age", "Alt Phone", "WhatsApp", "Status", "Applied On"])
     for i, app in enumerate(applications, 1):
         c = app.candidate
         writer.writerow([
             i,
             c.name,
-            c.pin_code or "",
-            c.post_office or "",
+            c.gender or "",
+            c.district or "",
+            c.exact_location or "",
             c.category or "",
             c.sub_category or "",
             c.age or "",
@@ -920,7 +926,7 @@ def export_all_applications_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["#", "Job Code", "Job Title", "Name", "PIN Code", "Location", "Category", "Role", "Age", "WhatsApp", "Status", "Applied On"])
+    writer.writerow(["#", "Job Code", "Job Title", "Name", "Gender", "District", "Exact Location", "Category", "Role", "Age", "WhatsApp", "Status", "Applied On"])
     for i, app in enumerate(applications, 1):
         c = app.candidate
         v = app.vacancy
@@ -929,8 +935,9 @@ def export_all_applications_csv(
             v.job_code,
             v.job_title,
             c.name,
-            c.pin_code or "",
-            c.post_office or "",
+            c.gender or "",
+            c.district or "",
+            c.exact_location or "",
             c.category or "",
             c.sub_category or "",
             c.age or "",
@@ -1047,12 +1054,13 @@ def get_candidate_profile(
         "id": candidate.id,
         "name": candidate.name,
         "wa_number": candidate.wa_number,
-        "pin_code": candidate.pin_code,
-        "post_office": candidate.post_office,
+        "district": candidate.district,
+        "exact_location": candidate.exact_location,
         "category": candidate.category,
         "sub_category": candidate.sub_category,
         "age": candidate.age,
         "alt_phone": candidate.alt_phone,
+        "gender": candidate.gender,
         "cv_path": candidate.cv_path,
         "registration_complete": candidate.registration_complete,
         "created_at": candidate.created_at
@@ -1071,12 +1079,10 @@ def update_candidate_profile(
         
     if body.name is not None:
         candidate.name = body.name
-    if body.pin_code is not None:
-        candidate.pin_code = body.pin_code
-        
-    new_loc = body.manual_location_input or body.post_office
-    if new_loc is not None:
-        candidate.post_office = new_loc
+    if body.district is not None:
+        candidate.district = body.district
+    if body.exact_location is not None:
+        candidate.exact_location = body.exact_location
         
     if body.category is not None:
         candidate.category = body.category
@@ -1086,6 +1092,8 @@ def update_candidate_profile(
         candidate.age = body.age
     if body.alt_phone is not None:
         candidate.alt_phone = body.alt_phone
+    if body.gender is not None:
+        candidate.gender = body.gender
         
     db.commit()
     db.refresh(candidate)
@@ -1180,24 +1188,6 @@ def get_candidate_analytics(
         logger.error(f"Analytics Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/locations/{pin_code}")
-async def get_locations_by_pin(pin_code: str):
-    """
-    Fetch locations based on PIN code.
-    If postal API fails, returns api_failed=True instead of an HTTP error,
-    so the frontend can display a manual text input.
-    """
-    if not pin_code or len(pin_code) != 6 or not pin_code.isdigit():
-        return {"success": True, "api_failed": True, "locations": []}
-
-    from app.routers.flows import _lookup_post_offices
-    locations, api_failed = await _lookup_post_offices(pin_code)
-
-    return {
-        "success": True,
-        "api_failed": api_failed,
-        "locations": locations
-    }
 
 
 # ─── Public Apply Redirect ────────────────────────────────────────────────────
