@@ -631,9 +631,18 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
         .first()
     )
     if existing:
-        await wa_client.send_text(
+        status_value = str(getattr(existing.status, 'value', existing.status)).title()
+        await wa_client.send_buttons(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
+            body_text=(
+                f"ℹ️ *Already Applied*\n\n"
+                f"You have already submitted an application for the *{vacancy.job_title.strip()}* position.\n\n"
+                f"📌 *Current Status:* _{status_value}_\n\n"
+                "Would you like to explore other roles that match your profile?"
+            ),
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            ],
         )
         return
 
