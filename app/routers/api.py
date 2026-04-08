@@ -89,6 +89,7 @@ class RecruiterVacancyRequest(BaseModel):
     job_mode: str
     salary_range: str | None = None
     experience_required: str | None = None
+    cv_required: bool = False
 
 
 class CandidateRegisterRequest(BaseModel):
@@ -484,6 +485,7 @@ async def post_vacancy_web(
         job_mode=body.job_mode,
         salary_range=body.salary_range,
         experience_required=body.experience_required,
+        cv_required=body.cv_required,
     )
     db.add(vacancy)
     db.commit()
