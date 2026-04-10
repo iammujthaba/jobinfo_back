@@ -682,7 +682,7 @@ class UpdateApplicationStatusRequest(BaseModel):
     wa_number: str
     session_token: str
     application_id: int
-    status: str   # "applied" | "shortlisted" | "rejected"
+    status: str   # "applied" | "shortlisted"
 
 
 @router.post("/recruiters/all-applications")
@@ -811,7 +811,7 @@ def update_application_status(
     db: Session = Depends(get_db),
 ):
     """
-    Update the status of a candidate application (shortlist / reject / reset to applied).
+    Update the status of a candidate application (shortlist / reset to applied).
     Verifies the recruiter owns the vacancy the application belongs to.
     """
     _require_session(body.wa_number, body.session_token)

@@ -24,7 +24,6 @@ from app.db.base import Base
 class ApplicationStatus(str, enum.Enum):
     applied = "applied"
     shortlisted = "shortlisted"
-    rejected = "rejected"
 
 
 class SubscriptionPlanName(str, enum.Enum):
