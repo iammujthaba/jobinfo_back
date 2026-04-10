@@ -104,5 +104,5 @@ async def serve_cv(
         path=clean_path,
         filename=filename,
         media_type="application/pdf",
-        content_disposition_type="attachment",
+        content_disposition_type="inline",
     )
