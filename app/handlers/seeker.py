@@ -891,9 +891,13 @@ async def handle_cv_update_flow_completion(
 
     cv_path = await save_cv_from_whatsapp(wa_number, actual_media_id, actual_mime)
     if not cv_path:
-        await wa_client.send_text(
+        btn_id = f"UPLOAD_NEW_CV_{job_code}" if job_code else "UPLOAD_NEW_CV_"
+        await wa_client.send_buttons(
             to=wa_number,
-            body="❌ Invalid file format. Please upload a PDF or CSV file.",
+            body_text="❌ Invalid file format. Please upload a PDF or CSV file.",
+            buttons=[
+                {"id": btn_id, "title": "📤 Upload CV"}
+            ]
         )
         return
 

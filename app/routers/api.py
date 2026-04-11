@@ -1050,6 +1050,8 @@ def get_candidate_profile(
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
     
     return {
         "id": candidate.id,
@@ -1063,6 +1065,7 @@ def get_candidate_profile(
         "alt_phone": candidate.alt_phone,
         "gender": candidate.gender,
         "cv_path": candidate.cv_path,
+        "has_cv": resume_count > 0 or bool(candidate.cv_path),
         "registration_complete": candidate.registration_complete,
         "created_at": candidate.created_at
     }
