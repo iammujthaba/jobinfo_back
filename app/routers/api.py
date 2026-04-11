@@ -6,7 +6,7 @@ job seeker registration, and job applications.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
     ApplicationStatus, Candidate, CandidateApplication, JobVacancy,
-    Recruiter, SubscriptionPlan, UserQuestion, MagicLink
+    Recruiter, SubscriptionPlan, UserQuestion, MagicLink, CandidateResume
 )
 from app.services import otp as otp_service
 from app.services.job_code import generate_job_code
@@ -123,6 +123,7 @@ class CandidateApplyRequest(BaseModel):
     wa_number: str
     session_token: str
     vacancy_id: int
+    resume_id: int | None = None
 
 
 # ─── Simple in-memory session store for OTP-verified sessions ─────────────────
@@ -580,7 +581,7 @@ async def apply_for_vacancy_web(
     if existing:
         raise HTTPException(status_code=409, detail="Already applied")
 
-    application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id)
+    application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id, resume_id=body.resume_id)
     db.add(application)
     candidate.applications_used = (candidate.applications_used or 0) + 1
     db.commit()
@@ -1098,6 +1099,107 @@ def update_candidate_profile(
     db.commit()
     db.refresh(candidate)
     return {"message": "Profile updated successfully"}
+
+
+@router.get("/candidates/cvs")
+def list_candidate_cvs(
+    wa_number: str,
+    session_token: str,
+    db: Session = Depends(get_db)
+):
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    resumes = db.query(CandidateResume).filter_by(candidate_id=candidate.id).order_by(CandidateResume.uploaded_at.desc()).all()
+    return {
+        "cvs": [
+            {
+                "id": r.id,
+                "filename": r.media_id.split("/")[-1].split("\\")[-1],
+                "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
+                "is_default": r.is_default
+            } for r in resumes
+        ]
+    }
+
+
+@router.post("/candidates/cvs")
+async def upload_candidate_cv(
+    wa_number: str = Form(...),
+    session_token: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+    from app.db.models import MAX_CANDIDATE_RESUMES
+    if resume_count >= MAX_CANDIDATE_RESUMES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_CANDIDATE_RESUMES} CVs allowed.")
+        
+    from app.services.storage import save_cv_from_upload_file
+    cv_path = await save_cv_from_upload_file(wa_number, file)
+    if not cv_path:
+        raise HTTPException(status_code=400, detail="Invalid file format. Only PDF and Document formats allowed.")
+        
+    is_default = (resume_count == 0)
+    resume = CandidateResume(
+        candidate_id=candidate.id,
+        media_id=cv_path,
+        is_default=is_default
+    )
+    db.add(resume)
+    if is_default and not candidate.cv_path:
+        candidate.cv_path = cv_path
+    db.commit()
+    return {"message": "CV uploaded successfully"}
+
+
+@router.delete("/candidates/cvs/{resume_id}")
+def delete_candidate_cv(
+    resume_id: int,
+    wa_number: str,
+    session_token: str,
+    db: Session = Depends(get_db)
+):
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    resume = db.query(CandidateResume).filter_by(id=resume_id, candidate_id=candidate.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="CV not found")
+        
+    # Check if used in any application
+    used_in_app = db.query(CandidateApplication).filter_by(resume_id=resume.id).first()
+    if used_in_app:
+        raise HTTPException(status_code=400, detail="Cannot delete this CV because it has been used for a job application.")
+        
+    import os
+    if os.path.exists(resume.media_id):
+        try:
+            os.remove(resume.media_id)
+        except Exception:
+            pass
+            
+    db.delete(resume)
+    
+    # Check if we deleted the candidate's core default cv_path
+    if candidate.cv_path == resume.media_id:
+        candidate.cv_path = None
+        # Promote another to default if available
+        next_resume = db.query(CandidateResume).filter_by(candidate_id=candidate.id).first()
+        if next_resume:
+            candidate.cv_path = next_resume.media_id
+            
+    db.commit()
+    return {"message": "CV deleted successfully"}
 
 
 @router.get("/candidates/applications")

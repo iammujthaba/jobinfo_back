@@ -5,6 +5,8 @@ Downloads CV files from WhatsApp Cloud API, validates format, saves to disk.
 import logging
 import os
 from pathlib import Path
+import uuid
+from fastapi import UploadFile
 
 from app.config import get_settings
 from app.whatsapp.client import wa_client
@@ -37,11 +39,36 @@ async def save_cv_from_whatsapp(
     upload_dir = Path(settings.media_upload_dir) / wa_number
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"cv{ext}"
+    filename = f"cv_{uuid.uuid4().hex[:8]}{ext}"
     dest = upload_dir / filename
     dest.write_bytes(raw_bytes)
 
     logger.info("Saved CV for %s → %s", wa_number, dest)
+    return str(dest)
+
+
+async def save_cv_from_upload_file(
+    wa_number: str,
+    upload_file: UploadFile,
+) -> str | None:
+    """
+    Save a CV uploaded via FastAPI UploadFile.
+    """
+    ext = _mime_to_ext(upload_file.content_type)
+    if ext not in ALLOWED_EXTENSIONS:
+        logger.warning("Rejected web CV upload from %s – bad mime type: %s", wa_number, upload_file.content_type)
+        return None
+
+    upload_dir = Path(settings.media_upload_dir) / wa_number
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"cv_{uuid.uuid4().hex[:8]}{ext}"
+    dest = upload_dir / filename
+    
+    content = await upload_file.read()
+    dest.write_bytes(content)
+
+    logger.info("Saved Web CV for %s → %s", wa_number, dest)
     return str(dest)
 
 

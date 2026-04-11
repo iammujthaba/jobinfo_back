@@ -158,6 +158,7 @@ class CandidateApplication(Base):
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(Integer, ForeignKey("candidate_table.id"), nullable=False)
     vacancy_id = Column(Integer, ForeignKey("job_vacancies.id"), nullable=False)
+    resume_id = Column(Integer, ForeignKey("candidate_resumes.id"), nullable=True)
     status = Column(
         SAEnum(ApplicationStatus, name="application_status"),
         default=ApplicationStatus.applied,
@@ -167,6 +168,7 @@ class CandidateApplication(Base):
 
     candidate = relationship("Candidate", back_populates="applications")
     vacancy = relationship("JobVacancy", back_populates="applications")
+    resume = relationship("CandidateResume")
 
 
 class GetHelpRequest(Base):
