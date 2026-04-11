@@ -128,18 +128,47 @@ class CandidateApplyRequest(BaseModel):
 
 # ─── Simple in-memory session store for OTP-verified sessions ─────────────────
 # For production use Redis or DB-backed sessions.
-_sessions: dict[str, dict] = {}  # token → {"wa_number": wa_number, "role": role}
+# Each entry: token → {"wa_number": str, "role": str, "created_at": datetime}
+_sessions: dict[str, dict] = {}
+_SESSION_TTL_SECONDS = 86400  # 24 hours
 
 
 def _create_session(wa_number: str, role: str = "recruiter") -> str:
     import secrets
     token = secrets.token_urlsafe(32)
-    _sessions[token] = {"wa_number": wa_number, "role": role}
+    _sessions[token] = {
+        "wa_number": wa_number,
+        "role": role,
+        "created_at": datetime.now(timezone.utc),
+    }
+    # Lazy cleanup: purge expired sessions when new ones are created
+    _cleanup_expired_sessions()
     return token
 
 
 def _get_session_data(token: str) -> dict | None:
-    return _sessions.get(token)
+    session = _sessions.get(token)
+    if not session:
+        return None
+    # Check TTL
+    created = session.get("created_at")
+    if created:
+        age = (datetime.now(timezone.utc) - created).total_seconds()
+        if age > _SESSION_TTL_SECONDS:
+            _sessions.pop(token, None)
+            return None
+    return session
+
+
+def _cleanup_expired_sessions() -> None:
+    """Remove all sessions older than _SESSION_TTL_SECONDS."""
+    now = datetime.now(timezone.utc)
+    expired = [
+        t for t, s in _sessions.items()
+        if s.get("created_at") and (now - s["created_at"]).total_seconds() > _SESSION_TTL_SECONDS
+    ]
+    for t in expired:
+        _sessions.pop(t, None)
 
 
 def _require_session(wa_number: str, session_token: str, expected_role: str = "recruiter"):
