@@ -368,43 +368,41 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         
         # Condition C: Both Roles
         if is_recruiter and is_seeker and is_seeker.registration_complete:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nWhether you're looking to hire great talent or find your next job, you can jump right back into your dashboards anytime!"
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nWhether you're looking to hire great talent or find your next job, you can jump right back into here anytime!"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "btn_my_vacancies", "title": "Recruiter Dashboard"},
-                    {"id": "ACTION_MY_APPLICATIONS", "title": "Seeker Dashboard"}
+                    {"id": "menu_seeker", "title": "Start as Seeker"},
+                    {"id": "menu_recruiter", "title": "Start as Recruiter"}
                 ]
             )
             
         # Condition A: Recruiter Only
         elif is_recruiter:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing, but your hiring doesn't have to stop. Tap below to check your latest candidate applications or post a new vacancy to reach more job seekers!"
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing,\nWhenever your are ready to review applicat application or post new vacancy. you can jump right back into here anytime!"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "btn_my_vacancies", "title": "My Dashboard"},
-                    {"id": "btn_post_vacancy", "title": "Post Vacancy"}
+                    {"id": "menu_recruiter", "title": "Get start"}
                 ]
             )
             
         # Condition B: Seeker Only
         elif is_seeker and is_seeker.registration_complete:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nDon't miss out on your next big opportunity! Tap below to track your current applications or discover fresh job openings."
+            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nWhenever your are ready to track your current applications or discover fresh job openings. you can jump right back into here anytime!"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
-                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"}
+                    {"id": "menu_seeker", "title": "Get start"}
                 ]
             )
             
         # Condition D: Unregistered / None
         else:
-            text = "Welcome to JobInfo! 🚀 We noticed you haven't set up your profile yet. It only takes a minute to get started. Let us know what you're looking for to unlock jobs or hire great staff!"
+            text = "Welcome to JobInfo! 🚀 We noticed you haven't set up your profile yet. It only takes a minute to get started. Let us know what you're looking for a job or hire great staff!"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,

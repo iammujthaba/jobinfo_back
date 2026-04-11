@@ -97,7 +97,8 @@ async def _send_cv_required_message(
             "It only takes a moment and dramatically boosts your chances! 🚀"
         ),
         buttons=[
-            {"id": f"UPLOAD_NEW_CV_{job_code}", "title": "📤 Upload CV Now"},
+            {"id": f"UPLOAD_NEW_CV_{job_code}", "title": "📤 Upload New CV"},
+            {"id": f"MANAGE_CV_{job_code}", "title": "📁 Choose Existing"},
         ],
         footer_text="Upload once — apply to multiple roles with the same CV",
     )
@@ -623,11 +624,8 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
 
     # ── CV-required gate ───────────────────────────────────────────────────
     if vacancy.cv_required:
-        resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
-        has_cv = resume_count > 0 or bool(candidate.cv_path)
-        if not has_cv:
-            await _send_cv_required_message(wa_number, vacancy, job_code)
-            return
+        await _send_cv_required_message(wa_number, vacancy, job_code)
+        return
 
     existing = (
         db.query(CandidateApplication)
@@ -763,9 +761,18 @@ async def handle_select_cv(
         .first()
     )
     if existing:
-        await wa_client.send_text(
+        status_value = str(getattr(existing.status, 'value', existing.status)).title()
+        await wa_client.send_buttons(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{getattr(existing.status, 'value', existing.status)}_",
+            body_text=(
+                f"ℹ️ *Already Applied*\n\n"
+                f"You have already submitted an application for the *{vacancy.job_title.strip()}* position.\n\n"
+                f"📌 *Current Status:* _{status_value}_\n\n"
+                "Would you like to explore other roles that match your profile?"
+            ),
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            ],
         )
         return
 
@@ -1085,15 +1092,15 @@ async def _send_application_summary_cta(
     lines.append(f"  {emoji}  *{v.job_title.strip()}*{company} · _{label}_")
 
     lines.append(
-        "\nTo view your complete history and track live recruiter updates, "
-        "log in to your secure dashboard below 👇"
+        "\nTo view your profile strength and manage your CV's, "
+        "log in to your dashboard below 👇"
     )
 
     await wa_client.send_cta_url(
         to=wa_number,
         header_text="📊 Your Application Summary",
         body_text="\n".join(lines),
-        button_text="View Full Dashboard",
+        button_text="View Your Profile",
         url=_generate_magic_dashboard_url(wa_number, db),
         footer_text="Updated in real-time",
     )
