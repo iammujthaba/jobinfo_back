@@ -407,8 +407,8 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "menu_recruiter", "title": "I am a Recruiter"},
-                    {"id": "menu_seeker", "title": "I am a Job Seeker"}
+                    {"id": "menu_recruiter", "title": "I am Recruiter"},
+                    {"id": "menu_seeker", "title": "I am Job Seeker"}
                 ]
             )
             

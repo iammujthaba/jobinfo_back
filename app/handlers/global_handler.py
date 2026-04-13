@@ -17,8 +17,8 @@ HELP_MENU_TEXT = (
     "👋 *Welcome to JobInfo!*\n\n"
     "Connecting Kerala's job seekers and recruiters via WhatsApp.\n\n"
     "What would you like to do?\n\n"
-    "🏢 *I am a Recruiter* – Post a job vacancy\n"
-    "🔍 *I am a Job Seeker* – Find jobs and apply\n"
+    "🏢 *I am Recruiter* – Post a job vacancy\n"
+    "🔍 *I am Job Seeker* – Find jobs and apply\n"
     "ℹ️ *Help/Support* – Get support from our team\n\n"
     "_JobInfo – Kerala's First WhatsApp powered Career Portal_"
 )
@@ -26,12 +26,12 @@ HELP_MENU_TEXT = (
 HOW_IT_WORKS_TEXT = (
     "ℹ️ *How JobInfo Works* 🚀\n\n"
     "*For Recruiters or Employers:* 🏢\n"
-    "1️⃣ Send *I am a Recruiter* to set up your Recruiter profile in seconds.\n"
+    "1️⃣ Send *I am Recruiter* to set up your Recruiter profile in seconds.\n"
     "2️⃣ Post jobs instantly via whatsapp or jobinfo.pro website\n"
     "3️⃣ Use your Web Dashboard on whatsapp or jobinfo.pro to review applicants.\n"
     "4️⃣ Shortlist or review applications and Contact candidates directly via WhatsApp! or call them\n\n"
     "*For Job Seekers:* 🎓\n"
-    "1️⃣ Send *I am a Job Seeker* to set up your profile.\n"
+    "1️⃣ Send *I am Job Seeker* to set up your profile.\n"
     "2️⃣ Get matched with best jobs right here on WhatsApp.\n"
     "3️⃣ Apply with one tap and upload a CV only when needed.\n"
     "4️⃣ Track your applications anytime using your Dashboard.\n\n"
@@ -45,8 +45,8 @@ async def send_help_menu(wa_number: str) -> None:
         to=wa_number,
         body_text=HELP_MENU_TEXT,
         buttons=[
-            {"id": "menu_recruiter", "title": "I am a Recruiter"},
-            {"id": "menu_seeker", "title": "I am a Job Seeker"},
+            {"id": "menu_recruiter", "title": "I am Recruiter"},
+            {"id": "menu_seeker", "title": "I am Job Seeker"},
             {"id": "help_support", "title": "Help/Support"},
         ],
     )
