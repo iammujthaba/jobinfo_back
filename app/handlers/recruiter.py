@@ -212,7 +212,6 @@ async def handle_post_vacancy_flow_completion(
         job_code=job_code,
         recruiter_id=recruiter.id,
         job_category=flow_data.get("job_category", ""),
-        company_name=flow_data.get("company_name") or recruiter.company_name,
         district_region=flow_data.get("district_region", ""),
         exact_location=flow_data.get("exact_location", ""),
         job_title=flow_data.get("job_title", ""),

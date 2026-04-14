@@ -57,7 +57,6 @@ class JobVacancy(Base):
     recruiter_id = Column(Integer, ForeignKey("recruiter_table.id"), nullable=False)
 
     job_category = Column(String(50), nullable=False)
-    company_name = Column(String(200))
     district_region = Column(String(100), nullable=False)
     exact_location = Column(String(200), nullable=False)
     job_title = Column(String(200), nullable=False)

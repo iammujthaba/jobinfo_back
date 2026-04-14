@@ -81,7 +81,6 @@ class RecruiterVacancyRequest(BaseModel):
     wa_number: str
     session_token: str   # from OTP verify step
     job_category: str
-    company_name: str | None = None
     district_region: str
     exact_location: str
     job_title: str
@@ -393,7 +392,7 @@ def list_vacancies(
                 "job_code": v.job_code,
                 "job_category": v.job_category,
                 "job_title": v.job_title,
-                "company_name": v.company_name,
+                "company_name": v.recruiter.company_name if v.recruiter else "",
                 "district_region": v.district_region,
                 "exact_location": v.exact_location,
                 "salary_range": v.salary_range,
@@ -454,7 +453,7 @@ def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
         "id": vacancy.id,
         "job_code": vacancy.job_code,
         "job_title": vacancy.job_title,
-        "company_name": vacancy.company_name,
+        "company_name": vacancy.recruiter.company_name if vacancy.recruiter else "",
         "district_region": vacancy.district_region,
         "exact_location": vacancy.exact_location,
         "job_description": vacancy.job_description,
@@ -507,7 +506,6 @@ async def post_vacancy_web(
         job_code=job_code,
         recruiter_id=recruiter.id,
         job_category=body.job_category,
-        company_name=body.company_name or recruiter.company_name,
         district_region=body.district_region,
         exact_location=body.exact_location,
         job_title=body.job_title,
@@ -660,7 +658,7 @@ def recruiter_dashboard(
             "job_code": v.job_code,
             "job_category": v.job_category,
             "job_title": v.job_title,
-            "company_name": v.company_name or "",
+            "company_name": recruiter.company_name or "",
             "district_region": v.district_region,
             "exact_location": v.exact_location,
             "job_mode": v.job_mode,
@@ -992,7 +990,6 @@ class EditVacancyRequest(BaseModel):
     session_token: str
     vacancy_id: int
     job_category: str
-    company_name: str | None = None
     district_region: str
     exact_location: str
     job_title: str
@@ -1040,7 +1037,6 @@ def edit_rejected_vacancy(
     # Apply edits
     vacancy.job_category = body.job_category
     vacancy.job_title = body.job_title
-    vacancy.company_name = (body.company_name or "").strip() or None
     vacancy.district_region = body.district_region
     vacancy.exact_location = body.exact_location
     vacancy.job_description = (body.job_description or "").strip() or None
@@ -1270,7 +1266,7 @@ def get_candidate_applications(
             "status": app.status.value,
             "applied_at": app.applied_at,
             "job_title": vac.job_title,
-            "company": vac.company_name,
+            "company": vac.recruiter.company_name if vac.recruiter else "",
             "location": vac.district_region,
             "job_code": vac.job_code
         })

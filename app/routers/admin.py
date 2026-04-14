@@ -236,7 +236,7 @@ async def api_list_vacancies(
             "job_code": v.job_code,
             "job_category": v.job_category,
             "job_title": v.job_title,
-            "company_name": v.company_name or "",
+            "company_name": v.recruiter.company_name if v.recruiter else "",
             "district_region": v.district_region,
             "exact_location": v.exact_location,
             "job_description": v.job_description or "",
@@ -334,8 +334,8 @@ async def api_share_vacancy_to_channel(
         f"",
         f"🏷️ *{vacancy.job_title}*",
     ]
-    if vacancy.company_name:
-        lines.append(f"🏢 Company: {vacancy.company_name}")
+    if vacancy.recruiter and vacancy.recruiter.company_name:
+        lines.append(f"🏢 Company: {vacancy.recruiter.company_name}")
     lines.append(f"📍 Location: {vacancy.exact_location}, {vacancy.district_region}")
     if vacancy.salary_range:
         lines.append(f"💰 Salary: {vacancy.salary_range}")
@@ -849,7 +849,7 @@ async def api_seeker_applications(
 ):
     """Returns the micro view stats for a specific seeker's applications."""
     from sqlalchemy import func as sqlfunc
-    from app.db.models import Candidate, CandidateApplication, JobVacancy
+    from app.db.models import Candidate, CandidateApplication, JobVacancy, Recruiter
 
     # Allow exact match or format edge cases
     candidate = db.query(Candidate).filter(Candidate.wa_number.like(f"%{wa_number.replace('+','')} ")).first()
@@ -862,11 +862,12 @@ async def api_seeker_applications(
     app_rows = (
         db.query(
             JobVacancy.job_title,
-            JobVacancy.company_name,
+            Recruiter.company_name,
             CandidateApplication.status,
             CandidateApplication.applied_at
         )
         .join(JobVacancy, JobVacancy.id == CandidateApplication.vacancy_id)
+        .join(Recruiter, JobVacancy.recruiter_id == Recruiter.id)
         .filter(CandidateApplication.candidate_id == candidate.id)
         .order_by(CandidateApplication.applied_at.desc())
         .all()

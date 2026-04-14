@@ -207,7 +207,6 @@ def seed():
                 job_code=code,
                 recruiter_id=recruiter.id,
                 job_category=data["job_category"],
-                company_name=data["company_name"],
                 district_region=data["district_region"],
                 exact_location=data["exact_location"],
                 job_title=data["job_title"],

@@ -11,10 +11,6 @@
       "title": "Job Details (1/2)",
       "terminal": false,
       "data": {
-        "default_company_name": {
-          "type": "string",
-          "__example__": "Acme Corp"
-        },
         "location_options": {
           "type": "array",
           "items": {
@@ -53,13 +49,6 @@
                   { "id": "gulf_abroad",            "title": "Gulf / Abroad Jobs" },
                   { "id": "other",                  "title": "Other / General" }
                 ]
-              },
-              {
-                "type": "TextInput",
-                "name": "company_name",
-                "label": "Company / Shop Name",
-                "input-type": "text",
-                "required": true
               },
               {
                 "type": "Dropdown",
@@ -176,7 +165,6 @@
               "name": "complete",
               "payload": {
                 "job_category":       "${screen.JOB_DETAILS_ONE.form.job_category}",
-                "company_name":       "${screen.JOB_DETAILS_ONE.form.company_name}",
                 "district_region":    "${screen.JOB_DETAILS_ONE.form.district_region}",
                 "exact_location":     "${screen.JOB_DETAILS_ONE.form.exact_location}",
                 "job_title":          "${form.job_title}",
