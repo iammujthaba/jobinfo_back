@@ -365,7 +365,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     magic_url = _generate_magic_dashboard_url(recruiter, db)
     private_body = (
         f"✅ Your vacancy for *{vacancy.job_title.strip()}* has been approved and now live at Jobinfo Career Portal!\n\n"
-        f"*Title:* {vacancy.job_title}\n"
+        f"*Position:* {vacancy.job_title}\n"
         f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
         f"*Job Code:* {vacancy.job_code}\n"
         f"*Status:* {vacancy.status}⏳\n\n"

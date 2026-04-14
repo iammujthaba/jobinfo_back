@@ -113,7 +113,7 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
 def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
     return (
         f"✅ *Vacancy Posted Successfully!*\n\n"
-        f"*Title:* {vacancy.job_title}\n"
+        f"*Position:* {vacancy.job_title}\n"
         f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
         f"*Job Code:* {vacancy.job_code}\n"
         f"*Status:* {vacancy.status}⏳\n\n"
@@ -126,7 +126,7 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
     return (
         f"🔔 *New Vacancy Submitted – Action Required*\n\n"
         f"*Job Code:* {vacancy.job_code}\n"
-        f"*Title:* {vacancy.job_title}\n"
+        f"*Position:* {vacancy.job_title}\n"
         f"*Company:* {recruiter.company_name or '—'}\n"
         f"*Location:* {vacancy.exact_location}, {vacancy.district_region}\n"
         f"*Recruiter:* {recruiter.company_name}\n"
@@ -257,7 +257,7 @@ def seeker_job_detail_body(vacancy: JobVacancy) -> str:
     description = _truncate(vacancy.job_description, 200)
     return (
         f"📋 *Job Details*\n\n"
-        f"*Title:* {vacancy.job_title}\n"
+        f"*Position:* {vacancy.job_title}\n"
         f"*Company:* {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
         f"*Location:* {vacancy.district_region}\n"
         f"*Mode:* {job_mode}\n"

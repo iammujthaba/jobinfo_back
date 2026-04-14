@@ -125,7 +125,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             body_text=(
                 "*🚀Apply for this position via WhatsApp!*\n\n"
                 f"📋 *{vacancy.job_title.strip()}*\n"
-                f"🏢 {vacancy.company_name or '—'}\n"
+                f"🏢 {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
                 f"📍 {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
                 "To apply, you need to setup your profile. It's quick and free!\n\n"
                 "Tap *Register Now* to complete application or *Get Help* if you need assistance."
@@ -160,9 +160,18 @@ async def _show_job_apply_prompt(
         .first()
     )
     if existing:
-        await wa_client.send_text(
+        status_value = str(getattr(existing.status, 'value', existing.status)).title()
+        await wa_client.send_buttons(
             to=wa_number,
-            body=f"ℹ️ You have already applied for *{vacancy.job_title.strip()}*. Status: _{existing.status.value}_",
+            body_text=(
+                f"ℹ️ *Already Applied*\n\n"
+                f"You have already submitted an application for the *{vacancy.job_title.strip()}* position.\n\n"
+                f"📌 *Current Status:* _{status_value}_\n\n"
+                "Would you like to explore other roles that match your profile?"
+            ),
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            ],
         )
         return
 
@@ -1090,7 +1099,7 @@ async def _send_application_summary_cta(
     v = latest.vacancy
     emoji = status_emoji.get(latest.status.value, "❓")
     label = status_label.get(latest.status.value, latest.status.value.title())
-    company = f" — {v.company_name}" if v.company_name else ""
+    company = f" — {v.recruiter.company_name}" if v.recruiter and v.recruiter.company_name else ""
 
     lines.append("*Your Latest Application:*")
     lines.append(f"  {emoji}  *{v.job_title.strip()}*{company} · _{label}_")
@@ -1305,7 +1314,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
 
         body = (
             f"🏷️ *{job.job_title.strip()}*\n"
-            f"🏢 {job.company_name or 'Company'}\n"
+            f"🏢 {job.recruiter.company_name if job.recruiter else 'Company'}\n"
             f"📍 {job.exact_location or '—'}, {job.district_region or '—'}\n"
             f"💰 {salary_line}"
             f"🎓 {exp_line}"
