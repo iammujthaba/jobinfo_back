@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException # NEW: added HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse # NEW: required to send files to the browser
+from fastapi.responses import FileResponse, RedirectResponse # NEW: required to send files to the browser
 
 from app.config import get_settings
 from app.db.base import init_db
@@ -111,3 +111,17 @@ async def serve_cv(
         media_type="application/pdf",
         content_disposition_type="inline",
     )
+
+
+# ── Social Media Redirects ────────────────────────────────────────────────────
+
+@app.get("/join", tags=["Social Media"])
+@app.get("/community", include_in_schema=False)
+async def redirect_to_community():
+    """Redirects to the JobInfo WhatsApp Community."""
+    return RedirectResponse(url="https://chat.whatsapp.com/LyXe66jhlD4HXmmXV6RXsz")
+
+@app.get("/channel", tags=["Social Media"])
+async def redirect_to_channel():
+    """Redirects to the JobInfo WhatsApp Channel."""
+    return RedirectResponse(url="https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k")
