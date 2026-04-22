@@ -299,9 +299,7 @@ async def api_share_vacancy_to_channel(
     """
     from app.whatsapp.client import wa_client
 
-    channel_wa_number = getattr(settings, "wa_channel_id", None)
-    if not channel_wa_number:
-        raise HTTPException(status_code=500, detail="WA_CHANNEL_ID is not configured in environment settings.")
+    channel_wa_number = "7025962179"
 
     conv_state = db.query(ConversationState).filter_by(wa_number=channel_wa_number).first()
     
@@ -355,7 +353,7 @@ async def api_share_vacancy_to_channel(
     ]
 
     try:
-        await wa_client.send_to_channel(body="\n".join(lines))
+        await wa_client.send_to_channel(body="\n".join(lines), to=channel_wa_number)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"WhatsApp API error: {e}")
 
@@ -942,6 +940,7 @@ async def api_visitors_stats(
             ConversationState.state,
             ConversationState.updated_at,
             ConversationState.last_user_message_at,
+            ConversationState.context,
             cand_subq.c.wa_number.label("cand_reg"),
             rec_subq.c.wa_number.label("rec_reg")
         )
@@ -956,11 +955,13 @@ async def api_visitors_stats(
     for v in recent_visitors:
         is_registered = bool(v.cand_reg or v.rec_reg)
         last_active = v.last_user_message_at or v.updated_at
+        ctx = v.context or {}
         visitors_list.append({
             "wa_number": v.wa_number,
             "state": v.state,
             "last_active": last_active.isoformat() if last_active else None,
-            "is_registered": is_registered
+            "is_registered": is_registered,
+            "is_messaged": bool(ctx.get("help_messaged_at"))
         })
 
     return {
@@ -1023,7 +1024,8 @@ async def api_unregistered_recovery_list(
             ConversationState.wa_number,
             ConversationState.state,
             ConversationState.updated_at,
-            ConversationState.last_user_message_at
+            ConversationState.last_user_message_at,
+            ConversationState.context
         )
         .outerjoin(cand_subq, ConversationState.wa_number == cand_subq.c.wa_number)
         .outerjoin(rec_subq, ConversationState.wa_number == rec_subq.c.wa_number)
@@ -1062,10 +1064,12 @@ async def api_unregistered_recovery_list(
             else:
                 buckets["7+ Days"] += 1
 
+        ctx = r.context or {}
         leads.append({
             "wa_number": r.wa_number,
             "state": r.state if r.state else "idle",
-            "last_active": last_active.isoformat() if last_active else None
+            "last_active": last_active.isoformat() if last_active else None,
+            "is_messaged": bool(ctx.get("help_messaged_at"))
         })
 
     return {
@@ -1074,6 +1078,36 @@ async def api_unregistered_recovery_list(
         },
         "table_data": leads
     }
+
+@router.patch("/api/users/{wa_number}/help_status")
+async def api_update_help_status(
+    wa_number: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Toggles the 'help_messaged_at' state in the visitor's JSON context."""
+    from datetime import datetime, timezone
+    from app.db.models import ConversationState
+
+    state_obj = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    if not state_obj:
+        state_obj = db.query(ConversationState).filter(ConversationState.wa_number.like(f"%{wa_number.replace('+','')} ")).first()
+    if not state_obj:
+        raise HTTPException(status_code=404, detail="Visitor state not found")
+
+    ctx = dict(state_obj.context or {})
+    is_messaged = payload.get("is_messaged", False)
+
+    if is_messaged:
+        ctx["help_messaged_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        ctx.pop("help_messaged_at", None)
+
+    state_obj.context = ctx  # reassign to trigger SQLAlchemy mutation tracking
+    db.commit()
+
+    return {"success": True, "help_messaged": is_messaged}
 
 @router.get("/api/dual-users/stats")
 async def api_dual_users_stats(

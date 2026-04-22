@@ -275,12 +275,12 @@ class WhatsAppClient:
 
 
 
-    async def send_to_channel(self, body: str) -> dict:
+    async def send_to_channel(self, body: str, to: str = None) -> dict:
         """
         Send a text message to the WhatsApp Channel managed by this phone number.
         The channel_id must be the channel's phone-number ID (set as WA_CHANNEL_ID in .env).
         """
-        channel_id = settings.wa_channel_id if hasattr(settings, "wa_channel_id") else None
+        channel_id = to or (settings.wa_channel_id if hasattr(settings, "wa_channel_id") else None)
         if not channel_id:
             raise ValueError("WA_CHANNEL_ID is not configured in .env")
         return await self._post({

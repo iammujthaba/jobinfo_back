@@ -391,13 +391,12 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     await wa_client.send_text(to=recruiter.wa_number, body=recruiter_card)
 
     # ── Message C: Admin/channel card — wa.me deep-link (native WA button) ───
-    if settings.admin_wa_number:
-        admin_card = job_alert_text_body(
-            vacancy,
-            apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
-            is_admin=True,
-        )
-        await wa_client.send_text(to=settings.admin_wa_number, body=admin_card)
+    admin_card = job_alert_text_body(
+        vacancy,
+        apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
+        is_admin=True,
+    )
+    await wa_client.send_text(to="7025962179", body=admin_card)
 
 
 async def notify_recruiter_rejection(

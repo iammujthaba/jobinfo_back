@@ -321,7 +321,7 @@ async def handle_gethelp_button(wa_number: str, db: Session) -> None:
     )
 
     await wa_client.send_text(
-        to="917025962175",
+        to="917025962179",
         body=admin_alert
     )
 
