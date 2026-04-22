@@ -396,7 +396,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
         apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
         is_admin=True,
     )
-    await wa_client.send_text(to="7025962179", body=admin_card)
+    await wa_client.send_text(to="917025962179", body=admin_card)
 
 
 async def notify_recruiter_rejection(

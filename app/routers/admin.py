@@ -299,7 +299,7 @@ async def api_share_vacancy_to_channel(
     """
     from app.whatsapp.client import wa_client
 
-    channel_wa_number = "7025962179"
+    channel_wa_number = "917025962179"
 
     conv_state = db.query(ConversationState).filter_by(wa_number=channel_wa_number).first()
     
