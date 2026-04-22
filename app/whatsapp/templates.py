@@ -178,7 +178,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
     )
 
     return (
-        f"🚀 *Jobinfo - New Job Alert*\n\n"
+        f"🚀 *New Job Alert - Jobinfo*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
         f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"

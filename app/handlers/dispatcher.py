@@ -368,7 +368,12 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         
         # Condition C: Both Roles
         if is_recruiter and is_seeker and is_seeker.registration_complete:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nWhether you're looking to hire great talent or find your next job, you can jump right back into here anytime!"
+            text = (
+                "👋 *Welcome back to JobInfo!*\n\n"
+                "Thank you for using Jobinfo! 🤝 It looks like your session was paused.\n\n"
+                "Whether you're looking to hire great talent or find your next job, "
+                "you can jump right back in anytime by clicking below 👇"
+            )
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
@@ -380,29 +385,46 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             
         # Condition A: Recruiter Only
         elif is_recruiter:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing,\nWhenever your are ready to review applicat application or post new vacancy. you can jump right back into here anytime!"
+            text = (
+                "👋 *Welcome back to JobInfo!*\n\n"
+                "Thank you for using Jobinfo! 🤝 It looks like your session was paused.\n\n"
+                "Whenever you're ready to review job applications or post a new vacancy, "
+                "you can jump right back in anytime by clicking below 👇"
+            )
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "menu_recruiter", "title": "Get start"}
+                    {"id": "menu_recruiter", "title": "Get Start"}
                 ]
             )
             
         # Condition B: Seeker Only
         elif is_seeker and is_seeker.registration_complete:
-            text = "_Hi there!_ Thank you for using JobInfo!🤝\n\nIt's look like your session is pausing.\nWhenever your are ready to track your current applications or discover fresh job openings. you can jump right back into here anytime!"
+            text = (
+                "👋 *Welcome back to JobInfo!*\n\n"
+                "Thank you for using Jobinfo! 🤝 It looks like your session was paused.\n\n"
+                "Whenever you're ready to track your current applications or discover fresh job openings, "
+                "you can jump right back in anytime by clicking below 👇"
+            )
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "menu_seeker", "title": "Get start"}
+                    {"id": "menu_seeker", "title": "Get Start"}
                 ]
             )
             
         # Condition D: Unregistered / None
         else:
-            text = "Welcome to JobInfo! 🚀 We noticed you haven't set up your profile yet. It only takes a minute to get started. Let us know what you're looking for a job or hire great staff!"
+            text = (
+                "👋 *Welcome back to JobInfo!*\n\n"
+                "We noticed you haven't set up your profile yet. It only takes a minute to get started and unlock Kerala's best job network.\n\n"
+                "👇 *What brings you here today?*\n"
+                "Please choose an option below to proceed.\n\n"
+                "👉 _Tip: Follow our official channel for daily job alerts!_\n"
+                "🔗 https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
+            )
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=text,

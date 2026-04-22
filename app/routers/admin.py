@@ -327,29 +327,28 @@ async def api_share_vacancy_to_channel(
 
     apply_link = f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}"
 
+    salary = vacancy.salary_range or "Not specified"
+    job_mode = vacancy.job_mode or "—"
+    experience = vacancy.experience_required or "—"
+    description = vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else "") if vacancy.job_description else "—"
+
     lines = [
-        f"🚀 *New Job Alert – JobInfo*",
+        f"🚀 *Jobinfo - New Job Alert*",
         f"",
-        f"🏷️ *{vacancy.job_title}*",
-    ]
-    if vacancy.recruiter and vacancy.recruiter.company_name:
-        lines.append(f"🏢 Company: {vacancy.recruiter.company_name}")
-    lines.append(f"📍 Location: {vacancy.exact_location}, {vacancy.district_region}")
-    if vacancy.salary_range:
-        lines.append(f"💰 Salary: {vacancy.salary_range}")
-    if vacancy.experience_required:
-        lines.append(f"🎓 Experience: {vacancy.experience_required}")
-    if vacancy.job_description:
-        lines.append(f"")
-        lines.append(f"📋 *About the Role:*")
-        lines.append(vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else ""))
-    lines += [
-        f"",
-        f"📲 *Apply now:* {apply_link}",
+        f"🏷️ Position: *{vacancy.job_title.strip()}*",
+        f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter and vacancy.recruiter.company_name else '—'}",
+        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}",
+        f"💰 Salary: {salary}",
+        f"💼 Mode: {job_mode}",
+        f"🎓 Experience: {experience}",
         f"🔖 Job Code: {vacancy.job_code}",
         f"",
-        f"_JobInfo – Kerala's WhatsApp Job Platform_",
-        f"🌐 jobinfo.pro | 📢 Follow our channel for daily jobs",
+        f"📋 *About the Role:*",
+        description,
+        f"",
+        f"📲 Apply now: {apply_link}",
+        f"",
+        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
     ]
 
     try:
