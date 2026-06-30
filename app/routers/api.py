@@ -24,6 +24,7 @@ from app.whatsapp.templates import (
     application_confirmation_body,
     registration_confirmation_body,
     vacancy_confirmation_body,
+    vacancy_poster_preview_body,
     admin_vacancy_alert_body,
 )
 from app.handlers.recruiter import _generate_admin_magic_url
@@ -997,6 +998,7 @@ class EditVacancyRequest(BaseModel):
     job_mode: str
     salary_range: str | None = None
     experience_required: str | None = None
+    cv_required: bool | None = None  # Optional — preserves existing value if omitted
 
 
 @router.post("/recruiters/vacancy/edit")
@@ -1005,8 +1007,9 @@ def edit_rejected_vacancy(
     db: Session = Depends(get_db),
 ):
     """
-    Allows a recruiter to edit a rejected vacancy and resubmit it for review.
-    - Only works on vacancies with status=rejected
+    Allows a recruiter to edit and resubmit a vacancy that is not yet approved.
+    - Works on vacancies with status: pending, rejected, or revoked
+    - Approved vacancies are fully locked (returns 403)
     - Resets status to pending and marks is_edited=True
     - Admin will see an 'Edited' badge to distinguish re-submissions
     """
@@ -1022,34 +1025,53 @@ def edit_rejected_vacancy(
     if not vacancy:
         raise HTTPException(status_code=404, detail="Vacancy not found or access denied")
 
-    if vacancy.status != "rejected":
+    if vacancy.status == "approved":
         raise HTTPException(
-            status_code=400,
-            detail=f"Only rejected vacancies can be edited. Current status: {vacancy.status}"
+            status_code=403,
+            detail="Approved vacancies cannot be edited."
         )
 
     # Validate required fields
-    if not body.job_title:
-        raise HTTPException(status_code=422, detail="Title is required")
-    if not body.exact_location:
-        raise HTTPException(status_code=422, detail="Location is required")
+    if not body.job_title or not body.job_title.strip():
+        raise HTTPException(status_code=422, detail="Job title is required")
+    if not body.exact_location or not body.exact_location.strip():
+        raise HTTPException(status_code=422, detail="Exact location is required")
+    if not body.district_region or not body.district_region.strip():
+        raise HTTPException(status_code=422, detail="District / Region is required")
+    if not body.job_category or not body.job_category.strip():
+        raise HTTPException(status_code=422, detail="Job category is required")
+    if not body.job_mode or not body.job_mode.strip():
+        raise HTTPException(status_code=422, detail="Job mode is required")
 
-    # Apply edits
-    vacancy.job_category = body.job_category
-    vacancy.job_title = body.job_title
-    vacancy.district_region = body.district_region
-    vacancy.exact_location = body.exact_location
-    vacancy.job_description = (body.job_description or "").strip() or None
-    vacancy.job_mode = body.job_mode
-    vacancy.salary_range = (body.salary_range or "").strip() or None
+    # Apply all field edits to the ORM object (in-memory; not yet committed)
+    vacancy.job_category        = body.job_category.strip()
+    vacancy.job_title           = body.job_title.strip()
+    vacancy.district_region     = body.district_region.strip()
+    vacancy.exact_location      = body.exact_location.strip()
+    vacancy.job_description     = (body.job_description or "").strip() or None
+    vacancy.job_mode            = body.job_mode.strip()
+    vacancy.salary_range        = (body.salary_range or "").strip() or None
     vacancy.experience_required = (body.experience_required or "").strip() or None
+    if body.cv_required is not None:          # Preserve existing value if field was omitted
+        vacancy.cv_required = body.cv_required
 
-    # Reset to pending for re-review, clear rejection reason, mark as edited
-    vacancy.status = "pending"
+    # ── Concurrency safeguard ────────────────────────────────────────────────
+    # Expire only the 'status' column so SQLAlchemy issues a fresh SELECT on
+    # next access — catching any admin approval that occurred while this
+    # request was in-flight, without nested savepoints or row-locking.
+    db.expire(vacancy, ["status"])
+    if vacancy.status == "approved":
+        raise HTTPException(
+            status_code=409,
+            detail="This vacancy was approved while you were editing. Your changes were not saved."
+        )
+
+    # All clear — stamp edit metadata and commit
+    vacancy.status           = "pending"
     vacancy.rejection_reason = None
-    vacancy.is_edited = True
-    vacancy.edited_at = datetime.now(timezone.utc)
-    vacancy.approved_at = None
+    vacancy.is_edited        = True
+    vacancy.edited_at        = datetime.now(timezone.utc)
+    vacancy.approved_at      = None
 
     db.commit()
     db.refresh(vacancy)
@@ -1059,7 +1081,7 @@ def edit_rejected_vacancy(
         "vacancy_id": vacancy.id,
         "job_code": vacancy.job_code,
         "status": vacancy.status,
-        "message": "Vacancy resubmitted for review. You will be notified via WhatsApp once reviewed.",
+        "message": "Vacancy updated and queued for review. You will be notified via WhatsApp once reviewed.",
     }
 
 

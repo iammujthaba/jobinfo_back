@@ -20,6 +20,7 @@ from app.whatsapp.templates import (
     admin_vacancy_alert_body,
     recruiter_welcome_components,
     vacancy_confirmation_body,
+    vacancy_poster_preview_body,
     registration_confirmation_body,
     vacancy_approved_body,
     vacancy_rejected_body,
@@ -227,13 +228,22 @@ async def handle_post_vacancy_flow_completion(
 
     magic_url = _generate_magic_dashboard_url(recruiter, db)
 
-    # Notify recruiter
+    # Notify recruiter: interactive CTA with dashboard link
     await wa_client.send_interactive_cta_url(
         to=wa_number,
         body_text=vacancy_confirmation_body(vacancy),
         button_display_text="View Dashboard",
         button_url=magic_url
     )
+
+    # Send live preview poster immediately after confirmation
+    try:
+        await wa_client.send_text(
+            to=wa_number,
+            body=vacancy_poster_preview_body(vacancy),
+        )
+    except Exception as preview_err:
+        logger.warning("Live preview send failed after WhatsApp flow submission: %s", preview_err)
 
     # Notify admin (personal WA number) — interactive CTA with magic link
     if settings.admin_wa_number:

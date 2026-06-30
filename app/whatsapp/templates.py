@@ -201,6 +201,43 @@ def vacancy_rejected_body(vacancy: JobVacancy) -> str:
     )
 
 
+def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
+    """
+    Generates a 'Live Preview' poster showing the recruiter exactly what their
+    approved vacancy will look like when broadcast to job seekers.
+
+    Intentionally contains no raw URLs — the edit CTA refers the recruiter back
+    to the Dashboard button in the previous interactive message.
+
+    Used by:
+      - app/handlers/recruiter.py  (after WhatsApp Flow vacancy submission)
+      - app/routers/api.py         (after web dashboard vacancy edit commit)
+    """
+    salary      = _label(SALARY_LABELS,     vacancy.salary_range)
+    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
+    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
+    description = _truncate(vacancy.job_description, 200)
+    company     = vacancy.recruiter.company_name if vacancy.recruiter else "—"
+    cv_note     = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
+
+    return (
+        f"👀 *Live Preview — Your Vacancy Poster*\n\n"
+        f"This is exactly what your approved poster will look like:\n"
+        f"{'─' * 30}\n"
+        f"🚀 *New Job Alert - Jobinfo*\n\n"
+        f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+        f"🏢 Company: {company}\n"
+        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
+        f"💰 Salary: {salary}\n"
+        f"💼 Mode: {job_mode}\n"
+        f"🎓 Experience: {experience}\n"
+        f"📄 CV Required: {cv_note}\n"
+        f"🔖 Job Code: {vacancy.job_code}\n\n"
+        f"📋 *About the Role:*\n{description}\n\n"
+        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_\n"
+        f"{'─' * 30}\n\n"
+        f"_📝 Need to make changes? Click the Dashboard button in the previous message to edit your poster._"
+    )
 
 
 # ─── Job seeker templates ────────────────────────────────────────────────────
