@@ -82,6 +82,16 @@ class JobVacancy(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     approved_at = Column(DateTime(timezone=True))
 
+    # ── Milestone notification tracking ───────────────────────────────────────
+    # milestone_pending_count  : highest application count milestone reached
+    #                            (updated on every milestone hit, regardless of
+    #                            whether the recruiter was in the 24h window)
+    # milestone_notified_count : highest milestone for which a WA message was
+    #                            actually sent successfully.
+    # catch-up fires when: pending_count > notified_count AND window is open.
+    milestone_pending_count  = Column(Integer, default=0, nullable=False)
+    milestone_notified_count = Column(Integer, default=0, nullable=False)
+
     recruiter = relationship("Recruiter", back_populates="vacancies")
     applications = relationship("CandidateApplication", back_populates="vacancy")
 

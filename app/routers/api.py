@@ -28,6 +28,7 @@ from app.whatsapp.templates import (
     admin_vacancy_alert_body,
 )
 from app.handlers.recruiter import _generate_admin_magic_url
+from app.services.milestone import dispatch_milestone_notification
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -613,6 +614,10 @@ async def apply_for_vacancy_web(
     db.add(application)
     candidate.applications_used = (candidate.applications_used or 0) + 1
     db.commit()
+
+    # Smart milestone notification (non-blocking; 24h window checked inside)
+    app_count = db.query(CandidateApplication).filter_by(vacancy_id=vacancy.id).count()
+    dispatch_milestone_notification(vacancy, app_count, db)
 
     await wa_client.send_text(
         to=body.wa_number,

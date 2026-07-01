@@ -27,6 +27,7 @@ from app.whatsapp.templates import (
     registration_confirmation_body,
     seeker_job_detail_body,
 )
+from app.services.milestone import dispatch_milestone_notification
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -579,6 +580,10 @@ async def handle_apply_now_button(
     candidate.applications_used = (candidate.applications_used or 0) + 1
     db.commit()
 
+    # Smart milestone notification (non-blocking; 24h window checked inside)
+    app_count = db.query(CandidateApplication).filter_by(vacancy_id=vacancy.id).count()
+    dispatch_milestone_notification(vacancy, app_count, db)
+
     # Confirmation with 'View Applications' button
     await wa_client.send_buttons(
         to=wa_number,
@@ -662,14 +667,18 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
     candidate.applications_used = (candidate.applications_used or 0) + 1
     db.commit()
 
+    # Smart milestone notification (non-blocking; 24h window checked inside)
+    app_count = db.query(CandidateApplication).filter_by(vacancy_id=vacancy.id).count()
+    dispatch_milestone_notification(vacancy, app_count, db)
+
     await wa_client.send_buttons(
         to=wa_number,
-        header_text="✅ Application Submitted!",
+        header_text="Application Submitted!",
         body_text=(
             f"We've sent your profile to the recruiter for *{vacancy.job_title.strip()}* "
             "without a CV attached.\n\n"
-            "💡 *Pro tip:* Uploading a tailored CV for future applications "
-            "can dramatically boost your chances. Best of luck! 🍀"
+            "Pro tip: Uploading a tailored CV for future applications "
+            "can dramatically boost your chances. Best of luck!"
         ),
         buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
     )
