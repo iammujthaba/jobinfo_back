@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.models import ConversationState, JobVacancy, Recruiter
 
 logger = logging.getLogger(__name__)
-DASHBOARD_URL = "https://jobinfo.club/recruiter-dashboard"
+DASHBOARD_URL = "https://jobinfo.pro/recruiter-dashboard"
 
 
 def is_a_milestone(count):

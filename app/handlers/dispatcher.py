@@ -101,12 +101,14 @@ def _track_user_message(wa_number: str, db: Session) -> None:
     db.commit()
 
     # Catch-up: if this sender is a recruiter with deferred milestone
-    # notifications, deliver them now that the 24h window is guaranteed open.
+    # or ad-stop notifications, deliver them now that the 24h window is guaranteed open.
     try:
         from app.services.milestone import check_and_send_catchup
+        from app.services.ad_lifecycle import check_and_send_ad_stop_catchup
         check_and_send_catchup(wa_number, db)
+        check_and_send_ad_stop_catchup(wa_number, db)
     except Exception as catchup_err:
-        logger.warning("Milestone catch-up failed for %s: %s", wa_number, catchup_err)
+        logger.warning("Milestone/Ad-stop catch-up failed for %s: %s", wa_number, catchup_err)
 
 
 async def _handle_text(wa_number: str, text: str, db: Session) -> None:

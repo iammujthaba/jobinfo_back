@@ -82,6 +82,15 @@ class JobVacancy(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     approved_at = Column(DateTime(timezone=True))
 
+    # ── Ad lifecycle — orthogonal to the admin approval pipeline ─────────────────
+    is_active = Column(Boolean, default=True, nullable=False)
+    # last_enabled_at: defaults to approved_at on first approval; resets to now()
+    # every time the recruiter clicks 'Re-run Ad'. This is the clock for 30-day expiry.
+    last_enabled_at = Column(DateTime(timezone=True))
+    stopped_at = Column(DateTime(timezone=True))   # when the ad was stopped (manual or auto)
+    # Catch-up notification flag (mirrors milestone pattern — bool sufficient, one event)
+    ad_stop_notification_pending = Column(Boolean, default=False, nullable=False)
+
     # ── Milestone notification tracking ───────────────────────────────────────
     # milestone_pending_count  : highest application count milestone reached
     #                            (updated on every milestone hit, regardless of

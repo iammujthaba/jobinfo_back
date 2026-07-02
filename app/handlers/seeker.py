@@ -47,6 +47,9 @@ CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "other": "General",
 }
 
+WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
+
+
 def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
     state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
     if not state:
@@ -110,10 +113,18 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     Entry point: called when a user taps an apply link (e.g. Apply JC:1002).
     """
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
-    if not vacancy or vacancy.status != "approved":
-        await wa_client.send_text(
+    from app.services.ad_lifecycle import ensure_ad_active
+    if not vacancy or not ensure_ad_active(vacancy, db):
+        await wa_client.send_cta_url(
             to=wa_number,
-            body="❌ This vacancy is no longer available. Browse latest jobs in our channel.",
+            header_text="Position No Longer Available",
+            body_text=(
+                "Sorry, this position is no longer accepting applications.\n"
+                "The role may have been filled or the ad has stopped.\n\n"
+                "Browse our latest open roles on the JobInfo channel for fresh opportunities!"
+            ),
+            button_text="Explore Channel",
+            url=WHATSAPP_CHANNEL_URL,
         )
         return
 
@@ -559,6 +570,21 @@ async def handle_apply_now_button(
     if not candidate or not vacancy:
         return
 
+    from app.services.ad_lifecycle import ensure_ad_active
+    if not ensure_ad_active(vacancy, db):
+        await wa_client.send_cta_url(
+            to=wa_number,
+            header_text="Position No Longer Available",
+            body_text=(
+                "Sorry, this position is no longer accepting applications.\n"
+                "The role may have been filled or the ad has stopped.\n\n"
+                "Browse our latest open roles on the JobInfo channel for fresh opportunities!"
+            ),
+            button_text="Explore Channel",
+            url=WHATSAPP_CHANNEL_URL,
+        )
+        return
+
     # Double-check plan is still active
     if not _has_active_plan(candidate):
         await wa_client.send_text(to=wa_number, body=plan_renewal_body(candidate))
@@ -630,6 +656,21 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
 
     if not candidate or not vacancy:
         await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+
+    from app.services.ad_lifecycle import ensure_ad_active
+    if not ensure_ad_active(vacancy, db):
+        await wa_client.send_cta_url(
+            to=wa_number,
+            header_text="Position No Longer Available",
+            body_text=(
+                "Sorry, this position is no longer accepting applications.\n"
+                "The role may have been filled or the ad has expired.\n\n"
+                "Browse our latest open roles on the JobInfo channel for fresh opportunities!"
+            ),
+            button_text="Explore Channel",
+            url=WHATSAPP_CHANNEL_URL,
+        )
         return
 
     if not _has_active_plan(candidate):
@@ -1144,8 +1185,6 @@ def _infer_job_category(vacancy: JobVacancy) -> str:
 # Seeker Main Menu & New Button Handlers
 # ═══════════════════════════════════════════════════════════════════════════════
 
-WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
-
 
 def _generate_magic_dashboard_url(wa_number: str, db: Session) -> str:
     import secrets
@@ -1272,6 +1311,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
     matching_jobs = (
         db.query(JobVacancy)
         .filter(JobVacancy.status == "approved")
+        .filter(JobVacancy.is_active == True)
         .filter(func.lower(JobVacancy.job_category) == category)
         .order_by(JobVacancy.approved_at.desc())
         .limit(5)
@@ -1283,6 +1323,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         matching_jobs = (
             db.query(JobVacancy)
             .filter(JobVacancy.status == "approved")
+            .filter(JobVacancy.is_active == True)
             .order_by(JobVacancy.approved_at.desc())
             .limit(3)
             .all()

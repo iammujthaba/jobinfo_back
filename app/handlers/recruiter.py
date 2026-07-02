@@ -22,7 +22,6 @@ from app.whatsapp.templates import (
     vacancy_confirmation_body,
     vacancy_poster_preview_body,
     registration_confirmation_body,
-    vacancy_approved_body,
     vacancy_rejected_body,
     job_alert_text_body,
 )
@@ -365,6 +364,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
         return
     vacancy.status = "approved"
     vacancy.approved_at = datetime.now(timezone.utc)
+    vacancy.last_enabled_at = vacancy.approved_at
     db.commit()
 
     recruiter = vacancy.recruiter
@@ -374,12 +374,13 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     # ── Message A: Private recruiter alert with magic dashboard link ────────
     magic_url = _generate_magic_dashboard_url(recruiter, db)
     private_body = (
-        f"✅ Your vacancy for *{vacancy.job_title.strip()}* has been approved and now live at Jobinfo Career Portal!\n\n"
-        f"*Position:* {vacancy.job_title}\n"
+        f"✅ *Vacancy Approved!*\n\n"
+        f"Your vacancy for *{vacancy.job_title.strip()}* is now live on Jobinfo Career Portal!\n\n"
         f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
-        f"*Job Code:* {vacancy.job_code}\n"
-        f"*Status:* {vacancy.status}⏳\n\n"
-        f"👇 You can forward the following message to your contacts to gather more applicants!\n\n"
+        f"*Job Code:* {vacancy.job_code}\n\n"
+        f"⏳ *Ad Duration:* Your ad will automatically stop after 30 days. You can re-run it\n"
+        f"anytime from your recruiter dashboard.\n\n"
+        f"👇 Share the message below to find more applicants!\n\n"
         f"_Thank you for choosing *jobinfo!*_"
     )
     try:

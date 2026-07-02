@@ -6,7 +6,7 @@ job seeker registration, and job applications.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -378,7 +378,7 @@ def list_vacancies(
     job_title: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(JobVacancy).filter_by(status="approved")
+    query = db.query(JobVacancy).filter_by(status="approved", is_active=True)
     if district_region:
         query = query.filter(JobVacancy.district_region.ilike(f"%{district_region}%"))
     if job_title:
@@ -419,6 +419,7 @@ def suggest_locations(
     locations = (
         db.query(JobVacancy.district_region)
         .filter(JobVacancy.status == "approved")
+        .filter(JobVacancy.is_active == True)
         .filter(JobVacancy.district_region.ilike(f"{query.strip()}%"))
         .distinct()
         .limit(10)
@@ -438,6 +439,7 @@ def suggest_titles(
     titles = (
         db.query(JobVacancy.job_title)
         .filter(JobVacancy.status == "approved")
+        .filter(JobVacancy.is_active == True)
         .filter(JobVacancy.job_title.ilike(f"{query.strip()}%"))
         .distinct()
         .limit(10)
@@ -448,7 +450,7 @@ def suggest_titles(
 
 @router.get("/vacancies/{vacancy_id}")
 def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
-    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved").first()
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved", is_active=True).first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Vacancy not found")
     return {
@@ -604,6 +606,10 @@ async def apply_for_vacancy_web(
     if not vacancy:
         raise HTTPException(status_code=404, detail="Vacancy not found")
 
+    from app.services.ad_lifecycle import ensure_ad_active
+    if not ensure_ad_active(vacancy, db):
+        raise HTTPException(status_code=403, detail="Position no longer available")
+
     existing = db.query(CandidateApplication).filter_by(
         candidate_id=candidate.id, vacancy_id=vacancy.id
     ).first()
@@ -631,6 +637,12 @@ async def apply_for_vacancy_web(
 class RecruiterDashboardRequest(BaseModel):
     wa_number: str
     session_token: str
+
+class ToggleAdRequest(BaseModel):
+    wa_number: str
+    session_token: str
+    vacancy_id: int
+    action: str   # "stop" or "rerun"
 
 
 @router.post("/recruiters/dashboard")
@@ -675,6 +687,9 @@ def recruiter_dashboard(
             "rejection_reason": v.rejection_reason,
             "created_at": v.created_at.isoformat() if v.created_at else None,
             "approved_at": v.approved_at.isoformat() if v.approved_at else None,
+            "is_active": v.is_active,
+            "last_enabled_at": v.last_enabled_at.isoformat() if v.last_enabled_at else None,
+            "stopped_at": v.stopped_at.isoformat() if v.stopped_at else None,
             "application_count": app_count,
         })
 
@@ -696,6 +711,46 @@ def recruiter_dashboard(
         },
         "summary": {**counts, "total_applications": total_applications},
         "vacancies": vacancy_list,
+    }
+
+@router.post("/recruiters/vacancy/toggle-ad")
+def toggle_vacancy_ad(
+    body: ToggleAdRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Start or stop an ad."""
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    vacancy = db.query(JobVacancy).filter_by(id=body.vacancy_id, recruiter_id=recruiter.id).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found")
+
+    if body.action == "stop":
+        if vacancy.status != "approved":
+            raise HTTPException(status_code=403, detail="Only live approved ads can be stopped")
+        if not vacancy.is_active:
+            raise HTTPException(status_code=409, detail="Ad is already stopped")
+    elif body.action == "rerun":
+        if vacancy.status != "approved":
+            raise HTTPException(status_code=403, detail="This vacancy is not approved")
+        if vacancy.is_active:
+            raise HTTPException(status_code=409, detail="Ad is already running")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    from app.services.ad_lifecycle import toggle_ad
+    toggle_ad(vacancy, db, body.action, background_tasks=background_tasks)
+
+    return {
+        "is_active": vacancy.is_active,
+        "last_enabled_at": vacancy.last_enabled_at.isoformat() if vacancy.last_enabled_at else None,
+        "stopped_at": vacancy.stopped_at.isoformat() if vacancy.stopped_at else None,
+        "message": f"Ad {'stopped' if body.action == 'stop' else 'running'}",
     }
 
 
@@ -833,6 +888,8 @@ def list_vacancy_applications(
             "job_code": vacancy.job_code,
             "job_title": vacancy.job_title,
             "district_region": vacancy.district_region,
+            "status": vacancy.status,
+            "is_active": vacancy.is_active,
         },
         "total": len(results),
         "applications": results,

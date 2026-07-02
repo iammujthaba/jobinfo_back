@@ -136,24 +136,6 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
     )
 
 
-def vacancy_approved_body(vacancy: JobVacancy) -> str:
-    salary      = _label(SALARY_LABELS,     vacancy.salary_range)
-    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
-    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
-    description = _truncate(vacancy.job_description, 200)
-    return (
-        f"🎉 *Vacancy Approved!*\n\n"
-        f"*{vacancy.job_title.strip()}* ({vacancy.job_code}) has been approved and is now live.\n\n"
-        f"💼 *Mode:* {job_mode}\n"
-        f"🎓 *Experience:* {experience}\n"
-        f"💰 *Salary:* {salary}\n\n"
-        f"📋 *Description:*\n{description}\n\n"
-        f"Job seekers can apply via:\n"
-        f"{settings.app_base_url}/api/apply/{vacancy.job_code}\n\n"
-        f"_JobInfo_"
-    )
-
-
 def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_admin: bool = False) -> str:
     """
     Forwardable plain-text job card sent on vacancy approval.
@@ -223,7 +205,7 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
     return (
         f"👀 *Live Preview — Your Vacancy Poster*\n\n"
         f"This is exactly what your approved poster will look like:\n"
-        f"{'─' * 30}\n"
+        f"{'─' * 26}\n"
         f"🚀 *New Job Alert - Jobinfo*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"🏢 Company: {company}\n"
@@ -235,7 +217,7 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
         f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_\n"
-        f"{'─' * 30}\n\n"
+        f"{'─' * 26}\n\n"
         f"_📝 Need to make changes? Click the Dashboard button in the previous message to edit your poster._"
     )
 
