@@ -158,7 +158,14 @@ def check_and_send_ad_stop_catchup(wa_number: str, db: Session):
         .all()
     )
     for vacancy in pending_vacancies:
-        _fire_cta_send(wa_number, "Ad Stopped", _get_stop_body(vacancy, "auto"))
+        # Determine if it was stopped automatically (ran for >= 30 days) or manually
+        reason = "manual"
+        clock = vacancy.last_enabled_at or vacancy.approved_at
+        if clock and vacancy.stopped_at:
+            if (_make_aware(vacancy.stopped_at) - _make_aware(clock)).days >= 30:
+                reason = "auto"
+
+        _fire_cta_send(wa_number, "Ad Stopped", _get_stop_body(vacancy, reason))
         vacancy.ad_stop_notification_pending = False
     
     if pending_vacancies:
