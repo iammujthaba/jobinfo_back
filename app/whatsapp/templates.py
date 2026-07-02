@@ -166,7 +166,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
     )
 
     return (
-        f"🚀 *New Job Alert - Jobinfo*\n\n"
+        f"🚀 *New Job Alert*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
         f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
@@ -212,7 +212,7 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
         f"👀 *Preview of Your Vacancy Poster*\n\n"
         f"_This is exactly how your vacancy poster will look like:_\n"
         f"{'─' * 25}\n"
-        f"🚀 *New Job Alert - Jobinfo*\n\n"
+        f"🚀 *New Job Alert*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"🏢 Company: {company}\n"
         f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"

@@ -333,7 +333,7 @@ async def api_share_vacancy_to_channel(
     description = vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else "") if vacancy.job_description else "—"
 
     lines = [
-        f"🚀 *Jobinfo - New Job Alert*",
+        f"🚀 *New Job Alert*",
         f"",
         f"🏷️ Position: *{vacancy.job_title.strip()}*",
         f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter and vacancy.recruiter.company_name else '—'}",
