@@ -111,3 +111,25 @@ def _reset_state(wa_number: str, db: Session) -> None:
         state.state = "idle"
         state.context = {}
         db.commit()
+
+async def route_unrecognized_message(wa_number: str, db: Session) -> None:
+    """
+    Personalized fallback router.
+    Routes registered users directly to their respective menus, 
+    otherwise falls back to the generic help menu.
+    """
+    from app.db.models import Recruiter, Candidate
+    from app.handlers import recruiter as recruiter_handler
+    from app.handlers import seeker as seeker_handler
+
+    # Quick indexed DB lookups
+    is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first() is not None
+    is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first() is not None
+
+    if is_recruiter and not is_seeker:
+        await recruiter_handler.start(wa_number, db)
+    elif is_seeker and not is_recruiter:
+        await seeker_handler.send_seeker_greeting_menu(wa_number)
+    else:
+        # Either unregistered, or dual-role (give them a choice)
+        await send_help_menu(wa_number)

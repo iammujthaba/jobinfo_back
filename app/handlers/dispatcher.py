@@ -199,8 +199,8 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
         candidate_handler_renew(wa_number, db)
         return
 
-    # Default: show help menu
-    await global_handler.send_help_menu(wa_number)
+    # Default: personalized routing
+    await global_handler.route_unrecognized_message(wa_number, db)
 
 
 async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
