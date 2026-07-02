@@ -66,13 +66,19 @@ def _label(mapping: dict[str, str], raw_value: str | None, fallback: str = "—"
     return mapping.get(raw_value, raw_value)
 
 
-def _truncate(text: str | None, max_len: int = 200) -> str:
+def _truncate(text: str | None, max_len: int = 600) -> str:
     """Return *text* safely truncated to *max_len* characters.
 
     Appends '...' when the text is cut.  Returns '—' for None/empty input.
     """
     if not text:
         return "—"
+        
+    # Safety rail: Meta API restricts template parameters to 1024 characters.
+    # We strictly enforce a ceiling of 1000 characters here to prevent API rejection.
+    if max_len > 1000:
+        max_len = 1000
+
     if len(text) <= max_len:
         return text
     return text[:max_len] + "..."
@@ -149,7 +155,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
     salary      = _label(SALARY_LABELS,     vacancy.salary_range)
     experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
     job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
-    description = _truncate(vacancy.job_description, 200)
+    description = _truncate(vacancy.job_description, 600)
 
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
@@ -198,14 +204,14 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
     salary      = _label(SALARY_LABELS,     vacancy.salary_range)
     experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
     job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
-    description = _truncate(vacancy.job_description, 200)
+    description = _truncate(vacancy.job_description, 600)
     company     = vacancy.recruiter.company_name if vacancy.recruiter else "—"
     cv_note     = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
 
     return (
-        f"👀 *Live Preview — Your Vacancy Poster*\n\n"
-        f"This is exactly what your approved poster will look like:\n"
-        f"{'─' * 26}\n"
+        f"👀 *Preview of Your Vacancy Poster*\n\n"
+        f"_This is exactly how your vacancy poster will look like:_\n"
+        f"{'─' * 25}\n"
         f"🚀 *New Job Alert - Jobinfo*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"🏢 Company: {company}\n"
@@ -217,7 +223,7 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
         f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_\n"
-        f"{'─' * 26}\n\n"
+        f"{'─' * 25}\n\n"
         f"_📝 Need to make changes? Click the Dashboard button in the previous message to edit your poster._"
     )
 
@@ -273,7 +279,7 @@ def seeker_job_detail_body(vacancy: JobVacancy) -> str:
     salary      = _label(SALARY_LABELS,     vacancy.salary_range,       fallback="Not disclosed")
     experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
     job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
-    description = _truncate(vacancy.job_description, 200)
+    description = _truncate(vacancy.job_description, 600)
     return (
         f"📋 *Job Details*\n\n"
         f"*Position:* {vacancy.job_title}\n"
