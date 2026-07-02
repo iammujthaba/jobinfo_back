@@ -13,7 +13,14 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import ConversationState, JobVacancy, Recruiter, CandidateApplication
+from app.db.models import (
+    Candidate,
+    ConversationState,
+    JobVacancy,
+    Recruiter,
+    AdminNotificationQueue,
+    CandidateApplication,
+)
 from app.services.job_code import generate_job_code
 from app.whatsapp.client import wa_client
 from app.whatsapp.templates import (
@@ -244,22 +251,42 @@ async def handle_post_vacancy_flow_completion(
     except Exception as preview_err:
         logger.warning("Live preview send failed after WhatsApp flow submission: %s", preview_err)
 
-    # Notify admin (personal WA number) — interactive CTA with magic link
-    if settings.admin_wa_number:
-        try:
-            admin_url = _generate_admin_magic_url(db)
-            await wa_client.send_interactive_cta_url(
-                to=settings.admin_wa_number,
-                body_text=admin_vacancy_alert_body(vacancy, recruiter),
-                button_display_text="Review Vacancy",
-                button_url=admin_url,
+    # Notify admins for new submission
+    admin_url = _generate_admin_magic_url(db)
+    for admin_num in settings.submission_admins:
+        admin_state = db.query(ConversationState).filter_by(wa_number=admin_num).first()
+        is_active = False
+        if admin_state and admin_state.last_user_message_at:
+            last = admin_state.last_user_message_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - last).total_seconds() < 86_400:
+                is_active = True
+
+        if is_active:
+            try:
+                await wa_client.send_interactive_cta_url(
+                    to=admin_num,
+                    body_text=admin_vacancy_alert_body(vacancy, recruiter),
+                    button_display_text="Review Vacancy",
+                    button_url=admin_url,
+                )
+            except Exception as e:
+                logger.warning("Admin CTA alert failed for %s, falling back to text: %s", admin_num, e)
+                await wa_client.send_text(
+                    to=admin_num,
+                    body=admin_vacancy_alert_body(vacancy, recruiter),
+                )
+        else:
+            logger.info("Admin %s outside 24h window. Queueing new_submission alert for %s", admin_num, vacancy.job_code)
+            queue_item = AdminNotificationQueue(
+                wa_number=admin_num,
+                notification_type="new_submission",
+                vacancy_id=vacancy.id
             )
-        except Exception as e:
-            logger.warning("Admin CTA alert failed, falling back to text: %s", e)
-            await wa_client.send_text(
-                to=settings.admin_wa_number,
-                body=admin_vacancy_alert_body(vacancy, recruiter),
-            )
+            db.add(queue_item)
+    
+    db.commit()
 
     _set_state(wa_number, "recruiter_idle", {}, db)
 
@@ -407,7 +434,32 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
         apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
         is_admin=True,
     )
-    await wa_client.send_text(to="917025962179", body=admin_card)
+    
+    for admin_num in settings.approval_admins:
+        admin_state = db.query(ConversationState).filter_by(wa_number=admin_num).first()
+        is_active = False
+        if admin_state and admin_state.last_user_message_at:
+            last = admin_state.last_user_message_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - last).total_seconds() < 86_400:
+                is_active = True
+
+        if is_active:
+            try:
+                await wa_client.send_text(to=admin_num, body=admin_card)
+            except Exception as e:
+                logger.warning("Failed to send approval alert to %s: %s", admin_num, e)
+        else:
+            logger.info("Admin %s outside 24h window. Queueing approved_vacancy alert for %s", admin_num, vacancy.job_code)
+            queue_item = AdminNotificationQueue(
+                wa_number=admin_num,
+                notification_type="approved_vacancy",
+                vacancy_id=vacancy.id
+            )
+            db.add(queue_item)
+            
+    db.commit()
 
 
 async def notify_recruiter_rejection(

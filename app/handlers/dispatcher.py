@@ -40,6 +40,7 @@ async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTask
             msg_type = message.get("type")
 
             _track_user_message(wa_number, db)
+            await _check_and_send_admin_catchup(wa_number, db)
             background_tasks.add_task(send_delayed_session_menu, wa_number)
 
             logger.info("Incoming %s from %s", msg_type, wa_number)
@@ -109,6 +110,69 @@ def _track_user_message(wa_number: str, db: Session) -> None:
         check_and_send_ad_stop_catchup(wa_number, db)
     except Exception as catchup_err:
         logger.warning("Milestone/Ad-stop catch-up failed for %s: %s", wa_number, catchup_err)
+
+async def _check_and_send_admin_catchup(wa_number: str, db: Session) -> None:
+    """Processes pending admin notifications and lazily cleans old queue items."""
+    try:
+        from app.db.models import AdminNotificationQueue, JobVacancy
+        from datetime import datetime, timedelta, timezone
+        from app.whatsapp.templates import admin_vacancy_alert_body, job_alert_text_body
+        from app.handlers.recruiter import _generate_admin_magic_url
+        from app.whatsapp.client import wa_client
+        from app.config import get_settings
+
+        # 1. Lazy Cleanup: delete records older than 10 days
+        ten_days_ago = datetime.now(timezone.utc) - timedelta(days=10)
+        db.query(AdminNotificationQueue).filter(AdminNotificationQueue.created_at < ten_days_ago).delete()
+        db.commit()
+
+        # 2. Process pending items for THIS user
+        pending = db.query(AdminNotificationQueue).filter_by(wa_number=wa_number).all()
+        if not pending:
+            return
+
+        settings = get_settings()
+        
+        for item in pending:
+            vacancy = db.query(JobVacancy).filter_by(id=item.vacancy_id).first()
+            if not vacancy:
+                continue
+
+            if item.notification_type == "new_submission":
+                admin_url = _generate_admin_magic_url(db)
+                try:
+                    await wa_client.send_interactive_cta_url(
+                        to=wa_number,
+                        body_text=admin_vacancy_alert_body(vacancy, vacancy.recruiter),
+                        button_display_text="Review Vacancy",
+                        button_url=admin_url,
+                    )
+                except Exception as e:
+                    logger.warning("Admin catch-up CTA failed for %s, falling back to text: %s", wa_number, e)
+                    await wa_client.send_text(
+                        to=wa_number,
+                        body=admin_vacancy_alert_body(vacancy, vacancy.recruiter),
+                    )
+
+            elif item.notification_type == "approved_vacancy":
+                admin_card = job_alert_text_body(
+                    vacancy,
+                    apply_url=f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
+                    is_admin=True,
+                )
+                try:
+                    await wa_client.send_text(to=wa_number, body=admin_card)
+                except Exception as e:
+                    logger.warning("Admin catch-up approved alert failed for %s: %s", wa_number, e)
+
+            # Delete the processed item
+            db.delete(item)
+
+        db.commit()
+        logger.info("Processed %d admin catch-up notifications for %s", len(pending), wa_number)
+        
+    except Exception as e:
+        logger.error("Error in admin catch-up logic for %s: %s", wa_number, e)
 
 
 async def _handle_text(wa_number: str, text: str, db: Session) -> None:

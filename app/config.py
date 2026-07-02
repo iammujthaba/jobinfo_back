@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     verify_token: str = ""
 
     # Admin
-    admin_wa_number: str = ""      # personal number for vacancy alerts
+    admin_wa_number: str = ""      # kept for legacy references, but deprecated
+    admin_submission_alert_numbers: str = "917025962175,917560967682"
+    admin_approval_alert_numbers: str = "917025962179,919400610270"
     business_wa_number: str = ""   # the API-enabled number
     wa_channel_id: str = ""        # WhatsApp Channel phone-number ID for broadcasts
     admin_username: str = "admin"
@@ -47,6 +49,14 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        
+    @property
+    def submission_admins(self) -> list[str]:
+        return [n.strip() for n in self.admin_submission_alert_numbers.split(",") if n.strip()]
+        
+    @property
+    def approval_admins(self) -> list[str]:
+        return [n.strip() for n in self.admin_approval_alert_numbers.split(",") if n.strip()]
 
 
 @lru_cache()

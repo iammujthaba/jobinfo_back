@@ -246,3 +246,13 @@ class MagicLink(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class AdminNotificationQueue(Base):
+    __tablename__ = "admin_notification_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    wa_number = Column(String(20), index=True, nullable=False) # The specific admin's number
+    notification_type = Column(String(50), nullable=False)     # "new_submission" or "approved_vacancy"
+    vacancy_id = Column(Integer, ForeignKey("job_vacancies.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

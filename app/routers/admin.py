@@ -299,28 +299,6 @@ async def api_share_vacancy_to_channel(
     """
     from app.whatsapp.client import wa_client
 
-    channel_wa_number = "917025962179"
-
-    conv_state = db.query(ConversationState).filter_by(wa_number=channel_wa_number).first()
-    
-    if not conv_state or not conv_state.last_user_message_at:
-        raise HTTPException(
-            status_code=400,
-            detail="The 24-hour free message window has expired. Please send a message from the designated channel number to the bot to reactivate it."
-        )
-
-    now_utc = datetime.now(timezone.utc)
-    last_msg_time = conv_state.last_user_message_at
-    if last_msg_time.tzinfo is None:
-        last_msg_time = last_msg_time.replace(tzinfo=timezone.utc)
-
-    time_diff = (now_utc - last_msg_time).total_seconds()
-    if time_diff > 86400:  # 24 hours in seconds
-        raise HTTPException(
-            status_code=400,
-            detail="The 24-hour free message window has expired. Please send a message from the designated channel number to the bot to reactivate it."
-        )
-
     vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved").first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Approved vacancy not found")
@@ -351,10 +329,43 @@ async def api_share_vacancy_to_channel(
         f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
     ]
 
-    try:
-        await wa_client.send_to_channel(body="\n".join(lines), to=channel_wa_number)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"WhatsApp API error: {e}")
+    body_text = "\n".join(lines)
+    
+    from app.config import get_settings
+    from app.db.models import AdminNotificationQueue
+    settings = get_settings()
+    
+    success_count = 0
+    queued_count = 0
+
+    for admin_num in settings.approval_admins:
+        admin_state = db.query(ConversationState).filter_by(wa_number=admin_num).first()
+        is_active = False
+        if admin_state and admin_state.last_user_message_at:
+            last = admin_state.last_user_message_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - last).total_seconds() < 86_400:
+                is_active = True
+
+        if is_active:
+            try:
+                # Using send_text instead of send_to_channel just in case
+                await wa_client.send_text(body=body_text, to=admin_num)
+                success_count += 1
+            except Exception as e:
+                # Log but continue
+                pass
+        else:
+            queue_item = AdminNotificationQueue(
+                wa_number=admin_num,
+                notification_type="approved_vacancy",
+                vacancy_id=vacancy.id
+            )
+            db.add(queue_item)
+            queued_count += 1
+            
+    db.commit()
 
     return {"success": True, "vacancy_id": vacancy_id, "job_code": vacancy.job_code}
 
