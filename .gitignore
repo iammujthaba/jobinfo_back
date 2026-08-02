@@ -1,6 +1,7 @@
 # Secrets & Environment Variables
 .env
 .env.*
+!.env.example
 
 # Virtual Environments
 venv/
@@ -14,6 +15,7 @@ __pycache__/
 *.pyd
 
 # Local Databases (Prevents overwriting your live database)
+jobinfo.db
 *.sqlite3
 *.db
 
@@ -41,7 +43,6 @@ keys/
 *.pem
 
 # test files (local development and testing purposes only)
-seed_jobs.py
-reset_tester.py
 seed_test_jobs.py
 stop24hour-free-window-for-test.py
+delete_user.py
