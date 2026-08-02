@@ -43,3 +43,5 @@ keys/
 # test files
 seed_jobs.py
 reset_tester.py
+seed_test_jobs.py
+stop24hour-free-window-for-test.py
