@@ -18,43 +18,6 @@
 
 ---
 
-## Quick Start
-
-### 1. Clone and install dependencies
-
-```bash
-cd e:\jobinfo\jobinfo_back_1.0
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-pip install -r requirements.txt
-```
-
-### 2. Configure environment
-
-```bash
-copy .env.example .env
-# Edit .env with your real values
-```
-
-Key variables to fill in:
-
-| Variable | Description |
-|---|---|
-| `WHATSAPP_TOKEN` | Meta permanent access token |
-| `WHATSAPP_PHONE_ID` | Phone number ID from Meta Developer Portal |
-| `APP_SECRET` | Meta App Secret (for webhook signature verification) |
-| `VERIFY_TOKEN` | Any random string you choose – set same in Meta Webhook config |
-| `DATABASE_URL` | `postgresql://user:pass@host:5432/jobinfo_db` |
-| `ADMIN_WA_NUMBER` | Your personal WhatsApp number (country code, no +) |
-| `BUSINESS_WA_NUMBER` | The API-enabled WhatsApp number |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Admin panel login |
-
-### 3. Run the server
-
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
 The app auto-creates tables and seeds subscription plans on first startup.
 
 ---
@@ -64,29 +27,11 @@ The app auto-creates tables and seeds subscription plans on first startup.
 WhatsApp Flows UI must be built in [Meta's Flow Builder](https://business.facebook.com/wa/manage/flows/).
 You need to create **4 flows** and paste their IDs into the handler files:
 
-| Flow | Handler file | Constant |
-|---|---|---|
-| Recruiter Registration | `app/handlers/recruiter.py` | `FLOW_ID_RECRUITER_REGISTER` |
-| Post Vacancy | `app/handlers/recruiter.py` | `FLOW_ID_POST_VACANCY` |
-| Seeker Registration | `app/handlers/seeker.py` | `FLOW_ID_SEEKER_REGISTER` |
-| CV Update | `app/handlers/seeker.py` | `FLOW_ID_CV_UPDATE` |
-
-Fields your flows must collect (and return in the Flow completion payload):
-
-**Recruiter Registration**: `name`, `company`, `location`, `email`  
-**Post Vacancy**: `title`, `company`, `location`, `description`, `salary_range`, `experience_required`, `contact_info`  
-**Seeker Registration**: `name`, `location`, `skills`, `media_id` (CV file), `mime_type`  
-**CV Update**: `media_id`, `mime_type`
-
 ---
 
 ## WhatsApp Templates Setup
 
 Create and submit these templates for Meta approval:
-
-| Template Name | Type | Variables |
-|---|---|---|
-| `jobinfo_recruiter_welcome` | Utility | `{{1}}` name, `{{2}}` company, `{{3}}` location + 2 quick-reply buttons |
 
 ---
 
@@ -98,20 +43,6 @@ Create and submit these templates for Meta approval:
 4. Subscribe to: `messages`
 
 > **NGROK for local testing**: `ngrok http 8000` → use the HTTPS URL as your Callback URL.
-
----
-
-## Admin Panel
-
-Browse to: `http://localhost:8000/admin`  
-Login with `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`
-
-| Page | URL |
-|---|---|
-| Dashboard | `/admin` |
-| Vacancies | `/admin/vacancies` |
-| Callbacks | `/admin/callbacks` |
-| Abandoned Signups | `/admin/abandoned` |
 
 ---
 
