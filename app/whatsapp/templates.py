@@ -224,7 +224,7 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
         f"📋 *About the Role:*\n{description}\n\n"
         f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_\n"
         f"{'─' * 25}\n\n"
-        f"_📝 Need to make changes? Click the Dashboard button in the previous message to edit your poster._"
+        f"_📝 Want to make changes? Click the 'View Dashboard' button above to edit your poster._"
     )
 
 

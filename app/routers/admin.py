@@ -330,11 +330,9 @@ async def api_share_vacancy_to_channel(
     ]
 
     body_text = "\n".join(lines)
-    
-    from app.config import get_settings
+
     from app.db.models import AdminNotificationQueue
-    settings = get_settings()
-    
+
     success_count = 0
     queued_count = 0
 
@@ -351,7 +349,7 @@ async def api_share_vacancy_to_channel(
         if is_active:
             try:
                 # Using send_text instead of send_to_channel just in case
-                await wa_client.send_text(body=body_text, to=admin_num)
+                await wa_client.send_text(to=admin_num, body=body_text)
                 success_count += 1
             except Exception as e:
                 # Log but continue
