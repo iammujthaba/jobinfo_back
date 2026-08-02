@@ -40,8 +40,8 @@ htmlcov/
 keys/
 *.pem
 
-# test files
+# test files (local development and testing purposes only)
 seed_jobs.py
 reset_tester.py
 seed_test_jobs.py
-stop24hour-free-window-for-test.py
+stop24hour-free-window-for-test.py

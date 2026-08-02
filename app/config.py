@@ -12,29 +12,28 @@ class Settings(BaseSettings):
 
     # Admin
     admin_wa_number: str = ""      # kept for legacy references, but deprecated
-    admin_submission_alert_numbers: str = "917025962175" #917560967682
-    admin_approval_alert_numbers: str = "917025962179" #919400610270
+    admin_submission_alert_numbers: str = ""   # comma-separated WA numbers; set in .env
+    admin_approval_alert_numbers: str = ""     # comma-separated WA numbers; set in .env
     business_wa_number: str = ""   # the API-enabled number
     wa_channel_id: str = ""        # WhatsApp Channel phone-number ID for broadcasts
-    admin_username: str = "admin"
-    admin_password: str = "admin"
-
+    admin_username: str = ""
+    admin_password: str = ""
 
     # Database
-    database_url: str = "sqlite:///./jobinfo.db"
+    database_url: str = ""
 
     # Feature flags
     subscription_enabled: bool = False
 
     # Storage
-    media_upload_dir: str = "uploads/cvs"
+    media_upload_dir: str = ""
 
-    # App
-    secret_key: str = "dev-secret-key"
-    app_base_url: str = "http://localhost:8080"
+    # App — no hardcoded defaults; must be set in .env per environment
+    secret_key: str = ""
+    app_base_url: str = ""
 
     # WhatsApp Flows encryption
-    flow_private_key_path: str = "keys/flow_private.pem"
+    flow_private_key_path: str = ""
     flow_private_key_passphrase: str = ""
 
     # WhatsApp Flow IDs
@@ -49,11 +48,11 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
-        
+
     @property
     def submission_admins(self) -> list[str]:
         return [n.strip() for n in self.admin_submission_alert_numbers.split(",") if n.strip()]
-        
+
     @property
     def approval_admins(self) -> list[str]:
         return [n.strip() for n in self.admin_approval_alert_numbers.split(",") if n.strip()]
