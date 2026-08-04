@@ -123,20 +123,27 @@ async def _check_and_send_admin_catchup(wa_number: str, db: Session) -> None:
 
         # 1. Lazy Cleanup: delete records older than 10 days
         ten_days_ago = datetime.now(timezone.utc) - timedelta(days=10)
-        db.query(AdminNotificationQueue).filter(AdminNotificationQueue.created_at < ten_days_ago).delete()
+        db.query(AdminNotificationQueue).filter(
+            AdminNotificationQueue.created_at < ten_days_ago
+        ).delete(synchronize_session="fetch")
         db.commit()
 
-        # 2. Process pending items for THIS user
+        # 2. Process pending items for THIS admin number
         pending = db.query(AdminNotificationQueue).filter_by(wa_number=wa_number).all()
         if not pending:
             return
 
         settings = get_settings()
-        
+        items_to_delete = []
+
         for item in pending:
             vacancy = db.query(JobVacancy).filter_by(id=item.vacancy_id).first()
             if not vacancy:
+                # Vacancy was deleted — orphan queue item, always clean it up
+                items_to_delete.append(item)
                 continue
+
+            sent = False
 
             if item.notification_type == "new_submission":
                 admin_url = _generate_admin_magic_url(db)
@@ -147,12 +154,17 @@ async def _check_and_send_admin_catchup(wa_number: str, db: Session) -> None:
                         button_display_text="Review Vacancy",
                         button_url=admin_url,
                     )
+                    sent = True
                 except Exception as e:
                     logger.warning("Admin catch-up CTA failed for %s, falling back to text: %s", wa_number, e)
-                    await wa_client.send_text(
-                        to=wa_number,
-                        body=admin_vacancy_alert_body(vacancy, vacancy.recruiter),
-                    )
+                    try:
+                        await wa_client.send_text(
+                            to=wa_number,
+                            body=admin_vacancy_alert_body(vacancy, vacancy.recruiter),
+                        )
+                        sent = True
+                    except Exception as e2:
+                        logger.error("Admin catch-up text fallback also failed for %s: %s", wa_number, e2)
 
             elif item.notification_type == "approved_vacancy":
                 admin_card = job_alert_text_body(
@@ -162,15 +174,22 @@ async def _check_and_send_admin_catchup(wa_number: str, db: Session) -> None:
                 )
                 try:
                     await wa_client.send_text(to=wa_number, body=admin_card)
+                    sent = True
                 except Exception as e:
-                    logger.warning("Admin catch-up approved alert failed for %s: %s", wa_number, e)
+                    logger.error("Admin catch-up approved alert failed for %s: %s", wa_number, e)
 
-            # Delete the processed item
+            # Only remove from queue after confirmed delivery
+            if sent:
+                items_to_delete.append(item)
+
+        for item in items_to_delete:
             db.delete(item)
-
         db.commit()
-        logger.info("Processed %d admin catch-up notifications for %s", len(pending), wa_number)
-        
+        logger.info(
+            "Admin catch-up for %s: %d pending, %d delivered/cleaned",
+            wa_number, len(pending), len(items_to_delete),
+        )
+
     except Exception as e:
         logger.error("Error in admin catch-up logic for %s: %s", wa_number, e)
 
