@@ -286,7 +286,11 @@ async def _show_job_apply_prompt(
 
     # ── Standard apply prompt ─────────────────────────────────────────────
     candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title()) if candidate_cat else ""
-    
+
+    # Message 1: Full job card — seeker sees role details before deciding
+    await wa_client.send_text(to=wa_number, body=seeker_job_detail_body(vacancy))
+
+    # Message 2: Action buttons
     await wa_client.send_buttons(
         to=wa_number,
         header_text="✅ Perfect Match!",
