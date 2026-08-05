@@ -122,10 +122,11 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
 
 
 def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
+    salary = _label(SALARY_LABELS, vacancy.salary_range)
     return (
         f"✅ *Vacancy Posted Successfully!*\n\n"
         f"*🏷️ Position:* {vacancy.job_title.strip()}\n"
-        f"*💰 Salary:* {vacancy.salary_range}\n"
+        f"*💰 Salary:* {salary}\n"
         f"*📍 Location:* {vacancy.exact_location},{vacancy.district_region}\n"
         f"*🔖 Job Code:* {vacancy.job_code}\n"
         f"*⏳ Status:* {vacancy.status}\n\n"
@@ -245,10 +246,9 @@ def application_confirmation_body(
         f"✅ *Application Submitted!*\n\n"
         f"Hi {candidate.name},\n\n"
         f"You have successfully applied for:\n"
-        f"*{vacancy.job_title.strip()}* at *{vacancy.recruiter.company_name.strip() if vacancy.recruiter and vacancy.recruiter.company_name else '—'}*\n"
-        f"*Location:* {vacancy.district_region}\n\n"
+        f"*{vacancy.job_title.strip()}* Position at *{vacancy.recruiter.company_name.strip() if vacancy.recruiter and vacancy.recruiter.company_name else '—'}* in *{vacancy.exact_location or '—'}*, *{vacancy.district_region or '—'}*\n\n"
         f"We'll notify you of any updates. Good luck! 🍀\n\n"
-        f"_JobInfo_"
+        f"_JobInfo – Connecting Kerala's talent_"
     )
 
 

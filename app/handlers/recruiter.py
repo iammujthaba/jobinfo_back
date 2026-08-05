@@ -31,6 +31,8 @@ from app.whatsapp.templates import (
     registration_confirmation_body,
     vacancy_rejected_body,
     job_alert_text_body,
+    _label,
+    SALARY_LABELS,
 )
 
 logger = logging.getLogger(__name__)
@@ -400,13 +402,14 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
 
     # ── Message A: Private recruiter alert with magic dashboard link ────────
     magic_url = _generate_magic_dashboard_url(recruiter, db)
+    salary = _label(SALARY_LABELS, vacancy.salary_range)
     private_body = (
         f"🎉 *Vacancy Approved & Live!*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
-        f"💰 Salary: {vacancy.salary_range or '—'}\n"
+        f"💰 Salary: {salary}\n"
         f"🔖 Job Code: *{vacancy.job_code}*\n\n"
-        f"⏳ Vacancy Duration: 30 days (re-run anytime from your dashboard)\n"
+        f"⏳ Vacancy Duration: 30 days (re-run anytime from your dashboard)\n\n"
         f"👇 *Share the job card below to start getting more applicants!*\n\n"
         f"_Thank you for choosing *jobinfo!*_"
     )

@@ -26,6 +26,8 @@ from app.whatsapp.templates import (
     plan_renewal_body,
     registration_confirmation_body,
     seeker_job_detail_body,
+    _label,
+    SALARY_LABELS,
 )
 from app.services.milestone import dispatch_milestone_notification
 
@@ -142,12 +144,14 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
 
     if not candidate or not candidate.registration_complete:
         # Unregistered – show register / gethelp buttons
+        salary = _label(SALARY_LABELS, vacancy.salary_range)
         await wa_client.send_buttons(
             to=wa_number,
             body_text=(
                 "*🚀Apply for this position via WhatsApp!*\n\n"
                 f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
                 f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                f"💰 Salary: {salary}\n"
                 f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
                 "To apply, you need to setup your profile. It's quick and free!\n\n"
                 "Tap *Register Now* to complete application or *Get Help* if you need assistance."
@@ -218,20 +222,24 @@ async def _show_job_apply_prompt(
     job_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat, inferred_cat.replace("_", " ").title())
 
     if not has_cv:
+        salary = _label(SALARY_LABELS, vacancy.salary_range)
         await wa_client.send_buttons(
             to=wa_number,
-            header_text="🌟 Stand Out to the Recruiter!",
+            header_text="🌟 Boost Your Hire Chance!",
             body_text=(
-                f"You're applying for an exciting *{job_label}* role — *{vacancy.job_title.strip()}*! "
-                "We noticed you haven't added a CV to your profile yet.\n\n"
-                "Uploading a CV gives recruiters a complete picture of your skills "
-                "and dramatically boosts your chances of getting hired. 🚀"
+                f"You're applying for:\n"
+                f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+                f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                f"💰 Salary: {salary}\n"
+                f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
+                f"💡 *Pro Tip:* Uploading a CV dramatically increases recruiter response rates and puts you at the top of the applicant list!\n\n"
+                f"Would you like to attach a CV or proceed directly?"
             ),
             buttons=[
-                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📝 Upload a CV"},
-                {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "🚀 Apply Without CV"},
+                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📄 Upload CV (Best)"},
+                {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Without CV"},
             ],
-            footer_text="Candidates with CVs get 5x more callbacks!",
+            footer_text="Profiles with CVs get 5x more interview callbacks!",
         )
         _set_state(
             wa_number,
@@ -1389,8 +1397,9 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
     )
 
     for job in matching_jobs:
-        salary_line = f"💰  *Salary:* {job.salary_range}\n" if job.salary_range else ""
-        exp_line = f"📋  *Experience:* {job.experience_required}\n" if job.experience_required else ""
+        salary_val = _label(SALARY_LABELS, job.salary_range)
+        salary_line = f"💰 Salary: {salary_val}\n" if job.salary_range else ""
+        exp_line = f"📋 Experience: {job.experience_required}\n" if job.experience_required else ""
 
         body = (
             f"🏷️ *{job.job_title.strip()}*\n"

@@ -298,6 +298,7 @@ async def api_share_vacancy_to_channel(
     Checks if the channel phone number has interacted within the last 24 hours.
     """
     from app.whatsapp.client import wa_client
+    from app.whatsapp.templates import _label, SALARY_LABELS
 
     vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved").first()
     if not vacancy:
@@ -305,7 +306,7 @@ async def api_share_vacancy_to_channel(
 
     apply_link = f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}"
 
-    salary = vacancy.salary_range or "Not specified"
+    salary = _label(SALARY_LABELS, vacancy.salary_range)
     job_mode = vacancy.job_mode or "—"
     experience = vacancy.experience_required or "—"
     description = vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else "") if vacancy.job_description else "—"
