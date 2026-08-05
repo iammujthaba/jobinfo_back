@@ -30,16 +30,66 @@
                 "label": "Business Type",
                 "required": true,
                 "data-source": [
-                  { "id": "company",          "title": "Company / Pvt Ltd" },
-                  { "id": "shop_retail",      "title": "Shop / Supermarket / Retail" },
-                  { "id": "hotel_bakery",     "title": "Hotel / Restaurant / Bakery" },
-                  { "id": "contractor",       "title": "Contractor / Builder" },
-                  { "id": "individual",       "title": "Individual / Household" },
-                  { "id": "petrol_pump",      "title": "Petrol Pump / Gas Station" },
-                  { "id": "workshop_garage",  "title": "Workshop / Garage" },
-                  { "id": "transport",        "title": "Travels / Transport / Logistics" },
-                  { "id": "agency",           "title": "Agency / Consultancy" },
-                  { "id": "other",            "title": "Other" }
+                  {
+                    "id": "company",
+                    "title": "Company / Pvt Ltd"
+                  },
+                  {
+                    "id": "shop_retail",
+                    "title": "Shop / Supermarket / Textiles"
+                  },
+                  {
+                    "id": "hotel_bakery",
+                    "title": "Hotel / Restaurant / Bakery"
+                  },
+                  {
+                    "id": "healthcare",
+                    "title": "Hospital / Clinic / Pharmacy"
+                  },
+                  {
+                    "id": "education",
+                    "title": "School / College / Coaching"
+                  },
+                  {
+                    "id": "salon_spa",
+                    "title": "Salon / Beauty Parlour / Spa"
+                  },
+                  {
+                    "id": "finance_bank",
+                    "title": "Finance / Co-operative Bank"
+                  },
+                  {
+                    "id": "it_media",
+                    "title": "IT / Media / Printing Studio"
+                  },
+                  {
+                    "id": "contractor",
+                    "title": "Contractor / Builder"
+                  },
+                  {
+                    "id": "transport",
+                    "title": "Travels / Transport / Logistics"
+                  },
+                  {
+                    "id": "workshop_garage",
+                    "title": "Workshop / Garage"
+                  },
+                  {
+                    "id": "petrol_pump",
+                    "title": "Petrol Pump / Gas Station"
+                  },
+                  {
+                    "id": "agency",
+                    "title": "HR / Recruitment / Consultancy"
+                  },
+                  {
+                    "id": "individual",
+                    "title": "Individual / Household"
+                  },
+                  {
+                    "id": "other",
+                    "title": "Other"
+                  }
                 ]
               },
               {
@@ -48,10 +98,22 @@
                 "label": "Business Location",
                 "required": true,
                 "data-source": [
-                  { "id": "Kerala",    "title": "Kerala" },
-                  { "id": "Karnataka", "title": "Karnataka" },
-                  { "id": "GCC",       "title": "GCC (Gulf Countries)" },
-                  { "id": "Other",     "title": "Other" }
+                  {
+                    "id": "Kerala",
+                    "title": "Kerala"
+                  },
+                  {
+                    "id": "Karnataka",
+                    "title": "Karnataka"
+                  },
+                  {
+                    "id": "GCC",
+                    "title": "GCC (Gulf Countries)"
+                  },
+                  {
+                    "id": "Other",
+                    "title": "Other"
+                  }
                 ]
               },
               {
@@ -70,10 +132,10 @@
             "on-click-action": {
               "name": "complete",
               "payload": {
-                "company_name":      "${form.company_name}",
-                "business_type":     "${form.business_type}",
-                "location":          "${form.location}",
-                "business_contact":  "${form.business_contact}"
+                "company_name": "${form.company_name}",
+                "business_type": "${form.business_type}",
+                "location": "${form.location}",
+                "business_contact": "${form.business_contact}"
               }
             }
           }

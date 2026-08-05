@@ -2,7 +2,9 @@
   "version": "7.3",
   "data_api_version": "3.0",
   "routing_model": {
-    "SEEKER_REGISTRATION": ["SEEKER_LOCATION"],
+    "SEEKER_REGISTRATION": [
+      "SEEKER_LOCATION"
+    ],
     "SEEKER_LOCATION": []
   },
   "screens": [
@@ -37,20 +39,62 @@
                 "label": "Select Your District",
                 "required": true,
                 "data-source": [
-                  {"id": "Thiruvananthapuram", "title": "Thiruvananthapuram"},
-                  {"id": "Kollam", "title": "Kollam"},
-                  {"id": "Pathanamthitta", "title": "Pathanamthitta"},
-                  {"id": "Alappuzha", "title": "Alappuzha"},
-                  {"id": "Kottayam", "title": "Kottayam"},
-                  {"id": "Idukki", "title": "Idukki"},
-                  {"id": "Ernakulam", "title": "Ernakulam"},
-                  {"id": "Thrissur", "title": "Thrissur"},
-                  {"id": "Palakkad", "title": "Palakkad"},
-                  {"id": "Malappuram", "title": "Malappuram"},
-                  {"id": "Kozhikode", "title": "Kozhikode"},
-                  {"id": "Wayanad", "title": "Wayanad"},
-                  {"id": "Kannur", "title": "Kannur"},
-                  {"id": "Kasaragod", "title": "Kasaragod"}
+                  {
+                    "id": "Thiruvananthapuram",
+                    "title": "Thiruvananthapuram"
+                  },
+                  {
+                    "id": "Kollam",
+                    "title": "Kollam"
+                  },
+                  {
+                    "id": "Pathanamthitta",
+                    "title": "Pathanamthitta"
+                  },
+                  {
+                    "id": "Alappuzha",
+                    "title": "Alappuzha"
+                  },
+                  {
+                    "id": "Kottayam",
+                    "title": "Kottayam"
+                  },
+                  {
+                    "id": "Idukki",
+                    "title": "Idukki"
+                  },
+                  {
+                    "id": "Ernakulam",
+                    "title": "Ernakulam"
+                  },
+                  {
+                    "id": "Thrissur",
+                    "title": "Thrissur"
+                  },
+                  {
+                    "id": "Palakkad",
+                    "title": "Palakkad"
+                  },
+                  {
+                    "id": "Malappuram",
+                    "title": "Malappuram"
+                  },
+                  {
+                    "id": "Kozhikode",
+                    "title": "Kozhikode"
+                  },
+                  {
+                    "id": "Wayanad",
+                    "title": "Wayanad"
+                  },
+                  {
+                    "id": "Kannur",
+                    "title": "Kannur"
+                  },
+                  {
+                    "id": "Kasaragod",
+                    "title": "Kasaragod"
+                  }
                 ]
               },
               {
@@ -67,15 +111,74 @@
                 "label": "Preferred Job Area",
                 "required": true,
                 "data-source": [
-                  {"id": "retail", "title": "Retail & Showrooms"},
-                  {"id": "hospitality", "title": "Hospitality & Food Service"},
-                  {"id": "healthcare", "title": "Healthcare & Caretaking"},
-                  {"id": "driving", "title": "Driving & Logistics"},
-                  {"id": "office_admin", "title": "Office & Admin"},
-                  {"id": "maintenance_technician", "title": "Maintenance & Technician"},
-                  {"id": "it_professional", "title": "IT & Professional"},
-                  {"id": "gulf_abroad", "title": "Gulf / Abroad Jobs"},
-                  {"id": "other", "title": "Other / General"}
+                  {
+                    "id": "retail",
+                    "title": "Retail & Showrooms"
+                  },
+                  {
+                    "id": "sales_business",
+                    "title": "Sales & Business Executive"
+                  },
+                  {
+                    "id": "hospitality",
+                    "title": "Hospitality & Food Service"
+                  },
+                  {
+                    "id": "healthcare",
+                    "title": "Healthcare & Caretaking"
+                  },
+                  {
+                    "id": "education",
+                    "title": "Education & Academic Advisor"
+                  },
+                  {
+                    "id": "office_data_entry",
+                    "title": "Office Admin & Data Entry"
+                  },
+                  {
+                    "id": "front_office",
+                    "title": "Receptionist & Front Office"
+                  },
+                  {
+                    "id": "finance_accounts",
+                    "title": "Accountant & Billing Staff"
+                  },
+                  {
+                    "id": "hr_management",
+                    "title": "HR, Branch Manager & Team Lead"
+                  },
+                  {
+                    "id": "telecalling",
+                    "title": "Telecaller & Customer Support"
+                  },
+                  {
+                    "id": "it_digital_marketing",
+                    "title": "IT & Digital Marketing"
+                  },
+                  {
+                    "id": "logistics_store",
+                    "title": "Driving, Logistics & Store Keeper"
+                  },
+                  {
+                    "id": "beauty_wellness",
+                    "title": "Beauty & Wellness"
+                  },
+                  {
+                    "id": "maintenance_technician",
+                    "title": "Maintenance & Technician"
+                  },
+                  {
+                    "id": "construction_labor",
+                    "title": "Construction & Manual Labor"
+                  },
+                  {
+                    "id": "gulf_abroad",
+                    "title": "Gulf / Abroad Jobs"
+                  },
+                  {
+                    "id": "other",
+                    "title": "Other / General"
+                  }
                 ]
               },
               {
@@ -115,13 +218,23 @@
           "items": {
             "type": "object",
             "properties": {
-              "id": { "type": "string" },
-              "title": { "type": "string" }
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
             }
           },
           "__example__": [
-            { "id": "sales_executive", "title": "Sales Executive" },
-            { "id": "cashier", "title": "Cashier / Billing" }
+            {
+              "id": "sales_executive",
+              "title": "Sales Executive"
+            },
+            {
+              "id": "cashier",
+              "title": "Cashier / Billing"
+            }
           ]
         }
       },
@@ -154,9 +267,18 @@
                 "label": "Select Your Gender",
                 "required": true,
                 "data-source": [
-                  {"id": "male", "title": "Male"},
-                  {"id": "female", "title": "Female"},
-                  {"id": "other", "title": "Other"}
+                  {
+                    "id": "male",
+                    "title": "Male"
+                  },
+                  {
+                    "id": "female",
+                    "title": "Female"
+                  },
+                  {
+                    "id": "other",
+                    "title": "Other"
+                  }
                 ]
               },
               {
