@@ -42,16 +42,21 @@ JOB_MODE_LABELS: dict[str, str] = {
 }
 
 BUSINESS_TYPE_LABELS: dict[str, str] = {
-    "shop_retail":      "Shop / Retail",
-    "hotel_bakery":     "Hotel / Bakery",
-    "contractor":       "Contractor / Builder",
-    "individual":       "Individual / Household",
-    "petrol_pump":      "Petrol Pump",
-    "workshop_garage":  "Workshop / Garage",
-    "transport":        "Transport / Logistics",
-    "agency":           "Agency / Consultancy",
     "company":          "Company / Pvt Ltd",
-    "other":            "Other",
+    "shop_retail":      "Shop / Supermarket / Textiles",
+    "hotel_bakery":     "Hotel / Restaurant / Bakery",
+    "healthcare":       "Hospital / Clinic / Pharmacy",
+    "education":        "School / College / Coaching",
+    "salon_spa":       "Salon / Beauty Parlour / Spa",
+    "finance_bank":     "Finance / Co-operative Bank",
+    "it_media":         "IT / Media / Printing Studio",
+    "contractor":       "Contractor / Builder",
+    "transport":        "Travels / Transport / Logistics",
+    "workshop_garage":  "Workshop / Garage",
+    "petrol_pump":      "Petrol Pump / Gas Station",
+    "agency":           "HR / Recruitment / Consultancy",
+    "individual":       "Individual / Household",
+    "other":            "Other"
 }
 
 
@@ -119,11 +124,12 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
 def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
     return (
         f"✅ *Vacancy Posted Successfully!*\n\n"
-        f"*Position:* {vacancy.job_title}\n"
-        f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
-        f"*Job Code:* {vacancy.job_code}\n"
-        f"*Status:* {vacancy.status}⏳\n\n"
-        f"Your vacancy is *under review*. You'll be notified once it's approved.\n\n"
+        f"*🏷️ Position:* {vacancy.job_title.strip()}\n"
+        f"*💰 Salary:* {vacancy.salary_range}\n"
+        f"*📍 Location:* {vacancy.exact_location},{vacancy.district_region}\n"
+        f"*🔖 Job Code:* {vacancy.job_code}\n"
+        f"*⏳ Status:* {vacancy.status}\n\n"
+        f"Your vacancy is *under review*. You'll be notified once vacancy approved.\n\n"
         f"_JobInfo – Connecting Kerala's talent_"
     )
 
@@ -138,7 +144,6 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
         f"*Recruiter:* {recruiter.company_name}\n"
         f"*Contact:* {recruiter.business_contact or 'None'}\n"
         f"*Whatsapp:* {recruiter.wa_number}\n\n"
-        f"*Description:*\n{vacancy.job_description or '—'}\n"
     )
 
 
@@ -156,6 +161,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
     experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
     job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
     description = _truncate(vacancy.job_description, 600)
+    cv_note     = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
 
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
@@ -173,6 +179,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         f"💰 Salary: {salary}\n"
         f"💼 Mode: {job_mode}\n"
         f"🎓 Experience: {experience}\n"
+        f"📄 CV Required: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
         f"{cta_text}\n"

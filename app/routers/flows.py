@@ -102,22 +102,30 @@ def _handle_init(screen: str, data: dict) -> dict:
 # ── Category → Sub-category mapping ──────────────────────────────────────────
 CATEGORY_SUBCATEGORIES: dict[str, list[dict[str, str]]] = {
     "retail": [
+        {"id": "showroom_manager", "title": "Showroom Manager"},
         {"id": "sales_executive", "title": "Sales Executive"},
         {"id": "cashier", "title": "Cashier / Billing"},
-        {"id": "store_keeper", "title": "Store Keeper"},
         {"id": "floor_manager", "title": "Floor Manager"},
         {"id": "customer_support", "title": "Customer Support"},
         {"id": "packing_staff", "title": "Packing Staff"},
-        {"id": "other", "title": "Other / General"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "sales_business": [
+        {"id": "business_executive", "title": "Business Executive"},
+        {"id": "field_sales", "title": "Field Sales Executive"},
+        {"id": "sales_manager", "title": "Sales Manager"},
+        {"id": "medical_rep", "title": "Medical Representative"},
+        {"id": "fmcg_sales", "title": "FMCG Sales"},
+        {"id": "other", "title": "Other / General"}
     ],
     "hospitality": [
-        {"id": "chef_cook", "title": "Chef / Cook (Master)"},
+        {"id": "chef_cook", "title": "Chef / Cook"},
         {"id": "waiter_server", "title": "Waiter / Server"},
-        {"id": "kitchen_helper", "title": "Kitchen Helper / Cleaner"},
+        {"id": "kitchen_helper", "title": "Kitchen Helper"},
         {"id": "restaurant_manager", "title": "Restaurant Manager"},
         {"id": "juice_tea_maker", "title": "Juice / Tea Maker"},
-        {"id": "housekeeping_hotel", "title": "Housekeeping (Hotel)"},
-        {"id": "other", "title": "Other / General"},
+        {"id": "housekeeping", "title": "Housekeeping"},
+        {"id": "other", "title": "Other / General"}
     ],
     "healthcare": [
         {"id": "home_nurse", "title": "Home Nurse / Caretaker"},
@@ -126,25 +134,79 @@ CATEGORY_SUBCATEGORIES: dict[str, list[dict[str, str]]] = {
         {"id": "lab_technician", "title": "Lab Technician"},
         {"id": "ward_boy", "title": "Ward Boy / Helper"},
         {"id": "physiotherapist", "title": "Physiotherapist"},
-        {"id": "other", "title": "Other / General"},
+        {"id": "other", "title": "Other / General"}
     ],
-    "driving": [
+    "education": [
+        {"id": "academic_advisor", "title": "Academic Advisor"},
+        {"id": "teacher", "title": "Teacher"},
+        {"id": "professor_lecturer", "title": "Professor / Lecturer"},
+        {"id": "tuition_coaching", "title": "Tuition / Coaching Staff"},
+        {"id": "school_admin", "title": "School Admin"},
+        {"id": "daycare_staff", "title": "Daycare / Play-school Staff"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "office_data_entry": [
+        {"id": "data_entry", "title": "Data Entry"},
+        {"id": "office_admin", "title": "Office Admin"},
+        {"id": "clerk", "title": "Clerk"},
+        {"id": "office_peon", "title": "Office Peon / Helper"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "front_office": [
+        {"id": "front_office_executive", "title": "Front Office Executive"},
+        {"id": "receptionist", "title": "Receptionist"},
+        {"id": "guest_relations", "title": "Guest Relations Executive"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "finance_accounts": [
+        {"id": "senior_accountant", "title": "Senior Accountant"},
+        {"id": "accountant", "title": "Accountant"},
+        {"id": "billing_staff", "title": "Billing Staff"},
+        {"id": "tally_operator", "title": "Tally Operator"},
+        {"id": "audit_assistant", "title": "Audit / Finance Assistant"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "hr_management": [
+        {"id": "branch_manager", "title": "Branch Manager"},
+        {"id": "hr_manager", "title": "HR Manager"},
+        {"id": "team_leader", "title": "Team Leader"},
+        {"id": "hr_admin", "title": "HR / Admin Executive"},
+        {"id": "operations_manager", "title": "Operations Manager"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "telecalling": [
+        {"id": "telecaller", "title": "Telecaller"},
+        {"id": "customer_care", "title": "Customer Care Executive"},
+        {"id": "telesales", "title": "Telesales Executive"},
+        {"id": "bpo_staff", "title": "BPO / Call Center Staff"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "it_digital_marketing": [
+        {"id": "digital_marketing_staff", "title": "Digital Marketing Staff"},
+        {"id": "software_developer", "title": "Software Developer"},
+        {"id": "graphic_designer", "title": "Graphic Designer"},
+        {"id": "it_hardware_support", "title": "IT Hardware / Support"},
+        {"id": "video_editor", "title": "Video Editor"},
+        {"id": "content_writer", "title": "Content Writer"},
+        {"id": "other", "title": "Other / General"}
+    ],
+    "logistics_store": [
+        {"id": "store_keeper", "title": "Store Keeper"},
+        {"id": "warehouse_manager", "title": "Warehouse Manager"},
+        {"id": "logistics_coordinator", "title": "Logistics Coordinator"},
         {"id": "two_wheeler_delivery", "title": "Two-Wheeler Delivery"},
         {"id": "heavy_vehicle_driver", "title": "Heavy Vehicle Driver"},
         {"id": "private_car_taxi", "title": "Private Car / Taxi Driver"},
         {"id": "auto_goods_driver", "title": "Auto Rickshaw / Goods Driver"},
         {"id": "forklift_operator", "title": "Forklift Operator"},
-        {"id": "logistics_coordinator", "title": "Logistics Coordinator"},
-        {"id": "other", "title": "Other / General"},
+        {"id": "other", "title": "Other / General"}
     ],
-    "office_admin": [
-        {"id": "receptionist", "title": "Receptionist / Front Desk"},
-        {"id": "data_entry", "title": "Data Entry Operator"},
-        {"id": "accountant_tally", "title": "Basic Accountant (Tally)"},
-        {"id": "office_peon", "title": "Office Peon / Helper"},
-        {"id": "telecaller_bpo", "title": "Telecaller / BPO"},
-        {"id": "hr_admin", "title": "HR / Admin"},
-        {"id": "other", "title": "Other / General"},
+    "beauty_wellness": [
+        {"id": "beautician_salon", "title": "Beautician / Salon Staff"},
+        {"id": "hair_stylist", "title": "Hair Stylist"},
+        {"id": "spa_therapist", "title": "Spa Therapist"},
+        {"id": "makeup_artist", "title": "Makeup Artist"},
+        {"id": "other", "title": "Other / General"}
     ],
     "maintenance_technician": [
         {"id": "electrician", "title": "Electrician"},
@@ -153,44 +215,36 @@ CATEGORY_SUBCATEGORIES: dict[str, list[dict[str, str]]] = {
         {"id": "automobile_mechanic", "title": "Automobile Mechanic"},
         {"id": "welder_fitter", "title": "Welder / Fitter"},
         {"id": "lift_cctv_technician", "title": "Lift / CCTV Technician"},
-        {"id": "other", "title": "Other / General"},
+        {"id": "other", "title": "Other / General"}
     ],
-    "it_professional": [
-        {"id": "software_developer", "title": "Software Developer"},
-        {"id": "graphic_designer", "title": "Graphic Designer"},
-        {"id": "digital_marketer", "title": "Digital Marketer"},
-        {"id": "it_hardware_support", "title": "IT Hardware / Support"},
-        {"id": "video_editor", "title": "Video Editor"},
-        {"id": "content_writer", "title": "Content Writer"},
-        {"id": "other", "title": "Other / General"},
+    "construction_labor": [
+        {"id": "site_supervisor", "title": "Site Supervisor"},
+        {"id": "construction_worker", "title": "Construction Worker"},
+        {"id": "general_labor", "title": "General Labor / Helper"},
+        {"id": "painter_carpenter", "title": "Painter / Carpenter"},
+        {"id": "factory_warehouse", "title": "Factory Worker"},
+        {"id": "other", "title": "Other / General"}
     ],
     "gulf_abroad": [
-        {"id": "construction_worker", "title": "Construction Worker"},
+        {"id": "construction_worker_gcc", "title": "Construction Worker (GCC)"},
         {"id": "driver_gcc", "title": "Driver (GCC License)"},
-        {"id": "nurse_medical", "title": "Nurse / Medical"},
+        {"id": "nurse_medical_gcc", "title": "Nurse / Medical (GCC)"},
         {"id": "retail_sales_gcc", "title": "Retail / Sales (GCC)"},
-        {"id": "camp_boss", "title": "Camp Boss / Supervisor"},
-        {"id": "it_professional_gcc", "title": "IT / Professional"},
+        {"id": "camp_boss_gcc", "title": "Camp Boss / Supervisor"},
+        {"id": "it_professional_gcc", "title": "IT / Professional (GCC)"},
         {"id": "office_admin_gcc", "title": "Office Admin (GCC)"},
-        {"id": "chef_cook_gcc", "title": "Chef / Cook (Master)"},
-        {"id": "waiter_server_gcc", "title": "Waiter / Server"},
-        {"id": "kitchen_helper_gcc", "title": "Kitchen Helper / Cleaner"},
-        {"id": "other", "title": "Other / General"},
+        {"id": "chef_cook_gcc", "title": "Chef / Cook (GCC)"},
+        {"id": "other", "title": "Other / General"}
     ],
     "other": [
-        {"id": "beautician_salon", "title": "Beautician / Salon Staff"},
-        {"id": "tailor_garment", "title": "Tailor / Garment Worker"},
-        {"id": "petrol_pump", "title": "Petrol Pump Attendant"},
-        {"id": "general_labor", "title": "General Labor / Helper"},
         {"id": "security_guard", "title": "Security Guard / Supervisor"},
         {"id": "housekeeping_cleaning", "title": "Housekeeping / Cleaning"},
-        {"id": "factory_warehouse", "title": "Factory / Warehouse Worker"},
-        {"id": "painter_carpenter", "title": "Painter / Carpenter"},
+        {"id": "tailor_garment", "title": "Tailor / Garment Worker"},
         {"id": "event_management", "title": "Event Management Staff"},
-        {"id": "any_other", "title": "Any Other Role"},
-    ],
+        {"id": "petrol_pump", "title": "Petrol Pump Attendant"},
+        {"id": "any_other", "title": "Any Other Role"}
+    ]
 }
-
 
 async def _handle_data_exchange(screen: str, data: dict) -> dict:
     """
@@ -214,4 +268,4 @@ async def _handle_data_exchange(screen: str, data: dict) -> dict:
             },
         }
 
-    return {"screen": screen, "data": {}}
+    return {"screen": screen, "data": {}}

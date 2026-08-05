@@ -36,15 +36,23 @@ settings = get_settings()
 
 # Friendly display names for category keys
 CATEGORY_DISPLAY_NAMES: dict[str, str] = {
-    "retail": "Retail & Sales",
-    "hospitality": "Hospitality & Food",
-    "healthcare": "Healthcare",
-    "driving": "Driving & Logistics",
-    "office_admin": "Office & Admin",
-    "maintenance_technician": "Maintenance & Technical",
-    "it_professional": "IT & Professional",
-    "gulf_abroad": "Gulf / Abroad",
-    "other": "General",
+    "retail": "Retail & Showrooms",
+    "sales_business": "Sales & Business Executive",
+    "hospitality": "Hospitality & Food Service",
+    "healthcare": "Healthcare & Caretaking",
+    "education": "Education & Academic Advisor",
+    "office_data_entry": "Office Admin & Data Entry",
+    "front_office": "Receptionist & Front Office",
+    "finance_accounts": "Accountant & Billing Staff",
+    "hr_management": "HR, Branch Manager & Team Lead",
+    "telecalling": "Telecaller & Customer Support",
+    "it_digital_marketing": "IT & Digital Marketing",
+    "logistics_store": "Driving, Logistics & Store Keeper",
+    "beauty_wellness": "Beauty & Wellness",
+    "maintenance_technician": "Maintenance & Technician",
+    "construction_labor": "Construction & Manual Labor",
+    "gulf_abroad": "Gulf / Abroad Jobs",
+    "other": "Other / General",
 }
 
 WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
@@ -115,16 +123,18 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     from app.services.ad_lifecycle import ensure_ad_active
     if not vacancy or not ensure_ad_active(vacancy, db):
-        await wa_client.send_cta_url(
+        await wa_client.send_buttons(
             to=wa_number,
             header_text="Position No Longer Available",
             body_text=(
                 "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled or the ad has stopped.\n\n"
-                "Browse our latest open roles on the JobInfo channel for fresh opportunities!"
+                "The role may have been filled, or the ad has been removed.\n\n"
+                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
             ),
-            button_text="Explore Channel",
-            url=WHATSAPP_CHANNEL_URL,
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
+            ],
         )
         return
 
@@ -136,9 +146,9 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             to=wa_number,
             body_text=(
                 "*🚀Apply for this position via WhatsApp!*\n\n"
-                f"📋 *{vacancy.job_title.strip()}*\n"
-                f"🏢 {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
-                f"📍 {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
+                f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+                f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
                 "To apply, you need to setup your profile. It's quick and free!\n\n"
                 "Tap *Register Now* to complete application or *Get Help* if you need assistance."
             ),
@@ -572,16 +582,18 @@ async def handle_apply_now_button(
 
     from app.services.ad_lifecycle import ensure_ad_active
     if not ensure_ad_active(vacancy, db):
-        await wa_client.send_cta_url(
+        await wa_client.send_buttons(
             to=wa_number,
             header_text="Position No Longer Available",
             body_text=(
                 "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled or the ad has stopped.\n\n"
-                "Browse our latest open roles on the JobInfo channel for fresh opportunities!"
+                "The role may have been filled, or the ad has been removed.\n\n"
+                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
             ),
-            button_text="Explore Channel",
-            url=WHATSAPP_CHANNEL_URL,
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
+            ],
         )
         return
 
@@ -660,16 +672,18 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
 
     from app.services.ad_lifecycle import ensure_ad_active
     if not ensure_ad_active(vacancy, db):
-        await wa_client.send_cta_url(
+        await wa_client.send_buttons(
             to=wa_number,
             header_text="Position No Longer Available",
             body_text=(
                 "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled or the ad has expired.\n\n"
-                "Browse our latest open roles on the JobInfo channel for fresh opportunities!"
+                "The role may have been filled, or the ad has been removed.\n\n"
+                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
             ),
-            button_text="Explore Channel",
-            url=WHATSAPP_CHANNEL_URL,
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
+            ],
         )
         return
 
@@ -1107,14 +1121,22 @@ async def _send_application_summary_cta(
     # ── Category breakdown ────────────────────────────────────────────────
     CATEGORY_LABELS = {
         "retail": ("🛍️", "Retail & Showrooms"),
+        "sales_business": ("💼", "Sales & Business"),
         "hospitality": ("🍽️", "Hospitality & Food"),
-        "healthcare": ("🏥", "Healthcare"),
-        "driving": ("🚗", "Driving & Logistics"),
-        "office_admin": ("🏢", "Office & Admin"),
-        "maintenance_technician": ("🔧", "Maintenance & Tech"),
-        "it_professional": ("💻", "IT & Professional"),
+        "healthcare": ("🏥", "Healthcare & Caretaking"),
+        "education": ("🎓", "Education & Academic"),
+        "office_data_entry": ("💻", "Office & Data Entry"),
+        "front_office": ("🏢", "Receptionist & Front Office"),
+        "finance_accounts": ("📊", "Finance & Accounts"),
+        "hr_management": ("👥", "HR & Management"),
+        "telecalling": ("📞", "Telecalling & Support"),
+        "it_digital_marketing": ("🖥️", "IT & Digital Marketing"),
+        "logistics_store": ("🚚", "Logistics, Driving & Store"),
+        "beauty_wellness": ("💇‍♀️", "Beauty & Wellness"),
+        "maintenance_technician": ("🔧", "Maintenance & Technician"),
+        "construction_labor": ("🏗️", "Construction & Labor"),
         "gulf_abroad": ("✈️", "Gulf / Abroad"),
-        "other": ("📌", "Other"),
+        "other": ("📌", "Other / General"),
     }
 
     cat_counts: dict[str, int] = {}
@@ -1203,13 +1225,21 @@ def _generate_magic_dashboard_url(wa_number: str, db: Session) -> str:
 
 # Keywords used to match a seeker's category to vacancy title/description
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    "retail": ["retail", "sales", "showroom", "cashier", "store", "billing", "floor manager", "packing"],
-    "hospitality": ["hotel", "restaurant", "chef", "cook", "waiter", "kitchen", "housekeeping", "server", "food"],
-    "healthcare": ["nurse", "caretaker", "clinic", "pharmacy", "lab", "hospital", "medical", "physioth"],
-    "driving": ["driver", "delivery", "logistics", "forklift", "taxi", "auto", "vehicle"],
-    "office_admin": ["receptionist", "data entry", "accountant", "tally", "office", "telecaller", "bpo", "admin", "front desk"],
+    "retail": ["retail", "showroom", "cashier", "store", "billing", "floor manager", "packing"],
+    "sales_business": ["sales", "business executive", "field sales", "medical rep", "fmcg sales", "marketing executive"],
+    "hospitality": ["hotel", "restaurant", "chef", "cook", "waiter", "kitchen", "housekeeping", "server", "food", "tea", "juice"],
+    "healthcare": ["nurse", "caretaker", "clinic", "pharmacy", "lab", "hospital", "medical", "physioth", "ward boy"],
+    "education": ["teacher", "academic", "lecturer", "professor", "tuition", "coaching", "school", "daycare"],
+    "office_data_entry": ["data entry", "office admin", "clerk", "peon", "office helper"],
+    "front_office": ["front office", "receptionist", "guest relation"],
+    "finance_accounts": ["accountant", "tally", "audit", "finance assistant", "billing staff"],
+    "hr_management": ["hr", "branch manager", "team leader", "operations manager", "admin executive"],
+    "telecalling": ["telecaller", "customer care", "telesales", "bpo", "call center"],
+    "it_digital_marketing": ["software", "developer", "graphic", "designer", "digital market", "it ", "video editor", "content writer", "programmer", "it hardware"],
+    "logistics_store": ["driver", "delivery", "logistics", "forklift", "taxi", "store keeper", "warehouse", "heavy vehicle", "auto"],
+    "beauty_wellness": ["beautician", "salon", "hair stylist", "spa", "makeup"],
     "maintenance_technician": ["electrician", "mechanic", "plumber", "welder", "fitter", "technician", "ac ", "cctv", "lift"],
-    "it_professional": ["software", "developer", "graphic", "designer", "digital market", "it ", "video editor", "content writer", "programmer"],
+    "construction_labor": ["construction", "site supervisor", "labor", "painter", "carpenter", "factory worker"],
     "gulf_abroad": ["gulf", "gcc", "abroad", "overseas", "dubai", "qatar", "saudi", "oman", "bahrain", "kuwait"],
     "other": [],
 }

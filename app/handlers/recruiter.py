@@ -401,13 +401,13 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     # ── Message A: Private recruiter alert with magic dashboard link ────────
     magic_url = _generate_magic_dashboard_url(recruiter, db)
     private_body = (
-        f"✅ *Vacancy Approved!*\n\n"
-        f"Your vacancy for *{vacancy.job_title.strip()}* is now live on Jobinfo Career Portal!\n\n"
-        f"*Location:* {vacancy.exact_location},{vacancy.district_region}\n"
-        f"*Job Code:* {vacancy.job_code}\n\n"
-        f"⏳ *Ad Duration:* Your ad will automatically stop after 30 days. You can re-run it\n"
-        f"anytime from your recruiter dashboard.\n\n"
-        f"👇 Share the message below to find more applicants!\n\n"
+        f"🎉 *Vacancy Approved & Live!*\n\n"
+        f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
+        f"💰 Salary: {vacancy.salary_range or '—'}\n"
+        f"🔖 Job Code: *{vacancy.job_code}*\n\n"
+        f"⏳ Vacancy Duration: 30 days (re-run anytime from your dashboard)\n"
+        f"👇 *Share the job card below to start getting more applicants!*\n\n"
         f"_Thank you for choosing *jobinfo!*_"
     )
     try:
