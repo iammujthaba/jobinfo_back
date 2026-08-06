@@ -41,7 +41,7 @@ settings = get_settings()
 # Template name for the utility template (create and approve on Meta)
 
 # Template name for the utility template (create and approve on Meta)
-TEMPLATE_RECRUITER_WELCOME = "jobinfo_welcome_recruiter_v2"
+TEMPLATE_RECRUITER_WELCOME = "jobinfo_welcome_recruiter_v3"
 
 
 def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:

@@ -94,7 +94,7 @@ def _truncate(text: str | None, max_len: int = 600) -> str:
 def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]:
     """
     Utility template: shows recruiter business info + 2 buttons.
-    Template name (on Meta): jobinfo_welcome_recruiter_v2
+    Template name (on Meta): jobinfo_welcome_recruiter_v3
     Variables: {{1}} = company_name, {{2}} = business_type, {{3}} = location
     """
     return [
