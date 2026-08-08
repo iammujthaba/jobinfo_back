@@ -1,16 +1,26 @@
 """
 Admin dashboard router.
-Provides HTTP Basic Auth protected routes for managing:
+Provides protected routes for managing:
 - Vacancies (approve / reject)
 - Callback requests
 - Abandoned subscription candidates
+
+Auth Modes (all routes accept any of these):
+  1. Cookie session  — set by POST /admin/login (role = 'super_admin')
+  2. Bearer <token>  — magic-link session (role must be 'admin')
+  3. Basic base64    — legacy username:password header
+
+The JobZon admin panel lives at /jobzon/* (see routers/jobzon.py)
+and uses its own require_jobzon_admin dependency.
 """
+import hashlib
+import hmac
 import secrets
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -29,21 +39,141 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 security = HTTPBasic()
 templates = Jinja2Templates(directory="app/templates")
 
+# ─── Cookie session helpers ───────────────────────────────────────────────────
+# Simple HMAC-signed cookie: value = "<role>:<timestamp>:<hmac>"
+# No DB needed — stateless verification with role encoded in the cookie.
 
-# ─── Auth dependency ──────────────────────────────────────────────────────────
+_COOKIE_NAME = "ji_admin_session"
+_COOKIE_TTL  = 8 * 3600   # 8 hours
+
+
+def _sign_session(role: str) -> str:
+    """Return a signed session string encoding the role and creation timestamp."""
+    ts  = str(int(datetime.now(timezone.utc).timestamp()))
+    raw = f"{role}:{ts}"
+    sig = hmac.new(settings.secret_key.encode(), raw.encode(), hashlib.sha256).hexdigest()
+    return f"{raw}:{sig}"
+
+
+def _verify_session(cookie_value: str) -> str | None:
+    """
+    Verify the cookie and return the role string, or None if invalid/expired.
+    Returns: 'super_admin' | 'jobzon_admin' | None
+    """
+    try:
+        parts = cookie_value.rsplit(":", 1)
+        if len(parts) != 2:
+            return None
+        raw, sig = parts
+        expected = hmac.new(settings.secret_key.encode(), raw.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        role_part, ts_part = raw.split(":", 1)
+        created = int(ts_part)
+        age = datetime.now(timezone.utc).timestamp() - created
+        if age > _COOKIE_TTL:
+            return None
+        return role_part
+    except Exception:
+        return None
+
+
+# ─── Login / Logout routes ────────────────────────────────────────────────────
+
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page(request: Request):
+    """Render the shared admin login page (used by both super admin and JobZon admin)."""
+    # If already logged in, redirect to the appropriate panel
+    cookie = request.cookies.get(_COOKIE_NAME, "")
+    role = _verify_session(cookie) if cookie else None
+    if role == "super_admin":
+        return RedirectResponse(url="/admin", status_code=302)
+    if role == "jobzon_admin":
+        return RedirectResponse(url="/jobzon", status_code=302)
+    return templates.TemplateResponse("admin/login.html", {"request": request, "error": None})
+
+
+@router.post("/login", include_in_schema=False)
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """
+    Validate credentials and set an HMAC-signed session cookie.
+    Redirects to /admin (super admin) or /jobzon (JobZon admin) based on role.
+    """
+    # Check super admin credentials
+    ok_user = secrets.compare_digest(username, settings.admin_username)
+    ok_pass = secrets.compare_digest(password, settings.admin_password)
+    if ok_user and ok_pass and settings.admin_username:
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie(
+            key=_COOKIE_NAME,
+            value=_sign_session("super_admin"),
+            httponly=True,
+            samesite="lax",
+            max_age=_COOKIE_TTL,
+        )
+        return response
+
+    # Check JobZon admin credentials
+    jz_ok_user = secrets.compare_digest(username, settings.jobzon_admin_username)
+    jz_ok_pass = secrets.compare_digest(password, settings.jobzon_admin_password)
+    if jz_ok_user and jz_ok_pass and settings.jobzon_admin_username:
+        response = RedirectResponse(url="/jobzon", status_code=303)
+        response.set_cookie(
+            key=_COOKIE_NAME,
+            value=_sign_session("jobzon_admin"),
+            httponly=True,
+            samesite="lax",
+            max_age=_COOKIE_TTL,
+        )
+        return response
+
+    # Bad credentials — re-render login page with error
+    return templates.TemplateResponse(
+        "admin/login.html",
+        {"request": request, "error": "Invalid username or password."},
+        status_code=401,
+    )
+
+
+@router.get("/logout", include_in_schema=False)
+async def logout():
+    """Clear the session cookie and redirect to the login page."""
+    response = RedirectResponse(url="/admin/login", status_code=302)
+    response.delete_cookie(_COOKIE_NAME)
+    return response
+
+
+# ─── Auth dependencies ────────────────────────────────────────────────────────
 
 def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
     """
-    Dual-mode admin auth:
-    1. Bearer <session_token>  — issued by magic-link verify (role must be 'admin')
-    2. Basic base64(user:pass)  — classic username/password login
+    Triple-mode super-admin auth (must NOT be jobzon_admin):
+    1. Cookie session  — role == 'super_admin'
+    2. Bearer <token>  — magic-link session (role must be 'admin')
+    3. Basic base64    — classic username/password header
     """
+    # ── Mode 1: Cookie session ─────────────────────────────────────────────────
+    cookie = request.cookies.get(_COOKIE_NAME, "")
+    if cookie:
+        role = _verify_session(cookie)
+        if role == "super_admin":
+            return "admin"
+        if role == "jobzon_admin":
+            # JobZon admin tried to access a super-admin route — forbidden
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="JobZon admin cannot access this area.",
+            )
+
     auth_header = request.headers.get("Authorization", "")
 
-    # ── Mode 1: Bearer token (magic-link session) ──────────────────────────────
+    # ── Mode 2: Bearer token (magic-link session) ──────────────────────────────
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
-        # Import lazily to avoid circular imports
         from app.routers.api import _get_session_data
         session = _get_session_data(token)
         if not session or session.get("role") != "admin":
@@ -54,7 +184,7 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
             )
         return session.get("wa_number", "admin")
 
-    # ── Mode 2: Basic Auth (username + password) ───────────────────────────────
+    # ── Mode 3: Basic Auth (username + password) ───────────────────────────────
     import base64
     if auth_header.startswith("Basic "):
         try:
@@ -76,11 +206,30 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
             )
         return username
 
-    # ── No valid auth header ───────────────────────────────────────────────────
+    # ── No valid auth — redirect to login page ─────────────────────────────────
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required",
         headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+def require_jobzon_admin(request: Request) -> str:
+    """
+    Auth dependency exclusively for JobZon admin panel routes (/jobzon/*).
+    Only accepts the signed session cookie with role == 'jobzon_admin'.
+    Super admin cookies are intentionally rejected here — panel isolation is strict.
+    Raises HTTP 302 redirect to /admin/login if not authenticated.
+    """
+    cookie = request.cookies.get(_COOKIE_NAME, "")
+    if cookie:
+        role = _verify_session(cookie)
+        if role == "jobzon_admin":
+            return "jobzon_admin"
+    # Not authenticated as jobzon_admin — redirect to shared login
+    raise HTTPException(
+        status_code=status.HTTP_302_FOUND,
+        headers={"Location": "/admin/login"},
     )
 
 

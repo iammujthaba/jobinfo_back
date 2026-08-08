@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV Viewer — {{ candidate.name }} — JobZon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --gold: #f59e0b;
+            --dark: #0f172a;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--dark);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* Disable text selection to deter casual data copying */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* ── Toolbar ──────────────────────────────────────────────────────── */
+        .toolbar {
+            background: #1e293b;
+            border-bottom: 1px solid rgba(255,255,255,.08);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        .toolbar .candidate-info {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .toolbar .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 7px;
+            color: rgba(255,255,255,.7);
+            font-size: .82rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all .15s;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .toolbar .back-btn:hover {
+            background: rgba(255,255,255,.06);
+            color: #fff;
+        }
+        .toolbar .name-block strong {
+            display: block;
+            color: #fff;
+            font-size: .9rem;
+            font-weight: 600;
+        }
+        .toolbar .name-block span {
+            font-size: .75rem;
+            color: rgba(255,255,255,.4);
+        }
+        .toolbar .security-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(245,158,11,.12);
+            border: 1px solid rgba(245,158,11,.25);
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: .72rem;
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        /* ── PDF viewer area ─────────────────────────────────────────────── */
+        .viewer-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Invisible shield layer — sits on top of the PDF embed to catch right-click */
+        .pdf-shield {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            /* Transparent — just there to intercept context menu and drag events */
+        }
+
+        embed#cv-embed {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Prevent printing */
+        @media print {
+            html, body { display: none !important; }
+        }
+
+        /* Metadata strip */
+        .meta-strip {
+            background: #1e293b;
+            border-top: 1px solid rgba(255,255,255,.06);
+            padding: 6px 20px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .meta-strip span {
+            font-size: .72rem;
+            color: rgba(255,255,255,.35);
+        }
+        .meta-strip span strong { color: rgba(255,255,255,.55); }
+    </style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div class="toolbar">
+    <div class="candidate-info">
+        <a href="javascript:history.back()" class="back-btn">← Back</a>
+        <div class="name-block">
+            <strong>{{ candidate.name }}</strong>
+            <span>
+                {% if candidate.category %}{{ candidate.category }}{% endif %}
+                {% if candidate.district %} · {{ candidate.district }}{% endif %}
+                {% if candidate.age %} · Age {{ candidate.age }}{% endif %}
+            </span>
+        </div>
+    </div>
+    <div class="security-badge">
+        🔒 Read-Only · No Download
+    </div>
+</div>
+
+<!-- PDF Viewer -->
+<div class="viewer-container">
+    <!-- Shield layer intercepts mouse right-click and drag on top of the PDF -->
+    <div class="pdf-shield" id="pdf-shield"></div>
+    <embed id="cv-embed" src="{{ cv_serve_url }}#toolbar=0&navpanes=0&scrollbar=1" type="application/pdf">
+</div>
+
+<!-- Meta strip -->
+<div class="meta-strip">
+    <span>📋 JobZon CRM — Secure CV Viewer</span>
+    <span>Candidate: <strong>{{ candidate.name }}</strong></span>
+    <span>Accessed: <strong id="access-time"></strong></span>
+    <span style="margin-left:auto;">This document is for internal review only.</span>
+</div>
+
+<script>
+(function () {
+    "use strict";
+
+    // ── Disable right-click everywhere ────────────────────────────────────
+    document.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        return false;
+    }, true);
+
+    // ── Block keyboard shortcuts ───────────────────────────────────────────
+    document.addEventListener("keydown", function (e) {
+        var key = e.key || e.keyCode;
+        // Ctrl/Cmd + P (print), S (save), U (view-source), Shift+I (devtools)
+        if ((e.ctrlKey || e.metaKey) && (
+            key === "p" || key === "P" ||
+            key === "s" || key === "S" ||
+            key === "u" || key === "U"
+        )) {
+            e.preventDefault();
+            return false;
+        }
+        // F12 (dev tools)
+        if (key === "F12" || key === 123) {
+            e.preventDefault();
+            return false;
+        }
+        // Ctrl+Shift+I / Ctrl+Shift+J
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && (
+            key === "i" || key === "I" ||
+            key === "j" || key === "J"
+        )) {
+            e.preventDefault();
+            return false;
+        }
+    }, true);
+
+    // ── Block drag-and-drop of the embed ─────────────────────────────────
+    document.addEventListener("dragstart", function (e) {
+        e.preventDefault();
+        return false;
+    }, true);
+
+    // ── Shield layer — intercept right-click on the PDF embed ────────────
+    var shield = document.getElementById("pdf-shield");
+    if (shield) {
+        shield.addEventListener("contextmenu", function (e) {
+            e.preventDefault();
+            return false;
+        });
+        shield.addEventListener("mousedown", function (e) {
+            // Allow left-click scroll pass-through but block right-click (button 2)
+            if (e.button === 2) { e.preventDefault(); return false; }
+        });
+    }
+
+    // ── Timestamp ─────────────────────────────────────────────────────────
+    var ts = document.getElementById("access-time");
+    if (ts) {
+        var now = new Date();
+        ts.textContent = now.toLocaleString();
+    }
+})();
+</script>
+</body>
+</html>

@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     admin_username: str = ""
     admin_password: str = ""
 
+    # JobZon Admin — distinct role, separate panel (/jobzon)
+    # Set these three values in .env to activate the JobZon admin panel.
+    jobzon_admin_username: str = ""
+    jobzon_admin_password: str = ""
+    jobzon_admin_wa_number: str = ""    # Entering this WA number in recruiter login
+                                        # triggers a redirect to /admin/login instead of OTP
+
     # Database
     database_url: str = ""
 

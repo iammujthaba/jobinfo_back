@@ -1,0 +1,145 @@
+{% extends "jobzon/base.html" %}
+{% block title %}Job Seekers — JobZon CRM{% endblock %}
+{% block page_title %}Job Seeker Directory{% endblock %}
+
+{% block content %}
+
+<!-- Filter Bar -->
+<div class="card">
+    <form method="GET" action="/jobzon/seekers" id="seeker-filter-form">
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>District</label>
+                <select name="district" id="filter-district">
+                    <option value="">All Districts</option>
+                    {% for d in districts %}
+                    <option value="{{ d }}" {% if filter_district == d %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Job Category</label>
+                <select name="category" id="filter-category">
+                    <option value="">All Categories</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if filter_category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Gender</label>
+                <select name="gender" id="filter-gender">
+                    <option value="">Any Gender</option>
+                    {% for g in genders %}
+                    <option value="{{ g }}" {% if filter_gender == g %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Min Age</label>
+                <input type="number" name="age_min" id="filter-age-min" value="{{ filter_age_min if filter_age_min else '' }}" min="15" max="70" placeholder="e.g. 20" style="width:90px;">
+            </div>
+            <div class="filter-group">
+                <label>Max Age</label>
+                <input type="number" name="age_max" id="filter-age-max" value="{{ filter_age_max if filter_age_max else '' }}" min="15" max="70" placeholder="e.g. 45" style="width:90px;">
+            </div>
+            <div class="filter-group" style="justify-content:flex-end;">
+                <label>&nbsp;</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-primary" id="btn-filter">🔍 Filter</button>
+                    <a href="/jobzon/seekers" class="btn btn-outline">✕ Clear</a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Results -->
+<div class="card" style="padding:0;overflow:hidden;">
+    <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0;">
+        <span class="card-title">Results</span>
+        <span style="font-size:.82rem;color:var(--muted);">
+            {{ total }} candidate{{ 's' if total != 1 else '' }} found
+            {% if filter_district or filter_category or filter_gender or filter_age_min or filter_age_max %}
+            — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+            {% endif %}
+        </span>
+    </div>
+
+    {% if seekers %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>District</th>
+                    <th>Gender</th>
+                    <th>Age</th>
+                    <th>Preferred Job Area</th>
+                    <th>Sub-Category</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in seekers %}
+                <tr>
+                    <td style="color:var(--muted);font-size:.78rem;">{{ loop.index + (page - 1) * 50 }}</td>
+                    <td>
+                        <span style="font-weight:500;">{{ s.name }}</span>
+                    </td>
+                    <td>{{ s.district or '—' }}</td>
+                    <td>
+                        {% if s.gender %}
+                            <span class="badge {% if s.gender|lower == 'male' %}badge-blue{% elif s.gender|lower == 'female' %}badge-green{% else %}badge-gray{% endif %}">
+                                {{ s.gender }}
+                            </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ s.age or '—' }}</td>
+                    <td>{{ s.category or '—' }}</td>
+                    <td style="color:var(--muted);font-size:.82rem;">{{ s.sub_category or '—' }}</td>
+                    <td>
+                        {% if s.cv_path or s.resumes %}
+                        <a href="/jobzon/seekers/cv/{{ s.id }}" target="_blank" class="btn btn-cv btn-sm">
+                            📄 View CV
+                        </a>
+                        {% else %}
+                        <span style="font-size:.78rem;color:var(--muted);">No CV</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>No candidates match the current filters.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ page - 1 }}">‹</a>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
+        <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ p }}">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="dots">…</span>
+        {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ page + 1 }}">›</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

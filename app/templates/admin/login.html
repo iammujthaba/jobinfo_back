@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login — JobInfo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --brand-green: #25d366;
+            --brand-dark:  #1a1a2e;
+            --jobzon-gold: #f59e0b;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --border: rgba(255,255,255,.08);
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --input-bg: #0f172a;
+            --error: #f87171;
+            --radius: 14px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image:
+                radial-gradient(ellipse at 20% 50%, rgba(37,211,102,.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(245,158,11,.05) 0%, transparent 50%);
+        }
+
+        .login-wrap {
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+        }
+
+        .logo-row {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .logo-row .brand-ji {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--brand-green);
+            letter-spacing: -0.02em;
+        }
+        .logo-row .brand-jz {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--jobzon-gold);
+            letter-spacing: -0.02em;
+        }
+        .logo-row .separator {
+            color: var(--muted);
+            font-size: 1.1rem;
+            margin: 0 6px;
+        }
+        .logo-row p {
+            color: var(--muted);
+            font-size: .875rem;
+            margin-top: 6px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 36px 32px;
+            box-shadow: 0 25px 60px rgba(0,0,0,.4);
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+        .card .subtitle {
+            font-size: .825rem;
+            color: var(--muted);
+            margin-bottom: 28px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+        label {
+            display: block;
+            font-size: .8rem;
+            font-weight: 500;
+            color: var(--muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: .9rem;
+            font-family: inherit;
+            transition: border-color .2s, box-shadow .2s;
+            outline: none;
+        }
+        input[type="text"]:focus, input[type="password"]:focus {
+            border-color: var(--brand-green);
+            box-shadow: 0 0 0 3px rgba(37,211,102,.15);
+        }
+
+        .error-box {
+            background: rgba(248,113,113,.12);
+            border: 1px solid rgba(248,113,113,.3);
+            border-radius: 8px;
+            padding: 12px 14px;
+            color: var(--error);
+            font-size: .85rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(135deg, var(--brand-green) 0%, #1ebe5d 100%);
+            color: #fff;
+            font-size: .95rem;
+            font-weight: 600;
+            font-family: inherit;
+            border: none;
+            border-radius: 9px;
+            cursor: pointer;
+            transition: opacity .2s, transform .1s;
+            margin-top: 8px;
+            letter-spacing: .01em;
+        }
+        .btn-login:hover { opacity: .92; }
+        .btn-login:active { transform: scale(.98); }
+
+        .footer-note {
+            text-align: center;
+            color: var(--muted);
+            font-size: .78rem;
+            margin-top: 24px;
+        }
+
+        /* Animated background dots */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(255,255,255,.03) 1px, transparent 1px);
+            background-size: 32px 32px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .login-wrap { position: relative; z-index: 1; }
+    </style>
+</head>
+<body>
+<div class="login-wrap">
+    <div class="logo-row">
+        <div>
+            <span class="brand-ji">JobInfo</span>
+            <span class="separator">/</span>
+            <span class="brand-jz">JobZon</span>
+        </div>
+        <p>Secure Admin Portal</p>
+    </div>
+
+    <div class="card">
+        <h2>Sign in</h2>
+        <p class="subtitle">Enter your admin credentials to continue</p>
+
+        {% if error %}
+        <div class="error-box">
+            <span>⚠️</span>
+            <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/admin/login" autocomplete="off">
+            <div class="form-group">
+                <label for="login-username">Username</label>
+                <input
+                    id="login-username"
+                    type="text"
+                    name="username"
+                    placeholder="Enter username"
+                    autocomplete="username"
+                    required
+                    autofocus
+                >
+            </div>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input
+                    id="login-password"
+                    type="password"
+                    name="password"
+                    placeholder="Enter password"
+                    autocomplete="current-password"
+                    required
+                >
+            </div>
+            <button type="submit" class="btn-login" id="btn-sign-in">Sign In →</button>
+        </form>
+    </div>
+
+    <p class="footer-note">JobInfo Platform · Admin Access Only</p>
+</div>
+
+<script>
+document.querySelector('form').addEventListener('submit', function() {
+    document.getElementById('btn-sign-in').textContent = 'Signing in…';
+    document.getElementById('btn-sign-in').disabled = true;
+});
+</script>
+</body>
+</html>

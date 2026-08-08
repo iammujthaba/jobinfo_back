@@ -1,0 +1,65 @@
+{% extends "jobzon/base.html" %}
+{% block title %}Dashboard — JobZon CRM{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Registered Seekers</div>
+        <div class="stat-value">{{ total_seekers }}</div>
+        <span class="stat-icon">👤</span>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Registered Recruiters</div>
+        <div class="stat-value">{{ total_recruiters }}</div>
+        <span class="stat-icon">🏢</span>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active (Approved) Jobs</div>
+        <div class="stat-value">{{ approved_vacancies }}</div>
+        <span class="stat-icon">✅</span>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Pending Approval</div>
+        <div class="stat-value">{{ pending_vacancies }}</div>
+        <span class="stat-icon">⏳</span>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Quick Actions</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+        <a href="/jobzon/seekers" class="btn btn-outline" style="justify-content:center;padding:14px;">
+            👤 Browse Job Seekers
+        </a>
+        <a href="/jobzon/discover" class="btn btn-outline" style="justify-content:center;padding:14px;">
+            🔍 Discover Candidates
+        </a>
+        <a href="/jobzon/recruiters/create" class="btn btn-primary" style="justify-content:center;padding:14px;">
+            ➕ Add New Recruiter
+        </a>
+        <a href="/jobzon/vacancies/create" class="btn btn-outline" style="justify-content:center;padding:14px;">
+            📝 Post a Vacancy
+        </a>
+    </div>
+</div>
+
+<!-- Info box -->
+<div class="card" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-color: rgba(245,158,11,.2);">
+    <div style="display:flex;align-items:flex-start;gap:14px;">
+        <span style="font-size:1.5rem;">💡</span>
+        <div>
+            <div style="color:#f59e0b;font-weight:600;font-size:.9rem;margin-bottom:4px;">JobZon CRM — How to Use</div>
+            <ul style="color:rgba(255,255,255,.6);font-size:.82rem;line-height:1.8;padding-left:16px;">
+                <li>Use <strong style="color:rgba(255,255,255,.85);">Job Seekers</strong> to browse and filter all registered candidates. Click <em>View CV</em> to open a secure in-browser CV viewer.</li>
+                <li>Use <strong style="color:rgba(255,255,255,.85);">Candidate Discovery</strong> for advanced multi-criteria filtering and auto-matching candidates to a specific vacancy.</li>
+                <li>Use <strong style="color:rgba(255,255,255,.85);">Add Recruiter</strong> to register a recruiter profile on behalf of a client — no OTP needed.</li>
+                <li>Use <strong style="color:rgba(255,255,255,.85);">Post a Job</strong> to submit a vacancy for a recruiter — it enters the normal approval pipeline.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

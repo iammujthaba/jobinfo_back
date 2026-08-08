@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, RedirectResponse # NEW: required to 
 from app.config import get_settings
 from app.db.base import init_db
 from app.db.seed import seed
-from app.routers import webhook, admin, api, flows
+from app.routers import webhook, admin, api, flows, jobzon
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,6 +59,7 @@ app.include_router(webhook.router)
 app.include_router(admin.router)
 app.include_router(api.router)
 app.include_router(flows.router)
+app.include_router(jobzon.router)
 
 
 @app.get("/", include_in_schema=False)
@@ -67,6 +68,7 @@ async def root():
         "service": "JobInfo API",
         "docs": "/docs",
         "admin": "/admin",
+        "jobzon": "/jobzon",
     }
 
 

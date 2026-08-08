@@ -1,0 +1,120 @@
+{% extends "jobzon/base.html" %}
+{% block title %}Recruiters — JobZon CRM{% endblock %}
+{% block page_title %}Recruiter Directory{% endblock %}
+
+{% block content %}
+
+<!-- Filter Bar -->
+<div class="card">
+    <form method="GET" action="/jobzon/recruiters">
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>Business Type</label>
+                <select name="business_type" id="filter-btype">
+                    <option value="">All Types</option>
+                    {% for bt in business_types %}
+                    <option value="{{ bt }}" {% if filter_business_type == bt %}selected{% endif %}>{{ bt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Job Postings</label>
+                <select name="has_jobs" id="filter-has-jobs">
+                    <option value="" {% if filter_has_jobs == '' %}selected{% endif %}>All Recruiters</option>
+                    <option value="yes" {% if filter_has_jobs == 'yes' %}selected{% endif %}>Has Posted Jobs</option>
+                    <option value="no"  {% if filter_has_jobs == 'no'  %}selected{% endif %}>No Jobs Posted Yet</option>
+                </select>
+            </div>
+            <div class="filter-group" style="justify-content:flex-end;">
+                <label>&nbsp;</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-primary">🔍 Filter</button>
+                    <a href="/jobzon/recruiters" class="btn btn-outline">✕ Clear</a>
+                </div>
+            </div>
+            <div style="margin-left:auto;align-self:flex-end;">
+                <a href="/jobzon/recruiters/create" class="btn btn-primary">➕ Add Recruiter</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Results -->
+<div class="card" style="padding:0;overflow:hidden;">
+    <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0;">
+        <span class="card-title">Recruiters</span>
+        <span style="font-size:.82rem;color:var(--muted);">
+            {{ total }} recruiter{{ 's' if total != 1 else '' }}
+            {% if filter_business_type or filter_has_jobs %}
+            — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+            {% endif %}
+        </span>
+    </div>
+
+    {% if recruiters %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Company Name</th>
+                    <th>Business Type</th>
+                    <th>Location</th>
+                    <th>WA Number</th>
+                    <th>Joined</th>
+                    <th style="text-align:center;">Total Job Posts</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recruiters %}
+                <tr>
+                    <td style="color:var(--muted);font-size:.78rem;">{{ loop.index + (page - 1) * 50 }}</td>
+                    <td><span style="font-weight:600;">{{ r.company_name }}</span></td>
+                    <td>{{ r.business_type or '—' }}</td>
+                    <td>{{ r.location or '—' }}</td>
+                    <td style="font-family:monospace;font-size:.82rem;color:var(--muted);">{{ r.wa_number }}</td>
+                    <td style="font-size:.8rem;color:var(--muted);">
+                        {% if r.created_at %}{{ r.created_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if r.vacancy_count > 0 %}
+                        <span class="badge badge-green">{{ r.vacancy_count }} job{{ 's' if r.vacancy_count != 1 else '' }}</span>
+                        {% else %}
+                        <span class="badge badge-gray">No posts</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🏢</div>
+        <p>No recruiters match the current filters.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&page={{ page - 1 }}">‹</a>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
+        <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&page={{ p }}">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="dots">…</span>
+        {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&page={{ page + 1 }}">›</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

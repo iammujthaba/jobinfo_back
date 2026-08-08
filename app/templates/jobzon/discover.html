@@ -1,0 +1,282 @@
+{% extends "jobzon/base.html" %}
+{% block title %}Candidate Discovery — JobZon CRM{% endblock %}
+{% block page_title %}Candidate Discovery{% endblock %}
+
+{% block content %}
+
+<!-- Auto-Match Panel -->
+<div class="card" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-color:rgba(245,158,11,.2);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <span style="font-size:1.2rem;">⚡</span>
+        <span style="color:#f59e0b;font-weight:600;font-size:.95rem;">Auto-Match Engine</span>
+        <span style="color:rgba(255,255,255,.35);font-size:.78rem;">— instantly finds candidates for a specific vacancy</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="filter-group" style="flex:1;min-width:260px;">
+            <label style="color:rgba(255,255,255,.45);">Select Approved Vacancy</label>
+            <select id="auto-match-select" style="background:#0f172a;color:#e2e8f0;border-color:rgba(255,255,255,.1);">
+                <option value="">— Select a vacancy to auto-match candidates —</option>
+                {% for v in vacancies %}
+                <option value="{{ v.id }}">[{{ v.job_code }}] {{ v.job_title }} — {{ v.district_region }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn btn-primary" id="btn-auto-match" onclick="runAutoMatch()">⚡ Find Matches</button>
+    </div>
+
+    <!-- Auto-match results area -->
+    <div id="auto-match-results" style="display:none;margin-top:20px;">
+        <div style="color:#f59e0b;font-weight:600;font-size:.82rem;margin-bottom:10px;" id="match-summary"></div>
+        <div class="table-wrap" style="background:rgba(255,255,255,.03);border-radius:8px;overflow:hidden;">
+            <table id="match-table">
+                <thead>
+                    <tr>
+                        <th style="color:rgba(255,255,255,.35);">Rank</th>
+                        <th style="color:rgba(255,255,255,.35);">Name</th>
+                        <th style="color:rgba(255,255,255,.35);">District</th>
+                        <th style="color:rgba(255,255,255,.35);">Category</th>
+                        <th style="color:rgba(255,255,255,.35);">Age</th>
+                        <th style="color:rgba(255,255,255,.35);">Gender</th>
+                        <th style="color:rgba(255,255,255,.35);">WA Number</th>
+                        <th style="color:rgba(255,255,255,.35);">CV</th>
+                    </tr>
+                </thead>
+                <tbody id="match-tbody">
+                </tbody>
+            </table>
+        </div>
+        <div id="match-loading" style="text-align:center;padding:20px;color:rgba(255,255,255,.4);display:none;">
+            ⏳ Searching…
+        </div>
+        <div id="match-empty" style="text-align:center;padding:20px;color:rgba(255,255,255,.3);display:none;">
+            No matching candidates found for this vacancy.
+        </div>
+    </div>
+</div>
+
+<!-- Manual Filter -->
+<div class="card">
+    <div class="card-header" style="margin-bottom:14px;">
+        <span class="card-title">Advanced Filter</span>
+        <span style="font-size:.78rem;color:var(--muted);">Combine multiple criteria</span>
+    </div>
+    <form method="GET" action="/jobzon/discover">
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>District</label>
+                <select name="district" id="disc-district">
+                    <option value="">All Districts</option>
+                    {% for d in districts %}
+                    <option value="{{ d }}" {% if filter_district == d %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Job Category</label>
+                <select name="category" id="disc-category">
+                    <option value="">All Categories</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if filter_category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Sub-Category</label>
+                <select name="sub_category" id="disc-sub">
+                    <option value="">All</option>
+                    {% for sc in sub_categories %}
+                    <option value="{{ sc }}" {% if filter_sub_category == sc %}selected{% endif %}>{{ sc }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Gender</label>
+                <select name="gender" id="disc-gender">
+                    <option value="">Any</option>
+                    {% for g in genders %}
+                    <option value="{{ g }}" {% if filter_gender == g %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Age Min</label>
+                <input type="number" name="age_min" value="{{ filter_age_min if filter_age_min else '' }}" min="15" max="70" style="width:80px;">
+            </div>
+            <div class="filter-group">
+                <label>Age Max</label>
+                <input type="number" name="age_max" value="{{ filter_age_max if filter_age_max else '' }}" min="15" max="70" style="width:80px;">
+            </div>
+            <div class="filter-group" style="justify-content:flex-end;">
+                <label>&nbsp;</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-primary">🔍 Search</button>
+                    <a href="/jobzon/discover" class="btn btn-outline">✕ Clear</a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Results -->
+<div class="card" style="padding:0;overflow:hidden;">
+    <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0;">
+        <span class="card-title">Filtered Candidates</span>
+        <span style="font-size:.82rem;color:var(--muted);">
+            {{ total }} candidate{{ 's' if total != 1 else '' }}
+            {% if filter_district or filter_category or filter_sub_category or filter_gender or filter_age_min or filter_age_max %}
+            — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+            {% endif %}
+        </span>
+    </div>
+
+    {% if candidates %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>District</th>
+                    <th>Category</th>
+                    <th>Sub-Category</th>
+                    <th>Age</th>
+                    <th>Gender</th>
+                    <th>WA Number</th>
+                    <th>CV</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in candidates %}
+                <tr>
+                    <td style="color:var(--muted);font-size:.78rem;">{{ loop.index + (page - 1) * 50 }}</td>
+                    <td style="font-weight:500;">{{ c.name }}</td>
+                    <td>{{ c.district or '—' }}</td>
+                    <td>{{ c.category or '—' }}</td>
+                    <td style="color:var(--muted);font-size:.82rem;">{{ c.sub_category or '—' }}</td>
+                    <td>{{ c.age or '—' }}</td>
+                    <td>
+                        {% if c.gender %}
+                        <span class="badge {% if c.gender|lower == 'male' %}badge-blue{% elif c.gender|lower == 'female' %}badge-green{% else %}badge-gray{% endif %}">
+                            {{ c.gender }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="font-family:monospace;font-size:.78rem;color:var(--muted);">{{ c.wa_number }}</td>
+                    <td>
+                        {% if c.cv_path or c.resumes %}
+                        <a href="/jobzon/seekers/cv/{{ c.id }}" target="_blank" class="btn btn-cv btn-sm">📄 CV</a>
+                        {% else %}
+                        <span style="font-size:.75rem;color:var(--muted);">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>No candidates found. Try adjusting your filters.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="?district={{ filter_district }}&category={{ filter_category }}&sub_category={{ filter_sub_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ page - 1 }}">‹</a>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
+        <a href="?district={{ filter_district }}&category={{ filter_category }}&sub_category={{ filter_sub_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ p }}">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="dots">…</span>
+        {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <a href="?district={{ filter_district }}&category={{ filter_category }}&sub_category={{ filter_sub_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ page + 1 }}">›</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function runAutoMatch() {
+    var select = document.getElementById('auto-match-select');
+    var vacancyId = select.value;
+    if (!vacancyId) {
+        alert('Please select a vacancy first.');
+        return;
+    }
+
+    var resultsDiv = document.getElementById('auto-match-results');
+    var loadingDiv = document.getElementById('match-loading');
+    var tbody      = document.getElementById('match-tbody');
+    var emptyDiv   = document.getElementById('match-empty');
+    var summary    = document.getElementById('match-summary');
+    var btn        = document.getElementById('btn-auto-match');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Searching…';
+    resultsDiv.style.display = 'block';
+    loadingDiv.style.display = 'block';
+    tbody.innerHTML = '';
+    emptyDiv.style.display = 'none';
+    summary.textContent = '';
+
+    fetch('/jobzon/api/vacancies/' + vacancyId + '/auto-match')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            loadingDiv.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = '⚡ Find Matches';
+
+            if (data.total_matches === 0) {
+                emptyDiv.style.display = 'block';
+                return;
+            }
+
+            summary.textContent = '⚡ ' + data.total_matches + ' candidate(s) matched for: '
+                + data.vacancy.job_title + ' (' + data.vacancy.district_region + ')';
+
+            var rankLabels = { 1: '🎯 Best', 2: '✅ Category', 3: '📍 District' };
+
+            data.candidates.forEach(function (c) {
+                var tr = document.createElement('tr');
+                tr.innerHTML = [
+                    '<td style="color:rgba(255,255,255,.5);font-size:.75rem;">' + (rankLabels[c.match_rank] || c.match_rank) + '</td>',
+                    '<td style="color:#e2e8f0;font-weight:500;">' + escHtml(c.name) + '</td>',
+                    '<td style="color:rgba(255,255,255,.6);">' + (c.district || '—') + '</td>',
+                    '<td style="color:rgba(255,255,255,.6);">' + (c.category || '—') + '</td>',
+                    '<td style="color:rgba(255,255,255,.5);">' + (c.age || '—') + '</td>',
+                    '<td style="color:rgba(255,255,255,.5);">' + (c.gender || '—') + '</td>',
+                    '<td style="font-family:monospace;font-size:.78rem;color:rgba(255,255,255,.4);">' + escHtml(c.wa_number) + '</td>',
+                    '<td>' + (c.cv_viewer_url
+                        ? '<a href="' + c.cv_viewer_url + '" target="_blank" style="color:#f59e0b;font-size:.78rem;font-weight:600;text-decoration:none;">📄 CV</a>'
+                        : '<span style="color:rgba(255,255,255,.25);font-size:.75rem;">—</span>')
+                        + '</td>',
+                ].join('');
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(function (err) {
+            loadingDiv.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = '⚡ Find Matches';
+            summary.textContent = '❌ Error fetching matches. Please try again.';
+            summary.style.color = '#f87171';
+        });
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+</script>
+{% endblock %}

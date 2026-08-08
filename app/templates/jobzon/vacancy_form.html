@@ -1,0 +1,117 @@
+{% extends "jobzon/base.html" %}
+{% block title %}Post a Vacancy — JobZon CRM{% endblock %}
+{% block page_title %}Post a Vacancy{% endblock %}
+
+{% block content %}
+<div style="max-width:760px;">
+
+    {% if success %}
+    <div class="alert alert-success">✅ {{ success }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-error">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">New Vacancy</span>
+            <span style="font-size:.78rem;color:var(--muted);">Posted on behalf of a recruiter · Enters normal approval pipeline</span>
+        </div>
+
+        <form method="POST" action="/jobzon/vacancies/create" autocomplete="off">
+
+            <!-- Recruiter selector -->
+            <div class="form-group full" style="margin-bottom:20px;">
+                <label for="vac-recruiter">Recruiter (Company) *</label>
+                <select id="vac-recruiter" name="recruiter_id" required>
+                    <option value="">— Select Recruiter —</option>
+                    {% for r in recruiters %}
+                    <option value="{{ r.id }}">{{ r.company_name }} ({{ r.wa_number }})</option>
+                    {% endfor %}
+                </select>
+                <span style="font-size:.72rem;color:var(--muted);margin-top:4px;">
+                    Don't see the recruiter?
+                    <a href="/jobzon/recruiters/create" style="color:var(--gold);">Add them first →</a>
+                </span>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="vac-category">Job Category *</label>
+                    <input type="text" id="vac-category" name="job_category"
+                        placeholder="e.g. Hospitality, IT, Sales" required>
+                </div>
+                <div class="form-group">
+                    <label for="vac-title">Job Title *</label>
+                    <input type="text" id="vac-title" name="job_title"
+                        placeholder="e.g. Hotel Receptionist" required>
+                </div>
+                <div class="form-group">
+                    <label for="vac-district">District / Region *</label>
+                    <input type="text" id="vac-district" name="district_region"
+                        placeholder="e.g. Ernakulam, Dubai" required>
+                </div>
+                <div class="form-group">
+                    <label for="vac-location">Exact Location *</label>
+                    <input type="text" id="vac-location" name="exact_location"
+                        placeholder="e.g. MG Road, Kochi" required>
+                </div>
+                <div class="form-group">
+                    <label for="vac-salary">Salary Range *</label>
+                    <input type="text" id="vac-salary" name="salary_range"
+                        placeholder="e.g. ₹15,000 – ₹20,000/month" required>
+                </div>
+                <div class="form-group">
+                    <label for="vac-mode">Job Mode *</label>
+                    <select id="vac-mode" name="job_mode" required>
+                        <option value="">— Select —</option>
+                        <option value="On-site">On-site</option>
+                        <option value="Remote">Remote</option>
+                        <option value="Hybrid">Hybrid</option>
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label for="vac-exp">Experience Required *</label>
+                    <input type="text" id="vac-exp" name="experience_required"
+                        placeholder="e.g. Freshers welcome / 1-2 years in hospitality" required>
+                </div>
+                <div class="form-group full">
+                    <label for="vac-desc">Job Description *</label>
+                    <textarea id="vac-desc" name="job_description" rows="5"
+                        placeholder="Describe the role, responsibilities, and requirements…" required></textarea>
+                </div>
+                <div class="form-group full">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:.875rem;font-weight:500;color:var(--text);">
+                        <input type="checkbox" id="vac-cv" name="cv_required" value="on"
+                            style="width:16px;height:16px;accent-color:var(--gold);border-radius:4px;">
+                        CV Required for this vacancy
+                    </label>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:24px;">
+                <button type="submit" class="btn btn-primary" id="btn-post-vac">📝 Submit for Approval</button>
+                <a href="/jobzon/vacancies" class="btn btn-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="card" style="background:#fffbeb;border-color:#fde68a;">
+        <div style="font-size:.82rem;color:#92400e;line-height:1.7;">
+            <strong>ℹ️ Approval Pipeline:</strong> This vacancy will be submitted with status
+            <strong>Pending</strong> and will appear in the JobInfo super admin panel for review.
+            The super admin will approve or reject it before it goes live on the platform.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelector('form').addEventListener('submit', function () {
+    var btn = document.getElementById('btn-post-vac');
+    btn.textContent = 'Submitting…';
+    btn.disabled = true;
+});
+</script>
+{% endblock %}

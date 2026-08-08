@@ -269,14 +269,26 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
 
 @router.post("/auth/check-recruiter")
 async def check_recruiter(body: CheckRecruiterRequest, db: Session = Depends(get_db)):
-    """Check if a recruiter exists. If yes, trigger OTP."""
+    """
+    Check if a recruiter exists. If yes, trigger OTP.
+    Special case: if the WA number matches the configured JobZon admin number,
+    return is_jobzon_admin=true to signal the frontend to redirect to /admin/login.
+    """
+    # ── JobZon admin detection ────────────────────────────────────────────────
+    if (
+        settings.jobzon_admin_wa_number
+        and body.wa_number.strip() == settings.jobzon_admin_wa_number.strip()
+    ):
+        return {"exists": False, "is_jobzon_admin": True}
+
+    # ── Normal recruiter flow ─────────────────────────────────────────────────
     recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
     if recruiter:
         # Trigger OTP internally
         otp_request = OTPSendRequest(wa_number=body.wa_number, role="recruiter")
         await send_otp(otp_request, db)
-        return {"exists": True}
-    return {"exists": False}
+        return {"exists": True, "is_jobzon_admin": False}
+    return {"exists": False, "is_jobzon_admin": False}
 
 
 @router.post("/auth/recruiter/register")

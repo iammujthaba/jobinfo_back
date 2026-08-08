@@ -1,0 +1,140 @@
+{% extends "jobzon/base.html" %}
+{% block title %}Active Jobs — JobZon CRM{% endblock %}
+{% block page_title %}Approved Vacancies{% endblock %}
+
+{% block content %}
+
+<!-- Filter Bar -->
+<div class="card">
+    <form method="GET" action="/jobzon/vacancies">
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>Job Category</label>
+                <select name="category" id="filter-vac-cat">
+                    <option value="">All Categories</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if filter_category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>District / Region</label>
+                <select name="district" id="filter-vac-dist">
+                    <option value="">All Regions</option>
+                    {% for d in districts %}
+                    <option value="{{ d }}" {% if filter_district == d %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group" style="justify-content:flex-end;">
+                <label>&nbsp;</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-primary">🔍 Filter</button>
+                    <a href="/jobzon/vacancies" class="btn btn-outline">✕ Clear</a>
+                </div>
+            </div>
+            <div style="margin-left:auto;align-self:flex-end;">
+                <a href="/jobzon/vacancies/create" class="btn btn-primary">📝 Post a Job</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Results -->
+<div class="card" style="padding:0;overflow:hidden;">
+    <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0;">
+        <span class="card-title">Active Vacancies</span>
+        <span style="font-size:.82rem;color:var(--muted);">
+            {{ total }} job{{ 's' if total != 1 else '' }}
+            {% if filter_category or filter_district %}
+            — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+            {% endif %}
+        </span>
+    </div>
+
+    {% if vacancies %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Job Code</th>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Category</th>
+                    <th>District / Region</th>
+                    <th>Salary</th>
+                    <th>CV Req.</th>
+                    <th style="text-align:center;">Applications</th>
+                    <th>Approved</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in vacancies %}
+                <tr>
+                    <td>
+                        <code style="font-size:.78rem;background:#f1f5f9;padding:2px 6px;border-radius:4px;">{{ v.job_code }}</code>
+                    </td>
+                    <td>
+                        <span style="font-weight:500;">{{ v.job_title }}</span>
+                    </td>
+                    <td style="font-size:.83rem;">
+                        {{ v.recruiter.company_name if v.recruiter else '—' }}
+                    </td>
+                    <td>
+                        <span class="badge badge-blue" style="font-size:.7rem;">{{ v.job_category }}</span>
+                    </td>
+                    <td style="font-size:.83rem;">{{ v.district_region }}</td>
+                    <td style="font-size:.82rem;color:var(--muted);">{{ v.salary_range or '—' }}</td>
+                    <td style="text-align:center;">
+                        {% if v.cv_required %}
+                        <span class="badge badge-gold" style="font-size:.68rem;">Yes</span>
+                        {% else %}
+                        <span style="color:var(--muted);font-size:.8rem;">No</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% set app_cnt = app_map.get(v.id, 0) %}
+                        {% if app_cnt > 0 %}
+                        <span class="badge badge-green">{{ app_cnt }}</span>
+                        {% else %}
+                        <span style="color:var(--muted);font-size:.8rem;">0</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:.78rem;color:var(--muted);white-space:nowrap;">
+                        {% if v.approved_at %}{{ v.approved_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No approved vacancies found.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="?category={{ filter_category }}&district={{ filter_district }}&page={{ page - 1 }}">‹</a>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
+        <a href="?category={{ filter_category }}&district={{ filter_district }}&page={{ p }}">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="dots">…</span>
+        {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <a href="?category={{ filter_category }}&district={{ filter_district }}&page={{ page + 1 }}">›</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
