@@ -4,7 +4,7 @@ GET  /webhook  – Meta verification handshake
 POST /webhook  – Incoming events (messages, status, flow callbacks)
 """
 import logging
-
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -53,6 +53,11 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks, d
             raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
+
+
+    if os.getenv("DEBUG_WEBHOOK_LOGGING", "false").lower() == "true":
+        logger.debug("RAW WEBHOOK PAYLOAD: %s", payload)
+
 
     # --- START OF NEW ROUTING LOGIC ---
     try:

@@ -8,8 +8,11 @@ Prerequisite: Run  python scripts/generate_keys.py  first.
 """
 import os
 import sys
-
 import httpx
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # Reads from environment variables, or falls back to the defaults below.
