@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Feature flags
     subscription_enabled: bool = False
+    debug_webhook_logging: bool = False
 
     # Storage
     media_upload_dir: str = ""
