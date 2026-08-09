@@ -1,0 +1,126 @@
+{% extends "admin/base.html" %}
+{% block title %}Recruiters{% endblock %}
+{% block page_title %}Recruiters{% endblock %}
+{% block page_sub %}Directory and performance overview{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Vacancies by District</span></div>
+    <div class="card-body" style="height:220px;position:relative;"><canvas id="c-district"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Vacancies by Category</span></div>
+    <div class="card-body" style="height:220px;position:relative;"><canvas id="c-category"></canvas></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">All Recruiters</span>
+    <div class="search-bar" style="width:260px;">
+      <svg width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" id="search-input" placeholder="Search by name, location…" oninput="filterTable()">
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Company</th><th>Type</th><th>Location</th><th>WhatsApp</th><th>Vacancies</th><th>Avg Apps</th><th>Joined</th><th></th></tr></thead>
+      <tbody id="rec-tbody"><tr><td colspan="8" style="text-align:center;padding:24px;color:#64748b;">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Drill-down -->
+<div id="drill-wrap" style="display:none;margin-top:16px;">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title" id="drill-title">Vacancies</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeDrill()">Close ✕</button>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Job Title</th><th>Status</th><th>Posted</th><th>Applications</th></tr></thead>
+      <tbody id="drill-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRows = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await adminFetch('/admin/api/recruiters/stats');
+    const d = await r.json();
+
+    // District chart
+    const distKeys = Object.keys(d.chart_data.districts);
+    new Chart(document.getElementById('c-district'), {
+      type:'bar',
+      data:{ labels:distKeys, datasets:[{ label:'Vacancies', data:distKeys.map(k=>d.chart_data.districts[k]), backgroundColor:'rgba(239,68,68,.7)', borderRadius:4 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'}}} }
+    });
+
+    // Category chart
+    const catKeys = Object.keys(d.chart_data.categories);
+    new Chart(document.getElementById('c-category'), {
+      type:'bar',
+      data:{ labels:catKeys, datasets:[{ label:'Vacancies', data:catKeys.map(k=>d.chart_data.categories[k]), backgroundColor:'rgba(59,130,246,.7)', borderRadius:4 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, indexAxis:'y', scales:{x:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'}}} }
+    });
+
+    // Table
+    allRows = d.recruiters_table;
+    renderTable(allRows);
+  } catch(e) { console.error(e); }
+});
+
+function renderTable(rows) {
+  const tbody = document.getElementById('rec-tbody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#64748b;">No recruiters found</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${esc(r.company_name||'—')}</strong></td>
+      <td>${esc(r.business_type||'—')}</td>
+      <td>${esc(r.location||'—')}</td>
+      <td style="font-family:monospace;font-size:.75rem;">${esc(r.wa_number)}</td>
+      <td><strong>${r.total_vacancies}</strong></td>
+      <td>${r.avg_apps_per_vacancy}</td>
+      <td style="font-size:.75rem;color:#64748b;">${fmtDate(r.created_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="drillDown('${esc(r.wa_number)}','${esc(r.company_name||r.wa_number)}')">View Jobs</button></td>
+    </tr>`).join('');
+}
+
+function filterTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  renderTable(allRows.filter(r =>
+    (r.company_name||'').toLowerCase().includes(q) ||
+    (r.location||'').toLowerCase().includes(q) ||
+    (r.wa_number||'').includes(q)
+  ));
+}
+
+async function drillDown(wa, name) {
+  document.getElementById('drill-wrap').style.display = 'block';
+  document.getElementById('drill-title').textContent = name + ' — Vacancies';
+  const tbody = document.getElementById('drill-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;">Loading…</td></tr>';
+  try {
+    const r = await adminFetch(`/admin/api/recruiters/${encodeURIComponent(wa)}/vacancies`);
+    const d = await r.json();
+    const sc = { approved:'badge-green', rejected:'badge-red', pending:'badge-amber' };
+    tbody.innerHTML = d.vacancies.length ? d.vacancies.map(v =>
+      `<tr><td><strong>${esc(v.job_title)}</strong></td>
+       <td><span class="badge ${sc[v.status]||'badge-gray'}">${v.status}</span></td>
+       <td style="font-size:.75rem;color:#64748b;">${fmtDate(v.created_at)}</td>
+       <td><strong>${v.total_applications}</strong></td></tr>`).join('')
+    : '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;">No vacancies</td></tr>';
+  } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;padding:16px;">Error loading data.</td></tr>'; }
+  document.getElementById('drill-wrap').scrollIntoView({behavior:'smooth'});
+}
+
+function closeDrill() { document.getElementById('drill-wrap').style.display = 'none'; }
+</script>
+{% endblock %}

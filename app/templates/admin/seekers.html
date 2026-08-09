@@ -1,0 +1,124 @@
+{% extends "admin/base.html" %}
+{% block title %}Job Seekers{% endblock %}
+{% block page_title %}Job Seekers{% endblock %}
+{% block page_sub %}Candidate directory and application history{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Seekers by Location</span></div>
+    <div class="card-body" style="height:220px;position:relative;"><canvas id="c-loc"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Seekers by Job Category</span></div>
+    <div class="card-body" style="height:220px;position:relative;"><canvas id="c-cat"></canvas></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">All Job Seekers</span>
+    <div class="search-bar" style="width:280px;">
+      <svg width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" id="search-input" placeholder="Search by name, location, skills…" oninput="filterTable()">
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>WhatsApp</th><th>Location</th><th>Skills / Category</th><th>Applications</th><th>Joined</th><th></th></tr></thead>
+      <tbody id="seek-tbody"><tr><td colspan="7" style="text-align:center;padding:24px;color:#64748b;">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="drill-wrap" style="display:none;margin-top:16px;">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title" id="drill-title">Applications</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeDrill()">Close ✕</button>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Job Title</th><th>Company</th><th>Status</th><th>Applied</th></tr></thead>
+      <tbody id="drill-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRows = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await adminFetch('/admin/api/seekers/stats');
+    const d = await r.json();
+
+    // Location chart (top 10)
+    const locs = Object.entries(d.chart_data.locations).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    new Chart(document.getElementById('c-loc'), {
+      type:'bar',
+      data:{ labels:locs.map(x=>x[0]), datasets:[{ data:locs.map(x=>x[1]), backgroundColor:'rgba(34,197,94,.7)', borderRadius:4 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, indexAxis:'y', scales:{x:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'}}} }
+    });
+
+    // Category donut
+    const cats = Object.entries(d.chart_data.categories).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    new Chart(document.getElementById('c-cat'), {
+      type:'doughnut',
+      data:{ labels:cats.map(x=>x[0]), datasets:[{ data:cats.map(x=>x[1]), backgroundColor:['#ef4444','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#06b6d4','#f97316','#84cc16'], borderWidth:0 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:10}}} }
+    });
+
+    allRows = d.seekers_table;
+    renderTable(allRows);
+  } catch(e) { console.error(e); }
+});
+
+function renderTable(rows) {
+  const tbody = document.getElementById('seek-tbody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#64748b;">No seekers found</td></tr>'; return; }
+  tbody.innerHTML = rows.map(s => `
+    <tr>
+      <td><strong>${esc(s.name||'—')}</strong></td>
+      <td style="font-family:monospace;font-size:.75rem;">${esc(s.wa_number)}</td>
+      <td>${esc(s.location||'—')}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.skills)}">${esc(s.skills||'—')}</td>
+      <td><strong>${s.total_applications}</strong></td>
+      <td style="font-size:.75rem;color:#64748b;">${fmtDate(s.created_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="drillDown('${esc(s.wa_number)}','${esc(s.name||s.wa_number)}')">View Apps</button></td>
+    </tr>`).join('');
+}
+
+function filterTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  renderTable(allRows.filter(s =>
+    (s.name||'').toLowerCase().includes(q) ||
+    (s.location||'').toLowerCase().includes(q) ||
+    (s.skills||'').toLowerCase().includes(q) ||
+    (s.wa_number||'').includes(q)
+  ));
+}
+
+async function drillDown(wa, name) {
+  document.getElementById('drill-wrap').style.display = 'block';
+  document.getElementById('drill-title').textContent = name + ' — Applications';
+  const tbody = document.getElementById('drill-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;">Loading…</td></tr>';
+  try {
+    const r = await adminFetch(`/admin/api/seekers/${encodeURIComponent(wa)}/applications`);
+    const d = await r.json();
+    const sc = { applied:'badge-blue', shortlisted:'badge-green', rejected:'badge-red', hired:'badge-purple' };
+    tbody.innerHTML = d.applications.length ? d.applications.map(a =>
+      `<tr><td><strong>${esc(a.job_title)}</strong></td>
+       <td>${esc(a.company_name)}</td>
+       <td><span class="badge ${sc[a.status]||'badge-gray'}">${esc(a.status)}</span></td>
+       <td style="font-size:.75rem;color:#64748b;">${fmtDate(a.applied_at)}</td></tr>`).join('')
+    : '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;">No applications yet</td></tr>';
+  } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;padding:16px;">Error loading data.</td></tr>'; }
+  document.getElementById('drill-wrap').scrollIntoView({behavior:'smooth'});
+}
+
+function closeDrill() { document.getElementById('drill-wrap').style.display = 'none'; }
+</script>
+{% endblock %}

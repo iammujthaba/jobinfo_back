@@ -1,26 +1,148 @@
 {% extends "admin/base.html" %}
-{% block title %}Dashboard – JobInfo Admin{% endblock %}
+{% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Platform overview{% endblock %}
 
 {% block content %}
-<div class="stats-grid">
-    <div class="card">
-        <div class="card-title">⏳ Pending Vacancies</div>
-        <div class="stat-value">{{ pending_count }}</div>
-        <a href="/admin/vacancies?status_filter=pending" class="btn btn-gray" style="margin-top:12px;display:inline-block">Review</a>
-    </div>
-    <div class="card">
-        <div class="card-title">📞 Get Help Requests</div>
-        <div class="stat-value">{{ gethelp_count }}</div>
-        <a href="/admin/gethelp" class="btn btn-gray" style="margin-top:12px;display:inline-block">View</a>
-    </div>
-    <div class="card">
-        <div class="card-title">⚠️ Abandoned Signups</div>
-        <div class="stat-value">{{ abandoned_count }}</div>
-        <a href="/admin/abandoned" class="btn btn-gray" style="margin-top:12px;display:inline-block">View</a>
-    </div>
+<div class="stat-grid">
+  <div class="stat-card accent">
+    <div class="val" id="s-vac">—</div>
+    <div class="lbl">Total Vacancies</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="val" id="s-rec">—</div>
+    <div class="lbl">Recruiters</div>
+  </div>
+  <div class="stat-card green">
+    <div class="val" id="s-can">—</div>
+    <div class="lbl">Job Seekers</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="val" id="s-app">—</div>
+    <div class="lbl">Applications</div>
+  </div>
 </div>
-<div class="card">
-    <p style="color:#888;font-size:.9rem">Welcome back! Use the sidebar to review vacancies, manage help requests, and follow up with abandoned signups.</p>
+
+<div style="display:grid;grid-template-columns:280px 1fr;gap:16px;margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Vacancy Status</span></div>
+    <div class="card-body" style="height:220px;position:relative;">
+      <canvas id="c-status"></canvas>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid #e2e8f0;">
+      <div style="padding:12px;text-align:center;border-right:1px solid #e2e8f0;">
+        <div style="font-size:1.3rem;font-weight:700;color:#f59e0b;" id="cnt-pending">—</div>
+        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Pending</div>
+      </div>
+      <div style="padding:12px;text-align:center;border-right:1px solid #e2e8f0;">
+        <div style="font-size:1.3rem;font-weight:700;color:#22c55e;" id="cnt-approved">—</div>
+        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Approved</div>
+      </div>
+      <div style="padding:12px;text-align:center;">
+        <div style="font-size:1.3rem;font-weight:700;color:#ef4444;" id="cnt-rejected">—</div>
+        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Rejected</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">30-Day Activity Trend</span></div>
+    <div class="card-body" style="height:260px;position:relative;">
+      <canvas id="c-trend"></canvas>
+    </div>
+  </div>
 </div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Recruiter Registrations (30d)</span></div>
+    <div class="card-body" style="height:220px;position:relative;">
+      <canvas id="c-rec"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Top Jobs by Applications</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Job Title</th><th>Code</th><th>Location</th><th>Status</th><th>Apps</th></tr></thead>
+        <tbody id="top-jobs-body">
+          <tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px;">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await adminFetch('/admin/api/analytics');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    // Stat cards
+    document.getElementById('s-vac').textContent = fmtNum(d.totals.vacancies);
+    document.getElementById('s-rec').textContent = fmtNum(d.totals.recruiters);
+    document.getElementById('s-can').textContent = fmtNum(d.totals.candidates);
+    document.getElementById('s-app').textContent = fmtNum(d.totals.applications);
+    document.getElementById('cnt-pending').textContent  = fmtNum(d.vacancy_status.pending);
+    document.getElementById('cnt-approved').textContent = fmtNum(d.vacancy_status.approved);
+    document.getElementById('cnt-rejected').textContent = fmtNum(d.vacancy_status.rejected);
+
+    // Vacancy status donut
+    new Chart(document.getElementById('c-status'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Pending', 'Approved', 'Rejected'],
+        datasets: [{ data: [d.vacancy_status.pending, d.vacancy_status.approved, d.vacancy_status.rejected],
+          backgroundColor: ['#f59e0b','#22c55e','#ef4444'], borderWidth: 0 }]
+      },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins: { legend: { position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } } }
+    });
+
+    // 30-day trend
+    const labels = d.vacancy_daily.map(x => x.date.slice(5));
+    new Chart(document.getElementById('c-trend'), {
+      type: 'line',
+      data: { labels, datasets: [
+        { label:'Vacancies', data:d.vacancy_daily.map(x=>x.count), borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.08)', tension:.3, fill:true, pointRadius:2 },
+        { label:'Applications', data:d.applications_daily.map(x=>x.count), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.08)', tension:.3, fill:true, pointRadius:2 }
+      ]},
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ font:{size:11}, boxWidth:12 } } },
+        scales:{ y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,.05)' } } } }
+    });
+
+    // Recruiter trend
+    new Chart(document.getElementById('c-rec'), {
+      type: 'bar',
+      data: { labels: d.recruiters_daily.map(x=>x.date.slice(5)),
+        datasets: [{ label:'New Recruiters', data:d.recruiters_daily.map(x=>x.count), backgroundColor:'rgba(59,130,246,.7)', borderRadius:4 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,.05)' } } } }
+    });
+
+    // Top jobs table
+    const tbody = document.getElementById('top-jobs-body');
+    if (!d.top_jobs_by_applications.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px;">No data yet</td></tr>';
+    } else {
+      const statusColor = { approved:'green', rejected:'red', pending:'amber' };
+      tbody.innerHTML = d.top_jobs_by_applications.map(j =>
+        `<tr>
+          <td><strong>${esc(j.title)}</strong></td>
+          <td style="font-family:monospace;font-size:.72rem;color:#64748b;">${esc(j.job_code)}</td>
+          <td>${esc(j.location)}</td>
+          <td><span class="badge badge-${statusColor[j.status]||'gray'}">${j.status}</span></td>
+          <td><strong>${j.applications}</strong></td>
+        </tr>`
+      ).join('');
+    }
+  } catch(e) { console.error(e); }
+});
+</script>
 {% endblock %}

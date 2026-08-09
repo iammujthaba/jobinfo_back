@@ -241,47 +241,122 @@ async def admin_home(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
+    from app.db.models import UserQuestion
     pending_count = db.query(JobVacancy).filter_by(status="pending").count()
     gethelp_count = db.query(GetHelpRequest).filter_by(resolved=False).count()
-    abandoned_count = (
-        db.query(Candidate).filter_by(registration_complete=False).count()
-    )
+    question_count = db.query(UserQuestion).filter_by(is_resolved=False).count()
     return templates.TemplateResponse(
         "admin/dashboard.html",
         {
             "request": request,
             "pending_count": pending_count,
-            "gethelp_count": gethelp_count,
-            "abandoned_count": abandoned_count,
+            "inbox_count": gethelp_count + question_count,
         },
     )
 
 
-# ─── Vacancies ────────────────────────────────────────────────────────────────
+# ─── Shared sidebar context helper ────────────────────────────────────────────
+
+def _sidebar_ctx(db) -> dict:
+    """Returns badge counts for the sidebar — called by every page route."""
+    from app.db.models import UserQuestion
+    pending = db.query(JobVacancy).filter_by(status="pending").count()
+    help_open = db.query(GetHelpRequest).filter_by(resolved=False).count()
+    q_open = db.query(UserQuestion).filter_by(is_resolved=False).count()
+    return {"pending_count": pending, "inbox_count": help_open + q_open}
+
+
+# ─── Vacancies page ───────────────────────────────────────────────────────────
 
 @router.get("/vacancies", response_class=HTMLResponse)
-async def list_vacancies(
+async def page_vacancies(
     request: Request,
-    status_filter: str = "pending",
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    valid = {"pending", "approved", "rejected"}
-    status_filter = status_filter if status_filter in valid else "pending"
-    vacancies = (
-        db.query(JobVacancy)
-        .filter_by(status=status_filter)
-        .order_by(JobVacancy.created_at.desc())
-        .all()
-    )
     return templates.TemplateResponse(
-        "admin/vacancies.html",
-        {
-            "request": request,
-            "vacancies": vacancies,
-            "current_filter": status_filter,
-        },
+        "admin/vacancies.html", {"request": request, **_sidebar_ctx(db)}
     )
+
+
+# ─── Recruiters page ──────────────────────────────────────────────────────────
+
+@router.get("/recruiters", response_class=HTMLResponse)
+async def page_recruiters(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/recruiters.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
+# ─── Seekers page ─────────────────────────────────────────────────────────────
+
+@router.get("/seekers", response_class=HTMLResponse)
+async def page_seekers(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/seekers.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
+# ─── Bot Visitors / Analytics page ───────────────────────────────────────────
+
+@router.get("/visitors", response_class=HTMLResponse)
+async def page_visitors(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/visitors.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
+# ─── Unregistered Leads page ──────────────────────────────────────────────────
+
+@router.get("/leads", response_class=HTMLResponse)
+async def page_leads(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/leads.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
+# ─── Dual Users page ──────────────────────────────────────────────────────────
+
+@router.get("/dual-users", response_class=HTMLResponse)
+async def page_dual_users(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/dual_users.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
+# ─── Inbox (Help + Questions) page ───────────────────────────────────────────
+
+@router.get("/inbox", response_class=HTMLResponse)
+async def page_inbox(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/inbox.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
 
 
 @router.post("/vacancies/{vacancy_id}/approve")

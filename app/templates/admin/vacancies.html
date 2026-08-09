@@ -1,61 +1,177 @@
 {% extends "admin/base.html" %}
-{% block title %}Vacancies – JobInfo Admin{% endblock %}
+{% block title %}Vacancies{% endblock %}
 {% block page_title %}Vacancies{% endblock %}
+{% block page_sub %}Review and manage all job postings{% endblock %}
+
+{% block topbar_actions %}
+<div class="tab-bar" id="tab-bar">
+  <button class="tab active" onclick="switchTab('pending',this)">Pending</button>
+  <button class="tab" onclick="switchTab('approved',this)">Approved</button>
+  <button class="tab" onclick="switchTab('rejected',this)">Rejected</button>
+</div>
+{% endblock %}
 
 {% block content %}
-<!-- Filter tabs -->
-<div style="display:flex;gap:8px;margin-bottom:20px">
-    {% for status in ['pending', 'approved', 'rejected'] %}
-    <a href="/admin/vacancies?status_filter={{ status }}"
-       class="btn {% if current_filter == status %}btn-green{% else %}btn-gray{% endif %}">
-        {{ status | title }}
-    </a>
-    {% endfor %}
+<div id="vac-list">
+  <div class="loading-wrap"><div class="spinner"></div></div>
 </div>
 
-<div class="card" style="padding:0;overflow:hidden">
-    {% if vacancies %}
-    <table>
-        <thead>
-            <tr>
-                <th>Job Code</th>
-                <th>Title</th>
-                <th>Company</th>
-                <th>Location</th>
-                <th>Recruiter (WA)</th>
-                <th>Submitted</th>
-                {% if current_filter == 'rejected' %}<th>Reason</th>{% endif %}
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for v in vacancies %}
-            <tr>
-                <td><code>{{ v.job_code }}</code></td>
-                <td><strong>{{ v.title }}</strong></td>
-                <td>{{ v.company or '—' }}</td>
-                <td>{{ v.location }}</td>
-                <td>{{ v.recruiter.name }}<br><small style="color:#888">{{ v.recruiter.wa_number }}</small></td>
-                <td style="white-space:nowrap">{{ v.created_at.strftime('%d %b %Y') }}</td>
-                {% if current_filter == 'rejected' %}
-                <td style="max-width:200px;font-size:.82rem;color:#922b21">{{ v.rejection_reason or '—' }}</td>
-                {% endif %}
-                <td>
-                    {% if current_filter != 'approved' %}
-                    <form method="POST" action="/admin/vacancies/{{ v.id }}/approve" style="display:inline">
-                        <button class="btn btn-green" type="submit">✅ Approve</button>
-                    </form>
-                    {% endif %}
-                    {% if current_filter != 'rejected' %}
-                    <button class="btn btn-red" onclick="openRejectModal({{ v.id }})">❌ Reject</button>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <div style="padding:40px;text-align:center;color:#888">No {{ current_filter }} vacancies.</div>
-    {% endif %}
+<!-- Reject modal -->
+<div class="modal-overlay" id="reject-modal">
+  <div class="modal">
+    <h3>Reject Vacancy</h3>
+    <p class="modal-sub">The recruiter will be notified via WhatsApp with your reason.</p>
+    <label>Rejection Reason *</label>
+    <textarea id="reject-reason" rows="4" placeholder="e.g. Incomplete job description, suspicious posting…"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeRejectModal()">Cancel</button>
+      <button class="btn btn-primary" id="reject-confirm-btn" onclick="confirmReject()">Send Rejection</button>
+    </div>
+  </div>
 </div>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" style="width:600px;">
+    <h3 id="dm-title">—</h3>
+    <p class="modal-sub" id="dm-code" style="font-family:monospace;"></p>
+    <div id="dm-body" style="font-size:.85rem;line-height:1.7;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('detail-modal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentTab = 'pending';
+let rejectTargetId = null;
+
+async function loadVacancies(tab) {
+  currentTab = tab;
+  const el = document.getElementById('vac-list');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  try {
+    const r = await adminFetch(`/admin/api/vacancies?status_filter=${tab}`);
+    const d = await r.json();
+    if (!d.results.length) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>No ' + tab + ' vacancies</p></div>';
+      return;
+    }
+    el.innerHTML = d.results.map(v => buildCard(v)).join('');
+  } catch(e) { el.innerHTML = '<div class="empty-state"><p>Failed to load. Try refreshing.</p></div>'; }
+}
+
+function buildCard(v) {
+  const recruiter = v.recruiter || {};
+  const editBadge = v.is_edited ? '<span class="badge badge-amber" style="margin-left:8px;">Edited</span>' : '';
+  const statusBadge = { pending:'badge-amber', approved:'badge-green', rejected:'badge-red' };
+
+  const actions = currentTab === 'pending' ? `
+    <button class="btn btn-green btn-sm" onclick="approveVac(${v.id},this)">✓ Approve</button>
+    <button class="btn btn-primary btn-sm" onclick="openReject(${v.id})">✕ Reject</button>
+  ` : currentTab === 'approved' ? `
+    <button class="btn btn-ghost btn-sm" onclick="shareToChannel(${v.id},this)">📡 Share to Channel</button>
+  ` : `<span style="font-size:.75rem;color:#64748b;">${esc(v.rejection_reason||'No reason given')}</span>`;
+
+  return `
+  <div class="card" style="margin-bottom:14px;" id="vc-${v.id}">
+    <div class="card-header" style="flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+        <span style="font-size:.95rem;font-weight:700;color:#1e293b;">${esc(v.job_title)}</span>
+        <span class="badge ${statusBadge[v.status]||'badge-gray'}">${v.status}</span>
+        ${editBadge}
+        <span style="font-family:monospace;font-size:.72rem;color:#64748b;background:#f1f5f9;padding:2px 8px;border-radius:6px;">${esc(v.job_code)}</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" onclick="openDetail(${JSON.stringify(v).replace(/"/g,'&quot;')})">View Details</button>
+        ${actions}
+      </div>
+    </div>
+    <div class="card-body" style="display:grid;grid-template-columns:repeat(3,1fr) 2fr;gap:16px;">
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Company</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||'—')}</div>
+        <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.business_type||'')}</div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Location</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'—')}</div>
+        <div style="font-size:.75rem;color:#64748b;">${esc(v.exact_location||'')}</div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Details</div>
+        <div style="font-size:.82rem;">💰 ${esc(v.salary_range||'—')}</div>
+        <div style="font-size:.82rem;">💼 ${esc(v.job_mode||'—')} &nbsp;·&nbsp; 🎓 ${esc(v.experience_required||'—')}</div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Recruiter</div>
+        <div style="font-size:.82rem;">${esc(recruiter.wa_number||'—')}</div>
+        <div style="font-size:.75rem;color:#64748b;">Posted ${fmtDate(v.created_at)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function openDetail(v) {
+  document.getElementById('dm-title').textContent = v.job_title;
+  document.getElementById('dm-code').textContent = v.job_code + ' · ' + (v.district_region||'') + (v.exact_location ? ', '+v.exact_location : '');
+  const recruiter = v.recruiter || {};
+  document.getElementById('dm-body').innerHTML = `
+    <p><strong>Company:</strong> ${esc(recruiter.company||'—')} (${esc(recruiter.business_type||'')})</p>
+    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'—')}</p>
+    <p><strong>Salary:</strong> ${esc(v.salary_range||'—')}</p>
+    <p><strong>Mode:</strong> ${esc(v.job_mode||'—')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'—')}</p>
+    <p><strong>CV Required:</strong> ${v.cv_required ? 'Yes' : 'No'}</p>
+    <hr style="margin:12px 0;border:none;border-top:1px solid #e2e8f0;">
+    <p style="white-space:pre-wrap;">${esc(v.job_description||'No description provided.')}</p>`;
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+async function approveVac(id, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await adminFetch(`/admin/api/vacancies/${id}/approve`, {method:'POST'});
+    if (r.ok) { document.getElementById('vc-'+id)?.remove(); toast('Vacancy approved! Recruiter notified.','ok'); }
+    else toast('Failed to approve.','err');
+  } catch(e) { toast('Error.','err'); }
+}
+
+function openReject(id) { rejectTargetId = id; document.getElementById('reject-modal').classList.add('open'); }
+function closeRejectModal() { document.getElementById('reject-modal').classList.remove('open'); document.getElementById('reject-reason').value=''; }
+
+async function confirmReject() {
+  const reason = document.getElementById('reject-reason').value.trim();
+  if (!reason) { toast('Please enter a reason.','err'); return; }
+  const btn = document.getElementById('reject-confirm-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const fd = new FormData(); fd.append('reason', reason);
+    const r = await adminFetch(`/admin/api/vacancies/${rejectTargetId}/reject`, {method:'POST', body:fd});
+    if (r.ok) { document.getElementById('vc-'+rejectTargetId)?.remove(); closeRejectModal(); toast('Rejection sent to recruiter.','ok'); }
+    else toast('Failed to reject.','err');
+  } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='Send Rejection'; }
+}
+
+async function shareToChannel(id, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await adminFetch(`/admin/api/vacancies/${id}/share-to-channel`, {method:'POST'});
+    const d = await r.json();
+    if (r.ok) toast('Shared to WhatsApp channel! (' + (d.job_code||'') + ')','ok');
+    else toast('Share failed.','err');
+  } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='📡 Share to Channel'; }
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  loadVacancies(tab);
+}
+
+document.addEventListener('DOMContentLoaded', () => loadVacancies('pending'));
+document.getElementById('reject-modal').addEventListener('click', e => { if(e.target.id==='reject-modal') closeRejectModal(); });
+document.getElementById('detail-modal').addEventListener('click', e => { if(e.target.id==='detail-modal') document.getElementById('detail-modal').classList.remove('open'); });
+</script>
 {% endblock %}

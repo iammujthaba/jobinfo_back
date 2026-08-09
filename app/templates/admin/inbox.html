@@ -1,0 +1,129 @@
+{% extends "admin/base.html" %}
+{% block title %}Inbox{% endblock %}
+{% block page_title %}Inbox{% endblock %}
+{% block page_sub %}Help requests and user questions{% endblock %}
+
+{% block topbar_actions %}
+<div class="tab-bar" id="tab-bar">
+  <button class="tab active" onclick="switchTab('help',this)">Help Requests</button>
+  <button class="tab" onclick="switchTab('questions',this)">Questions</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="inbox-list">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentTab = 'help';
+let allItems = [];
+
+async function loadHelp() {
+  const el = document.getElementById('inbox-list');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  try {
+    const r = await adminFetch('/admin/api/help-requests');
+    const d = await r.json();
+    allItems = d.results;
+    if (!allItems.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📬</div><p>No help requests</p></div>'; return; }
+    renderHelp(allItems);
+  } catch(e) { el.innerHTML = '<div class="empty-state"><p>Failed to load.</p></div>'; }
+}
+
+async function loadQuestions() {
+  const el = document.getElementById('inbox-list');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  try {
+    const r = await adminFetch('/admin/api/questions');
+    const d = await r.json();
+    allItems = d.results;
+    if (!allItems.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div><p>No questions submitted</p></div>'; return; }
+    renderQuestions(allItems);
+  } catch(e) { el.innerHTML = '<div class="empty-state"><p>Failed to load.</p></div>'; }
+}
+
+function renderHelp(items) {
+  const typeColor = { Seeker:'badge-green', Recruiter:'badge-blue', Both:'badge-purple', Unregistered:'badge-gray' };
+  document.getElementById('inbox-list').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      ${items.map(req => `
+        <div class="card" id="hr-${req.id}" style="${req.resolved ? 'opacity:.5;' : ''}">
+          <div class="card-body" style="display:flex;align-items:flex-start;gap:16px;">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span class="badge ${typeColor[req.user_type]||'badge-gray'}">${esc(req.user_type)}</span>
+                <strong style="font-size:.85rem;">${esc(req.name||'Unknown')}</strong>
+                <span style="font-family:monospace;font-size:.72rem;color:#64748b;">${esc(req.wa_number)}</span>
+                <span style="margin-left:auto;font-size:.72rem;color:#94a3b8;">${fmtDate(req.created_at)}</span>
+              </div>
+              ${req.resolved ? '<span class="badge badge-green">Resolved</span>' :
+                `<button class="btn btn-green btn-sm" onclick="resolveHelp(${req.id},this)">✓ Mark Resolved</button>`}
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderQuestions(items) {
+  document.getElementById('inbox-list').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      ${items.map(q => `
+        <div class="card" id="qn-${q.id}" style="${q.is_resolved ? 'opacity:.5;' : ''}">
+          <div class="card-body">
+            <div style="display:flex;align-items:flex-start;gap:12px;">
+              <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                  <strong style="font-size:.875rem;">${esc(q.name||'—')}</strong>
+                  <span style="font-family:monospace;font-size:.72rem;color:#64748b;">${esc(q.wa_number)}</span>
+                  <span class="badge badge-gray" style="font-size:.65rem;">${esc(q.source||'web')}</span>
+                  <span style="margin-left:auto;font-size:.72rem;color:#94a3b8;">${fmtDate(q.created_at)}</span>
+                </div>
+                <p style="font-size:.85rem;color:#1e293b;line-height:1.6;background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #e2e8f0;">${esc(q.question)}</p>
+                <div style="margin-top:10px;">
+                  ${q.is_resolved ? '<span class="badge badge-green">Resolved</span>' :
+                    `<button class="btn btn-green btn-sm" onclick="resolveQuestion(${q.id},this)">✓ Mark Resolved</button>`}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function resolveHelp(id, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await adminFetch(`/admin/api/help-requests/${id}/resolve`, {method:'PATCH'});
+    if (r.ok) {
+      const card = document.getElementById('hr-'+id);
+      if (card) { card.style.opacity = '0.5'; btn.outerHTML = '<span class="badge badge-green">Resolved</span>'; }
+      toast('Marked as resolved','ok');
+    } else toast('Failed','err');
+  } catch(e) { toast('Error','err'); }
+}
+
+async function resolveQuestion(id, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await adminFetch(`/admin/api/questions/${id}/resolve`, {method:'POST'});
+    if (r.ok) {
+      const card = document.getElementById('qn-'+id);
+      if (card) { card.style.opacity = '0.5'; btn.outerHTML = '<span class="badge badge-green">Resolved</span>'; }
+      toast('Marked as resolved','ok');
+    } else toast('Failed','err');
+  } catch(e) { toast('Error','err'); }
+}
+
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  if (tab === 'help') loadHelp(); else loadQuestions();
+}
+
+document.addEventListener('DOMContentLoaded', loadHelp);
+</script>
+{% endblock %}
