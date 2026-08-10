@@ -38,54 +38,125 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="vac-category">Job Category *</label>
-                    <input type="text" id="vac-category" name="job_category"
-                        placeholder="e.g. Hospitality, IT, Sales" required>
+                    <select id="vac-category" name="job_category" required>
+                        <option value="" disabled {% if not form_data or not form_data.job_category %}selected{% endif %}>Select job category…</option>
+                        <option value="retail"                 {% if form_data and form_data.job_category == 'retail' %}selected{% endif %}>Retail & Showrooms</option>
+                        <option value="sales_business"         {% if form_data and form_data.job_category == 'sales_business' %}selected{% endif %}>Sales & Business Executive</option>
+                        <option value="hospitality"            {% if form_data and form_data.job_category == 'hospitality' %}selected{% endif %}>Hospitality & Food Service</option>
+                        <option value="healthcare"             {% if form_data and form_data.job_category == 'healthcare' %}selected{% endif %}>Healthcare & Caretaking</option>
+                        <option value="education"              {% if form_data and form_data.job_category == 'education' %}selected{% endif %}>Education & Academic Advisor</option>
+                        <option value="office_data_entry"      {% if form_data and form_data.job_category == 'office_data_entry' %}selected{% endif %}>Office Admin & Data Entry</option>
+                        <option value="front_office"           {% if form_data and form_data.job_category == 'front_office' %}selected{% endif %}>Receptionist & Front Office</option>
+                        <option value="finance_accounts"       {% if form_data and form_data.job_category == 'finance_accounts' %}selected{% endif %}>Accountant & Billing Staff</option>
+                        <option value="hr_management"          {% if form_data and form_data.job_category == 'hr_management' %}selected{% endif %}>HR, Branch Manager & Team Lead</option>
+                        <option value="telecalling"            {% if form_data and form_data.job_category == 'telecalling' %}selected{% endif %}>Telecaller & Customer Support</option>
+                        <option value="it_digital_marketing"   {% if form_data and form_data.job_category == 'it_digital_marketing' %}selected{% endif %}>IT & Digital Marketing</option>
+                        <option value="logistics_store"        {% if form_data and form_data.job_category == 'logistics_store' %}selected{% endif %}>Driving, Logistics & Store Keeper</option>
+                        <option value="beauty_wellness"        {% if form_data and form_data.job_category == 'beauty_wellness' %}selected{% endif %}>Beauty & Wellness</option>
+                        <option value="maintenance_technician" {% if form_data and form_data.job_category == 'maintenance_technician' %}selected{% endif %}>Maintenance & Technician</option>
+                        <option value="construction_labor"     {% if form_data and form_data.job_category == 'construction_labor' %}selected{% endif %}>Construction & Manual Labor</option>
+                        <option value="gulf_abroad"            {% if form_data and form_data.job_category == 'gulf_abroad' %}selected{% endif %}>Gulf / Abroad Jobs</option>
+                        <option value="other"                  {% if form_data and form_data.job_category == 'other' %}selected{% endif %}>Other / General</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="vac-title">Job Title *</label>
                     <input type="text" id="vac-title" name="job_title"
-                        placeholder="e.g. Hotel Receptionist" required>
+                        placeholder="e.g. Sales Executive, HR Manager"
+                        value="{{ form_data.job_title if form_data else '' }}" required>
                 </div>
                 <div class="form-group">
                     <label for="vac-district">District / Region *</label>
-                    <input type="text" id="vac-district" name="district_region"
-                        placeholder="e.g. Ernakulam, Dubai" required>
+                    <select id="vac-district" name="district_region" required>
+                        <option value="" disabled {% if not form_data or not form_data.district_region %}selected{% endif %}>Select district / region…</option>
+                        <optgroup label="Kerala">
+                            <option value="Trivandrum"     {% if form_data and form_data.district_region == 'Trivandrum' %}selected{% endif %}>Trivandrum</option>
+                            <option value="Kollam"         {% if form_data and form_data.district_region == 'Kollam' %}selected{% endif %}>Kollam</option>
+                            <option value="Pathanamthitta" {% if form_data and form_data.district_region == 'Pathanamthitta' %}selected{% endif %}>Pathanamthitta</option>
+                            <option value="Alappuzha"      {% if form_data and form_data.district_region == 'Alappuzha' %}selected{% endif %}>Alappuzha</option>
+                            <option value="Kottayam"       {% if form_data and form_data.district_region == 'Kottayam' %}selected{% endif %}>Kottayam</option>
+                            <option value="Idukki"         {% if form_data and form_data.district_region == 'Idukki' %}selected{% endif %}>Idukki</option>
+                            <option value="Ernakulam"      {% if form_data and form_data.district_region == 'Ernakulam' %}selected{% endif %}>Ernakulam</option>
+                            <option value="Thrissur"       {% if form_data and form_data.district_region == 'Thrissur' %}selected{% endif %}>Thrissur</option>
+                            <option value="Palakkad"       {% if form_data and form_data.district_region == 'Palakkad' %}selected{% endif %}>Palakkad</option>
+                            <option value="Malappuram"     {% if form_data and form_data.district_region == 'Malappuram' %}selected{% endif %}>Malappuram</option>
+                            <option value="Kozhikode"      {% if form_data and form_data.district_region == 'Kozhikode' %}selected{% endif %}>Kozhikode</option>
+                            <option value="Wayanad"        {% if form_data and form_data.district_region == 'Wayanad' %}selected{% endif %}>Wayanad</option>
+                            <option value="Kannur"         {% if form_data and form_data.district_region == 'Kannur' %}selected{% endif %}>Kannur</option>
+                            <option value="Kasaragod"      {% if form_data and form_data.district_region == 'Kasaragod' %}selected{% endif %}>Kasaragod</option>
+                        </optgroup>
+                        <optgroup label="Karnataka">
+                            <option value="Bangalore" {% if form_data and form_data.district_region == 'Bangalore' %}selected{% endif %}>Bangalore</option>
+                            <option value="Mangalore" {% if form_data and form_data.district_region == 'Mangalore' %}selected{% endif %}>Mangalore</option>
+                            <option value="Mysore"    {% if form_data and form_data.district_region == 'Mysore' %}selected{% endif %}>Mysore</option>
+                            <option value="Hubli"     {% if form_data and form_data.district_region == 'Hubli' %}selected{% endif %}>Hubli</option>
+                        </optgroup>
+                        <optgroup label="GCC (Gulf Countries)">
+                            <option value="Dubai"   {% if form_data and form_data.district_region == 'Dubai' %}selected{% endif %}>Dubai</option>
+                            <option value="Riyadh"  {% if form_data and form_data.district_region == 'Riyadh' %}selected{% endif %}>Riyadh</option>
+                            <option value="Doha"    {% if form_data and form_data.district_region == 'Doha' %}selected{% endif %}>Doha</option>
+                            <option value="Muscat"  {% if form_data and form_data.district_region == 'Muscat' %}selected{% endif %}>Muscat</option>
+                            <option value="Kuwait"  {% if form_data and form_data.district_region == 'Kuwait' %}selected{% endif %}>Kuwait</option>
+                            <option value="Manama"  {% if form_data and form_data.district_region == 'Manama' %}selected{% endif %}>Manama</option>
+                        </optgroup>
+                        <optgroup label="Other">
+                            <option value="Other Location" {% if form_data and form_data.district_region == 'Other Location' %}selected{% endif %}>Other Location</option>
+                        </optgroup>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="vac-location">Exact Location *</label>
                     <input type="text" id="vac-location" name="exact_location"
-                        placeholder="e.g. MG Road, Kochi" required>
-                </div>
-                <div class="form-group">
-                    <label for="vac-salary">Salary Range *</label>
-                    <input type="text" id="vac-salary" name="salary_range"
-                        placeholder="e.g. ₹15,000 – ₹20,000/month" required>
+                        placeholder="e.g. Vyttila, Mavoor Road, Edappally"
+                        value="{{ form_data.exact_location if form_data else '' }}" required>
                 </div>
                 <div class="form-group">
                     <label for="vac-mode">Job Mode *</label>
                     <select id="vac-mode" name="job_mode" required>
-                        <option value="">— Select —</option>
-                        <option value="On-site">On-site</option>
-                        <option value="Remote">Remote</option>
-                        <option value="Hybrid">Hybrid</option>
+                        <option value="" disabled {% if not form_data or not form_data.job_mode %}selected{% endif %}>Select job mode…</option>
+                        <option value="full_time" {% if form_data and form_data.job_mode in ('full_time', 'Full-Time') %}selected{% endif %}>Full-Time</option>
+                        <option value="part_time" {% if form_data and form_data.job_mode in ('part_time', 'Part-Time') %}selected{% endif %}>Part-Time</option>
+                        <option value="remote"    {% if form_data and form_data.job_mode in ('remote', 'Remote') %}selected{% endif %}>Remote</option>
+                        <option value="hybrid"    {% if form_data and form_data.job_mode in ('hybrid', 'Hybrid') %}selected{% endif %}>Hybrid</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="vac-exp">Experience Required *</label>
+                    <select id="vac-exp" name="experience_required" required>
+                        <option value="" disabled {% if not form_data or not form_data.experience_required %}selected{% endif %}>Select experience…</option>
+                        <option value="no_experience"  {% if form_data and form_data.experience_required == 'no_experience' %}selected{% endif %}>No Experience Required</option>
+                        <option value="fresher_or_exp" {% if form_data and form_data.experience_required == 'fresher_or_exp' %}selected{% endif %}>Fresher or Experienced</option>
+                        <option value="1_2_years"      {% if form_data and form_data.experience_required == '1_2_years' %}selected{% endif %}>1-2 Years</option>
+                        <option value="3_5_years"      {% if form_data and form_data.experience_required == '3_5_years' %}selected{% endif %}>3-5 Years</option>
+                        <option value="5_plus_years"   {% if form_data and form_data.experience_required == '5_plus_years' %}selected{% endif %}>5+ Years</option>
                     </select>
                 </div>
                 <div class="form-group full">
-                    <label for="vac-exp">Experience Required *</label>
-                    <input type="text" id="vac-exp" name="experience_required"
-                        placeholder="e.g. Freshers welcome / 1-2 years in hospitality" required>
+                    <label for="vac-salary">Salary Range *</label>
+                    <select id="vac-salary" name="salary_range" required>
+                        <option value="" disabled {% if not form_data or not form_data.salary_range %}selected{% endif %}>Select salary range…</option>
+                        <option value="interview_based" {% if form_data and form_data.salary_range == 'interview_based' %}selected{% endif %}>Based on Interview</option>
+                        <option value="not_mentioned"   {% if form_data and form_data.salary_range == 'not_mentioned' %}selected{% endif %}>Not Mentioned</option>
+                        <option value="stipend"         {% if form_data and form_data.salary_range == 'stipend' %}selected{% endif %}>Stipend</option>
+                        <option value="below_10k"       {% if form_data and form_data.salary_range == 'below_10k' %}selected{% endif %}>Below ₹10,000</option>
+                        <option value="10k_20k"         {% if form_data and form_data.salary_range == '10k_20k' %}selected{% endif %}>₹10,000 - ₹20,000</option>
+                        <option value="20k_30k"         {% if form_data and form_data.salary_range == '20k_30k' %}selected{% endif %}>₹20,000 - ₹30,000</option>
+                        <option value="30k_40k"         {% if form_data and form_data.salary_range == '30k_40k' %}selected{% endif %}>₹30,000 - ₹40,000</option>
+                        <option value="40k_50k"         {% if form_data and form_data.salary_range == '40k_50k' %}selected{% endif %}>₹40,000 - ₹50,000</option>
+                        <option value="above_50k"       {% if form_data and form_data.salary_range == 'above_50k' %}selected{% endif %}>Above ₹50,000</option>
+                    </select>
                 </div>
                 <div class="form-group full">
                     <label for="vac-desc">Job Description *</label>
                     <textarea id="vac-desc" name="job_description" rows="5"
-                        placeholder="Describe the role, responsibilities, and requirements…" required></textarea>
+                        placeholder="Describe the role, responsibilities, and requirements…" required>{{ form_data.job_description if form_data else '' }}</textarea>
                 </div>
                 <div class="form-group full">
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:.875rem;font-weight:500;color:var(--text);">
-                        <input type="checkbox" id="vac-cv" name="cv_required" value="on"
-                            style="width:16px;height:16px;accent-color:var(--gold);border-radius:4px;">
-                        CV Required for this vacancy
-                    </label>
+                    <label for="vac-cv">Require CV / Resume from applicants? *</label>
+                    <select id="vac-cv" name="cv_required" required>
+                        <option value="no"  {% if not form_data or form_data.cv_required in ('no', 'off', False) %}selected{% endif %}>No – CV is optional</option>
+                        <option value="yes" {% if form_data and form_data.cv_required in ('yes', 'on', True) %}selected{% endif %}>Yes – CV is mandatory</option>
+                    </select>
                 </div>
             </div>
 

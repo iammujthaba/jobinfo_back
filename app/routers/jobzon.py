@@ -459,7 +459,7 @@ async def jobzon_vacancy_create_submit(
         job_mode=job_mode.strip(),
         salary_range=salary_range.strip(),
         experience_required=experience_required.strip(),
-        cv_required=(cv_required == "on"),
+        cv_required=(str(cv_required).strip().lower() in ("on", "yes", "true", "1")),
         status="pending",
     )
     db.add(vacancy)

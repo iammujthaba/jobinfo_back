@@ -25,58 +25,72 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="rc-wa">WhatsApp Number *</label>
-                    <input
-                        type="text"
-                        id="rc-wa"
-                        name="wa_number"
+                    <input type="text" id="rc-wa" name="wa_number"
                         placeholder="e.g. 919876543210 (with country code, no +)"
-                        value="{{ form_data.wa_number if form_data else '' }}"
-                        required
-                    >
+                        value="{{ form_data.wa_number if form_data else '' }}" required>
                 </div>
                 <div class="form-group">
                     <label for="rc-company">Company / Business Name *</label>
-                    <input
-                        type="text"
-                        id="rc-company"
-                        name="company_name"
-                        placeholder="e.g. ABC Enterprises"
-                        value="{{ form_data.company_name if form_data else '' }}"
-                        required
-                    >
+                    <input type="text" id="rc-company" name="company_name" placeholder="e.g. ABC Enterprises"
+                        value="{{ form_data.company_name if form_data else '' }}" required>
                 </div>
                 <div class="form-group">
                     <label for="rc-btype">Business Type *</label>
-                    <input
-                        type="text"
-                        id="rc-btype"
-                        name="business_type"
-                        placeholder="e.g. Restaurant, Retail, IT Services"
-                        value="{{ form_data.business_type if form_data else '' }}"
-                        required
-                    >
+                    <select id="rc-btype" name="business_type" required>
+                        <option value="" disabled {% if not form_data or not form_data.business_type %}selected{% endif
+                            %}>Select business type…</option>
+                        <option value="company" {% if form_data and form_data.business_type=='company' %}selected{%
+                            endif %}>Company / Pvt Ltd</option>
+                        <option value="shop_retail" {% if form_data and form_data.business_type=='shop_retail'
+                            %}selected{% endif %}>Shop / Supermarket / Textiles</option>
+                        <option value="hotel_bakery" {% if form_data and form_data.business_type=='hotel_bakery'
+                            %}selected{% endif %}>Hotel / Restaurant / Bakery</option>
+                        <option value="healthcare" {% if form_data and form_data.business_type=='healthcare'
+                            %}selected{% endif %}>Hospital / Clinic / Pharmacy</option>
+                        <option value="education" {% if form_data and form_data.business_type=='education' %}selected{%
+                            endif %}>School / College / Coaching</option>
+                        <option value="salon_spa" {% if form_data and form_data.business_type=='salon_spa' %}selected{%
+                            endif %}>Salon / Beauty Parlour / Spa</option>
+                        <option value="finance_bank" {% if form_data and form_data.business_type=='finance_bank'
+                            %}selected{% endif %}>Finance / Co-operative Bank</option>
+                        <option value="it_media" {% if form_data and form_data.business_type=='it_media' %}selected{%
+                            endif %}>IT / Media / Printing Studio</option>
+                        <option value="contractor" {% if form_data and form_data.business_type=='contractor'
+                            %}selected{% endif %}>Contractor / Builder</option>
+                        <option value="transport" {% if form_data and form_data.business_type=='transport' %}selected{%
+                            endif %}>Travels / Transport / Logistics</option>
+                        <option value="workshop_garage" {% if form_data and form_data.business_type=='workshop_garage'
+                            %}selected{% endif %}>Workshop / Garage</option>
+                        <option value="petrol_pump" {% if form_data and form_data.business_type=='petrol_pump'
+                            %}selected{% endif %}>Petrol Pump / Gas Station</option>
+                        <option value="agency" {% if form_data and form_data.business_type=='agency' %}selected{% endif
+                            %}>HR / Recruitment / Consultancy</option>
+                        <option value="individual" {% if form_data and form_data.business_type=='individual'
+                            %}selected{% endif %}>Individual / Household</option>
+                        <option value="other" {% if form_data and form_data.business_type=='other' %}selected{% endif
+                            %}>Other</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="rc-location">Location (Region) *</label>
-                    <input
-                        type="text"
-                        id="rc-location"
-                        name="location"
-                        placeholder="e.g. Kerala | Karnataka | GCC | Other"
-                        value="{{ form_data.location if form_data else '' }}"
-                        required
-                    >
+                    <select id="rc-location" name="location" required>
+                        <option value="" disabled {% if not form_data or not form_data.location %}selected{% endif %}>
+                            Select region…</option>
+                        <option value="Kerala" {% if form_data and form_data.location=='Kerala' %}selected{% endif %}>
+                            Kerala</option>
+                        <option value="Karnataka" {% if form_data and form_data.location=='Karnataka' %}selected{% endif
+                            %}>Karnataka</option>
+                        <option value="GCC" {% if form_data and form_data.location=='GCC' %}selected{% endif %}>GCC
+                            (Gulf Countries)</option>
+                        <option value="Other" {% if form_data and form_data.location=='Other' %}selected{% endif %}>
+                            Other</option>
+                    </select>
                 </div>
                 <div class="form-group full">
                     <label for="rc-contact">Business Contact Number *</label>
-                    <input
-                        type="text"
-                        id="rc-contact"
-                        name="business_contact"
+                    <input type="text" id="rc-contact" name="business_contact"
                         placeholder="e.g. 0484-2xxxxxx or 9876543210"
-                        value="{{ form_data.business_contact if form_data else '' }}"
-                        required
-                    >
+                        value="{{ form_data.business_contact if form_data else '' }}" required>
                 </div>
             </div>
 
@@ -99,9 +113,9 @@
 
 {% block scripts %}
 <script>
-document.querySelector('form').addEventListener('submit', function () {
-    document.getElementById('btn-create-rec').textContent = 'Creating…';
-    document.getElementById('btn-create-rec').disabled = true;
-});
+    document.querySelector('form').addEventListener('submit', function () {
+        document.getElementById('btn-create-rec').textContent = 'Creating…';
+        document.getElementById('btn-create-rec').disabled = true;
+    });
 </script>
 {% endblock %}
