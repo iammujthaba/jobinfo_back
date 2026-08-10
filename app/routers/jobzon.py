@@ -306,7 +306,8 @@ async def jobzon_recruiter_create_submit(
             "jobzon/recruiter_form.html",
             {
                 "request": request,
-                "error": f"A recruiter with WhatsApp number {wa_number} already exists.",
+                "error": f"A recruiter with WhatsApp number '{wa_number}' already exists in the system.",
+                "existing_recruiter": existing,
                 "success": None,
                 "form_data": {
                     "wa_number": wa_number,
@@ -414,14 +415,22 @@ async def jobzon_vacancies(
 @router.get("/vacancies/create", response_class=HTMLResponse)
 async def jobzon_vacancy_create_form(
     request: Request,
+    recruiter_id: str = "",
     db: Session = Depends(get_db),
     _: str = Depends(require_jobzon_admin),
 ):
     """Render the Post Vacancy form with a recruiter selector."""
     recruiters = db.query(Recruiter).order_by(Recruiter.company_name).all()
+    selected_recruiter_id = _safe_int(recruiter_id, 0)
     return templates.TemplateResponse(
         "jobzon/vacancy_form.html",
-        {"request": request, "recruiters": recruiters, "error": None, "success": None},
+        {
+            "request": request,
+            "recruiters": recruiters,
+            "selected_recruiter_id": selected_recruiter_id,
+            "error": None,
+            "success": None,
+        },
     )
 
 

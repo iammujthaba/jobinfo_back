@@ -13,6 +13,33 @@
     <div class="alert alert-error">⚠️ {{ error }}</div>
     {% endif %}
 
+    {% if existing_recruiter %}
+    <div class="card" style="background:#fff7ed;border:1px solid #fdba74;margin-bottom:20px;">
+        <div style="font-weight:600;color:#c2410c;font-size:.95rem;margin-bottom:8px;">
+            🔍 Existing Recruiter Found
+        </div>
+        <div style="font-size:.85rem;color:#7c2d12;line-height:1.6;margin-bottom:12px;">
+            A recruiter profile is already registered under WhatsApp number <strong>{{ existing_recruiter.wa_number }}</strong>:
+        </div>
+        <div style="background:#ffffff;border:1px solid #fed7aa;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:.85rem;color:#431407;">
+            <div><strong>Company Name:</strong> {{ existing_recruiter.company_name }}</div>
+            <div><strong>Business Type:</strong> {{ existing_recruiter.business_type or '—' }}</div>
+            <div><strong>Location:</strong> {{ existing_recruiter.location or '—' }}</div>
+            {% if existing_recruiter.business_contact %}
+            <div><strong>Contact Number:</strong> {{ existing_recruiter.business_contact }}</div>
+            {% endif %}
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+            <a href="/jobzon/vacancies/create?recruiter_id={{ existing_recruiter.id }}" class="btn btn-primary" style="background:#ea580c;border-color:#ea580c;color:#ffffff;font-size:.85rem;text-decoration:none;">
+                📝 Post a Vacancy for {{ existing_recruiter.company_name }} →
+            </a>
+            <span style="font-size:.8rem;color:#9a3412;">
+                or update the WhatsApp number below to create a profile for a different client.
+            </span>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="card">
         <div class="card-header">
             <span class="card-title">Recruiter Profile</span>

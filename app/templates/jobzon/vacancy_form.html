@@ -26,7 +26,7 @@
                 <select id="vac-recruiter" name="recruiter_id" required>
                     <option value="">— Select Recruiter —</option>
                     {% for r in recruiters %}
-                    <option value="{{ r.id }}">{{ r.company_name }} ({{ r.wa_number }})</option>
+                    <option value="{{ r.id }}" {% if selected_recruiter_id and selected_recruiter_id == r.id %}selected{% endif %}>{{ r.company_name }} ({{ r.wa_number }})</option>
                     {% endfor %}
                 </select>
                 <span style="font-size:.72rem;color:var(--muted);margin-top:4px;">

@@ -19,14 +19,21 @@ from app.main import app  # noqa: E402
 from app.db.seed import PLANS  # noqa: E402
 from app.db.models import SubscriptionPlan  # noqa: E402
 
-TEST_DATABASE_URL = "sqlite:///./test.db"
+from sqlalchemy.pool import StaticPool
 
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
+TEST_DATABASE_URL = "sqlite:///:memory:"
+
+engine = create_engine(
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     if db.query(SubscriptionPlan).count() == 0:
