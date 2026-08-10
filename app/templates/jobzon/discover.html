@@ -278,5 +278,15 @@ function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+document.querySelectorAll('form[method="GET"]').forEach(function (form) {
+    form.addEventListener('submit', function () {
+        Array.from(form.elements).forEach(function (input) {
+            if (!input.value && input.name) {
+                input.disabled = true;
+            }
+        });
+    });
+});
 </script>
 {% endblock %}

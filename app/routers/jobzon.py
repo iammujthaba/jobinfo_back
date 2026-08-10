@@ -13,6 +13,7 @@ No data export endpoints are provided anywhere in this router.
 """
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -62,6 +63,15 @@ async def jobzon_dashboard(
     )
 
 
+def _safe_int(val: Any, default: int = 0) -> int:
+    if val is None or val == "":
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 # ─── Job Seeker Directory ─────────────────────────────────────────────────────
 
 @router.get("/seekers", response_class=HTMLResponse)
@@ -70,14 +80,18 @@ async def jobzon_seekers(
     district: str = "",
     category: str = "",
     gender: str = "",
-    age_min: int = 0,
-    age_max: int = 0,
-    page: int = 1,
+    age_min: str = "",
+    age_max: str = "",
+    page: str = "1",
     db: Session = Depends(get_db),
     _: str = Depends(require_jobzon_admin),
 ):
     """Job Seeker Directory with server-side filtering and pagination."""
     PAGE_SIZE = 50
+
+    age_min_int = _safe_int(age_min, 0)
+    age_max_int = _safe_int(age_max, 0)
+    page_int = max(1, _safe_int(page, 1))
 
     query = db.query(Candidate).filter_by(registration_complete=True)
 
@@ -87,16 +101,16 @@ async def jobzon_seekers(
         query = query.filter(Candidate.category.ilike(f"%{category}%"))
     if gender:
         query = query.filter(Candidate.gender.ilike(f"%{gender}%"))
-    if age_min > 0:
-        query = query.filter(Candidate.age >= age_min)
-    if age_max > 0:
-        query = query.filter(Candidate.age <= age_max)
+    if age_min_int > 0:
+        query = query.filter(Candidate.age >= age_min_int)
+    if age_max_int > 0:
+        query = query.filter(Candidate.age <= age_max_int)
 
     total = query.count()
     seekers = (
         query
         .order_by(Candidate.created_at.desc())
-        .offset((page - 1) * PAGE_SIZE)
+        .offset((page_int - 1) * PAGE_SIZE)
         .limit(PAGE_SIZE)
         .all()
     )
@@ -116,13 +130,13 @@ async def jobzon_seekers(
             "request": request,
             "seekers": seekers,
             "total": total,
-            "page": page,
+            "page": page_int,
             "total_pages": total_pages,
             "filter_district": district,
             "filter_category": category,
             "filter_gender": gender,
-            "filter_age_min": age_min,
-            "filter_age_max": age_max,
+            "filter_age_min": age_min_int if age_min_int > 0 else "",
+            "filter_age_max": age_max_int if age_max_int > 0 else "",
             "districts": districts,
             "categories": categories,
             "genders": genders,
@@ -495,9 +509,9 @@ async def jobzon_discover(
     category: str = "",
     sub_category: str = "",
     gender: str = "",
-    age_min: int = 0,
-    age_max: int = 0,
-    page: int = 1,
+    age_min: str = "",
+    age_max: str = "",
+    page: str = "1",
     db: Session = Depends(get_db),
     _: str = Depends(require_jobzon_admin),
 ):
@@ -507,6 +521,10 @@ async def jobzon_discover(
     for specific job opportunities.
     """
     PAGE_SIZE = 50
+
+    age_min_int = _safe_int(age_min, 0)
+    age_max_int = _safe_int(age_max, 0)
+    page_int = max(1, _safe_int(page, 1))
 
     query = db.query(Candidate).filter_by(registration_complete=True)
 
@@ -518,16 +536,16 @@ async def jobzon_discover(
         query = query.filter(Candidate.sub_category.ilike(f"%{sub_category}%"))
     if gender:
         query = query.filter(Candidate.gender.ilike(f"%{gender}%"))
-    if age_min > 0:
-        query = query.filter(Candidate.age >= age_min)
-    if age_max > 0:
-        query = query.filter(Candidate.age <= age_max)
+    if age_min_int > 0:
+        query = query.filter(Candidate.age >= age_min_int)
+    if age_max_int > 0:
+        query = query.filter(Candidate.age <= age_max_int)
 
     total = query.count()
     candidates = (
         query
         .order_by(Candidate.created_at.desc())
-        .offset((page - 1) * PAGE_SIZE)
+        .offset((page_int - 1) * PAGE_SIZE)
         .limit(PAGE_SIZE)
         .all()
     )
@@ -558,14 +576,14 @@ async def jobzon_discover(
             "request": request,
             "candidates": candidates,
             "total": total,
-            "page": page,
+            "page": page_int,
             "total_pages": total_pages,
             "filter_district": district,
             "filter_category": category,
             "filter_sub_category": sub_category,
             "filter_gender": gender,
-            "filter_age_min": age_min,
-            "filter_age_max": age_max,
+            "filter_age_min": age_min_int if age_min_int > 0 else "",
+            "filter_age_max": age_max_int if age_max_int > 0 else "",
             "districts": districts,
             "categories": categories,
             "sub_categories": sub_categories,

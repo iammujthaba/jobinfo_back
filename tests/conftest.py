@@ -21,7 +21,7 @@ from app.db.models import SubscriptionPlan  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
 
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
