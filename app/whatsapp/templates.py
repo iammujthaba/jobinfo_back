@@ -212,9 +212,14 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
 
 
 def vacancy_rejected_body(vacancy: JobVacancy) -> str:
+    reason_str = f"\n⚠️ *Reason:* {vacancy.rejection_reason.strip()}\n" if vacancy.rejection_reason else ""
     return (
-        f"❌ Your vacancy for *{vacancy.job_title.strip()}* has been rejected.\n\n"
-        f"Please contact support for details.\n_JobInfo_"
+        f"❌ *Vacancy Rejection Notice*\n\n"
+        f"Your vacancy posting for *{vacancy.job_title.strip()}* (Code: `{vacancy.job_code}`) was not approved.\n"
+        f"{reason_str}\n"
+        f"💡 *How to Resolve:* You can fix the issue and resubmit your vacancy directly from your recruiter dashboard:\n"
+        f"👉 https://jobinfo.pro/recruiter-dashboard.html\n\n"
+        f"_JobInfo Support_"
     )
 
 

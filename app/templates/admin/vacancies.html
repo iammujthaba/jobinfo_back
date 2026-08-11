@@ -21,8 +21,22 @@
   <div class="modal">
     <h3>Reject Vacancy</h3>
     <p class="modal-sub">The recruiter will be notified via WhatsApp with your reason.</p>
-    <label>Rejection Reason *</label>
-    <textarea id="reject-reason" rows="4" placeholder="e.g. Incomplete job description, suspicious posting…"></textarea>
+    
+    <label>Select Common Reason</label>
+    <select id="reject-reason-preset" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;margin-bottom:12px;outline:none;" onchange="onRejectPresetChange(this.value)">
+      <option value="">-- Choose a standard reason or enter custom text below --</option>
+      <option value="Incomplete or unclear job description. Please provide clear details about responsibilities and requirements.">Incomplete or unclear job description</option>
+      <option value="Invalid or unrealistic salary range. Please select a valid salary range.">Invalid or unrealistic salary range</option>
+      <option value="Suspicious, misleading, or fraudulent posting.">Suspicious or misleading posting</option>
+      <option value="Prohibited or unlawful content. Posting violates safety guidelines.">Prohibited or unlawful content</option>
+      <option value="Contact or business details invalid. Please update your profile information.">Invalid contact/business details</option>
+      <option value="Duplicate vacancy posting. This position has already been submitted.">Duplicate vacancy posting</option>
+      <option value="custom">Other / Write custom reason in own words...</option>
+    </select>
+
+    <label>Rejection Reason Details (in your own words) *</label>
+    <textarea id="reject-reason" rows="4" placeholder="Select from dropdown above or write your custom rejection reason..."></textarea>
+    
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeRejectModal()">Cancel</button>
       <button class="btn btn-primary" id="reject-confirm-btn" onclick="confirmReject()">Send Rejection</button>
@@ -138,8 +152,18 @@ async function approveVac(id, btn) {
   } catch(e) { toast('Error.','err'); }
 }
 
+function onRejectPresetChange(val) {
+  const txt = document.getElementById('reject-reason');
+  if (val && val !== 'custom') {
+    txt.value = val;
+  } else if (val === 'custom') {
+    txt.value = '';
+    txt.focus();
+  }
+}
+
 function openReject(id) { rejectTargetId = id; document.getElementById('reject-modal').classList.add('open'); }
-function closeRejectModal() { document.getElementById('reject-modal').classList.remove('open'); document.getElementById('reject-reason').value=''; }
+function closeRejectModal() { document.getElementById('reject-modal').classList.remove('open'); document.getElementById('reject-reason').value = ''; document.getElementById('reject-reason-preset').value = ''; }
 
 async function confirmReject() {
   const reason = document.getElementById('reject-reason').value.trim();
