@@ -217,26 +217,30 @@ async def send_otp(body: OTPSendRequest, db: Session = Depends(get_db)):
                     f"Valid for 5 minutes. Do not share this code with anyone.\n_JobInfo_"
                 ),
             )
+            return {"message": "OTP sent", "within_24h": True}
         else:
-            await wa_client.send_template(
-                to=body.wa_number,
-                template_name="jobinfo_otp_auth",
-                language_code="en",
-                components=[
-                    {
-                        "type": "body",
-                        "parameters": [{"type": "text", "text": otp_code}]
-                    },
-                    {
-                        "type": "button",
-                        "sub_type": "url",
-                        "index": "0",
-                        "parameters": [{"type": "text", "text": otp_code}]
-                    }
-                ]
-            )
-            
-        return {"message": "OTP sent"}
+            try:
+                await wa_client.send_template(
+                    to=body.wa_number,
+                    template_name="jobinfo_otp_auth",
+                    language_code="en",
+                    components=[
+                        {
+                            "type": "body",
+                            "parameters": [{"type": "text", "text": otp_code}]
+                        },
+                        {
+                            "type": "button",
+                            "sub_type": "url",
+                            "index": "0",
+                            "parameters": [{"type": "text", "text": otp_code}]
+                        }
+                    ]
+                )
+                return {"message": "OTP sent via template", "within_24h": True}
+            except Exception as e:
+                logger.warning(f"Template OTP send failed for {body.wa_number} (likely outside 24h window or template unapproved): {e}")
+                return {"message": "outside_24h", "within_24h": False}
     except httpx.HTTPStatusError as e:
         logger.error(f"WhatsApp API Error: {e.response.text}")
         raise HTTPException(
@@ -270,25 +274,40 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
 @router.post("/auth/check-recruiter")
 async def check_recruiter(body: CheckRecruiterRequest, db: Session = Depends(get_db)):
     """
-    Check if a recruiter exists. If yes, trigger OTP.
+    Check if a recruiter exists and whether they are within the 24h WhatsApp window.
     Special case: if the WA number matches the configured JobZon admin number,
     return is_jobzon_admin=true to signal the frontend to redirect to /admin/login.
     """
+    from app.db.models import ConversationState
+    state = db.query(ConversationState).filter_by(wa_number=body.wa_number).first()
+    within_24h = False
+    if state and state.last_user_message_at:
+        last_msg_at = state.last_user_message_at
+        if last_msg_at.tzinfo is None:
+            last_msg_at = last_msg_at.replace(tzinfo=timezone.utc)
+        time_diff = datetime.now(timezone.utc) - last_msg_at
+        if time_diff.total_seconds() <= 24 * 3600:
+            within_24h = True
+
     # ── JobZon admin detection ────────────────────────────────────────────────
     if (
         settings.jobzon_admin_wa_number
         and body.wa_number.strip() == settings.jobzon_admin_wa_number.strip()
     ):
-        return {"exists": False, "is_jobzon_admin": True}
+        return {"exists": False, "is_jobzon_admin": True, "within_24h": within_24h}
 
     # ── Normal recruiter flow ─────────────────────────────────────────────────
     recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
     if recruiter:
-        # Trigger OTP internally
-        otp_request = OTPSendRequest(wa_number=body.wa_number, role="recruiter")
-        await send_otp(otp_request, db)
-        return {"exists": True, "is_jobzon_admin": False}
-    return {"exists": False, "is_jobzon_admin": False}
+        if within_24h:
+            # Trigger OTP internally
+            otp_request = OTPSendRequest(wa_number=body.wa_number, role="recruiter")
+            await send_otp(otp_request, db)
+            return {"exists": True, "is_jobzon_admin": False, "within_24h": True}
+        else:
+            return {"exists": True, "is_jobzon_admin": False, "within_24h": False}
+
+    return {"exists": False, "is_jobzon_admin": False, "within_24h": within_24h}
 
 
 @router.post("/auth/recruiter/register")
