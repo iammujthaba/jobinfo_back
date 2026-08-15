@@ -44,6 +44,7 @@ class Recruiter(Base):
     business_type = Column(String(100), nullable=False)
     location = Column(String(50), nullable=False)   # Kerala | Karnataka | GCC | Other
     business_contact = Column(String(20), nullable=False)
+    registrant_role = Column(String(50), nullable=False, default="other", server_default="other")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     vacancies = relationship("JobVacancy", back_populates="recruiter")

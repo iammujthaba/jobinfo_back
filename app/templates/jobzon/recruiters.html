@@ -59,6 +59,7 @@
                     <th>#</th>
                     <th>Company Name</th>
                     <th>Business Type</th>
+                    <th>Role</th>
                     <th>Location</th>
                     <th>WA Number</th>
                     <th>Joined</th>
@@ -71,6 +72,7 @@
                     <td style="color:var(--muted);font-size:.78rem;">{{ loop.index + (page - 1) * 50 }}</td>
                     <td><span style="font-weight:600;">{{ r.company_name }}</span></td>
                     <td>{{ r.business_type or '—' }}</td>
+                    <td><span class="badge badge-gray" style="font-size:.74rem;">{{ r.registrant_role or 'other' }}</span></td>
                     <td>{{ r.location or '—' }}</td>
                     <td style="font-family:monospace;font-size:.82rem;color:var(--muted);">{{ r.wa_number }}</td>
                     <td style="font-size:.8rem;color:var(--muted);">

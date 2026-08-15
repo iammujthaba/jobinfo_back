@@ -80,6 +80,14 @@ BUSINESS_TYPE_LABELS: dict[str, str] = {
     "other":            "Other"
 }
 
+REGISTRANT_ROLE_LABELS: dict[str, str] = {
+    "founder":          "Founder / Owner",
+    "hr":               "HR / Recruiter",
+    "manager":          "Manager",
+    "employee":         "Employee",
+    "other":            "Other"
+}
+
 
 def _label(mapping: dict[str, str], raw_value: str | None, fallback: str = "—") -> str:
     """Translate a raw DB slug to a human-readable label.
@@ -157,6 +165,7 @@ def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
 
 
 def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
+    role_str = f"*Role:* {_label(REGISTRANT_ROLE_LABELS, getattr(recruiter, 'registrant_role', 'other'))}\n"
     return (
         f"🔔 *New Vacancy Submitted – Action Required*\n\n"
         f"*Job Code:* {vacancy.job_code}\n"
@@ -164,6 +173,7 @@ def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
         f"*Company:* {recruiter.company_name or '—'}\n"
         f"*Location:* {vacancy.exact_location}, {vacancy.district_region}\n"
         f"*Recruiter:* {recruiter.company_name}\n"
+        f"{role_str}"
         f"*Contact:* {recruiter.business_contact or 'None'}\n"
         f"*Whatsapp:* {recruiter.wa_number}\n\n"
     )

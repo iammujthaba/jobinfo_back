@@ -477,6 +477,7 @@ async def api_list_vacancies(
                 "wa_number": v.recruiter.wa_number,
                 "company": v.recruiter.company_name,
                 "business_type": v.recruiter.business_type,
+                "registrant_role": getattr(v.recruiter, "registrant_role", "other") or "other",
                 "location": v.recruiter.location,
                 "business_contact": v.recruiter.business_contact,
                 "created_at": v.recruiter.created_at.isoformat() if v.recruiter.created_at else None,
@@ -915,6 +916,7 @@ async def api_recruiters_stats(
             Recruiter.id,
             Recruiter.company_name,
             Recruiter.business_type,
+            Recruiter.registrant_role,
             Recruiter.location,
             Recruiter.wa_number,
             Recruiter.created_at,
@@ -938,6 +940,7 @@ async def api_recruiters_stats(
         recruiters_table.append({
             "company_name": r.company_name,
             "business_type": r.business_type,
+            "registrant_role": r.registrant_role or "other",
             "location": r.location,
             "wa_number": r.wa_number,
             "last_activity": last_act.isoformat() if last_act else None,
@@ -998,6 +1001,7 @@ async def api_recruiter_vacancies(
         
     return {
         "recruiter_name": recruiter.company_name,
+        "registrant_role": getattr(recruiter, "registrant_role", "other") or "other",
         "joined_at": recruiter.created_at.isoformat() if recruiter.created_at else None,
         "vacancies": vac_list
     }

@@ -77,6 +77,7 @@ class RegisterRecruiterRequest(BaseModel):
     business_type: str
     location: str
     business_contact: str
+    registrant_role: str = "other"
 
 
 class RecruiterVacancyRequest(BaseModel):
@@ -325,7 +326,8 @@ async def register_recruiter(body: RegisterRecruiterRequest, db: Session = Depen
         company_name=body.company_name,
         business_type=body.business_type,
         location=body.location,
-        business_contact=body.business_contact
+        business_contact=body.business_contact,
+        registrant_role=body.registrant_role or "other",
     )
     db.add(recruiter)
     db.commit()
@@ -738,6 +740,7 @@ def recruiter_dashboard(
             "business_type": recruiter.business_type or "",
             "location": recruiter.location or "",
             "business_contact": recruiter.business_contact or "",
+            "registrant_role": getattr(recruiter, "registrant_role", "other") or "other",
             "wa_number": recruiter.wa_number,
         },
         "summary": {**counts, "total_applications": total_applications},

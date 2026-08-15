@@ -117,6 +117,34 @@
                 ]
               },
               {
+                "type": "Dropdown",
+                "name": "registrant_role",
+                "label": "Your Role / Relationship",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "founder",
+                    "title": "Founder / Owner"
+                  },
+                  {
+                    "id": "hr",
+                    "title": "HR / Recruiter"
+                  },
+                  {
+                    "id": "manager",
+                    "title": "Manager"
+                  },
+                  {
+                    "id": "employee",
+                    "title": "Employee"
+                  },
+                  {
+                    "id": "other",
+                    "title": "Other"
+                  }
+                ]
+              },
+              {
                 "type": "TextInput",
                 "name": "business_contact",
                 "label": "Contact Number",
@@ -134,6 +162,7 @@
               "payload": {
                 "company_name": "${form.company_name}",
                 "business_type": "${form.business_type}",
+                "registrant_role": "${form.registrant_role}",
                 "location": "${form.location}",
                 "business_contact": "${form.business_contact}"
               }

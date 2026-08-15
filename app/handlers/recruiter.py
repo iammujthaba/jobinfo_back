@@ -145,6 +145,7 @@ async def handle_registration_flow_completion(
         business_type=flow_data.get("business_type", ""),
         location=flow_data.get("location", ""),
         business_contact=flow_data.get("business_contact", ""),
+        registrant_role=flow_data.get("registrant_role", "other") or "other",
     )
     db.add(recruiter)
     db.commit()

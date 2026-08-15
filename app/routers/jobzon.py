@@ -287,13 +287,14 @@ async def jobzon_recruiter_create_form(
 @router.post("/recruiters/create", response_class=HTMLResponse)
 async def jobzon_recruiter_create_submit(
     request: Request,
-    wa_number: str       = Form(...),
-    company_name: str    = Form(...),
-    business_type: str   = Form(...),
-    location: str        = Form(...),
+    wa_number: str        = Form(...),
+    company_name: str     = Form(...),
+    business_type: str    = Form(...),
+    registrant_role: str  = Form("other"),
+    location: str         = Form(...),
     business_contact: str = Form(...),
-    db: Session          = Depends(get_db),
-    _: str               = Depends(require_jobzon_admin),
+    db: Session           = Depends(get_db),
+    _: str                = Depends(require_jobzon_admin),
 ):
     """
     Create a recruiter profile on behalf of a client (no OTP required).
@@ -313,6 +314,7 @@ async def jobzon_recruiter_create_submit(
                     "wa_number": wa_number,
                     "company_name": company_name,
                     "business_type": business_type,
+                    "registrant_role": registrant_role,
                     "location": location,
                     "business_contact": business_contact,
                 },
@@ -324,6 +326,7 @@ async def jobzon_recruiter_create_submit(
         wa_number=wa_number,
         company_name=company_name.strip(),
         business_type=business_type.strip(),
+        registrant_role=registrant_role.strip() if registrant_role else "other",
         location=location.strip(),
         business_contact=business_contact.strip(),
     )

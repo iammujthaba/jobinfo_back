@@ -24,6 +24,7 @@
         <div style="background:#ffffff;border:1px solid #fed7aa;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:.85rem;color:#431407;">
             <div><strong>Company Name:</strong> {{ existing_recruiter.company_name }}</div>
             <div><strong>Business Type:</strong> {{ existing_recruiter.business_type or '—' }}</div>
+            <div><strong>Role / Relationship:</strong> {{ existing_recruiter.registrant_role or 'other' }}</div>
             <div><strong>Location:</strong> {{ existing_recruiter.location or '—' }}</div>
             {% if existing_recruiter.business_contact %}
             <div><strong>Contact Number:</strong> {{ existing_recruiter.business_contact }}</div>
@@ -99,6 +100,17 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label for="rc-role">Your Role / Relationship *</label>
+                    <select id="rc-role" name="registrant_role" required>
+                        <option value="" disabled {% if not form_data or not form_data.registrant_role %}selected{% endif %}>Select role…</option>
+                        <option value="founder" {% if form_data and form_data.registrant_role=='founder' %}selected{% endif %}>Founder / Owner</option>
+                        <option value="hr" {% if form_data and form_data.registrant_role=='hr' %}selected{% endif %}>HR / Recruiter</option>
+                        <option value="manager" {% if form_data and form_data.registrant_role=='manager' %}selected{% endif %}>Manager</option>
+                        <option value="employee" {% if form_data and form_data.registrant_role=='employee' %}selected{% endif %}>Employee</option>
+                        <option value="other" {% if form_data and form_data.registrant_role=='other' %}selected{% endif %}>Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="rc-location">Location (Region) *</label>
                     <select id="rc-location" name="location" required>
                         <option value="" disabled {% if not form_data or not form_data.location %}selected{% endif %}>
@@ -113,7 +125,7 @@
                             Other</option>
                     </select>
                 </div>
-                <div class="form-group full">
+                <div class="form-group">
                     <label for="rc-contact">Business Contact Number *</label>
                     <input type="text" id="rc-contact" name="business_contact"
                         placeholder="e.g. 0484-2xxxxxx or 9876543210"

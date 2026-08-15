@@ -25,8 +25,8 @@
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Company</th><th>Type</th><th>Location</th><th>WhatsApp</th><th>Vacancies</th><th>Avg Apps</th><th>Joined</th><th></th></tr></thead>
-      <tbody id="rec-tbody"><tr><td colspan="8" style="text-align:center;padding:24px;color:#64748b;">Loading…</td></tr></tbody>
+      <thead><tr><th>Company</th><th>Type</th><th>Role</th><th>Location</th><th>WhatsApp</th><th>Vacancies</th><th>Avg Apps</th><th>Joined</th><th></th></tr></thead>
+      <tbody id="rec-tbody"><tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b;">Loading…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -49,6 +49,14 @@
 {% block scripts %}
 <script>
 let allRows = [];
+
+const roleLabels = {
+  founder: 'Founder / Owner',
+  hr: 'HR / Recruiter',
+  manager: 'Manager',
+  employee: 'Employee',
+  other: 'Other'
+};
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -79,11 +87,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function renderTable(rows) {
   const tbody = document.getElementById('rec-tbody');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#64748b;">No recruiters found</td></tr>'; return; }
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b;">No recruiters found</td></tr>'; return; }
   tbody.innerHTML = rows.map(r => `
     <tr>
       <td><strong>${esc(r.company_name||'—')}</strong></td>
       <td>${esc(r.business_type||'—')}</td>
+      <td><span class="badge badge-gray" style="font-size:.72rem;">${esc(roleLabels[r.registrant_role] || r.registrant_role || 'Other')}</span></td>
       <td>${esc(r.location||'—')}</td>
       <td style="font-family:monospace;font-size:.75rem;">${esc(r.wa_number)}</td>
       <td><strong>${r.total_vacancies}</strong></td>
@@ -97,6 +106,9 @@ function filterTable() {
   const q = document.getElementById('search-input').value.toLowerCase();
   renderTable(allRows.filter(r =>
     (r.company_name||'').toLowerCase().includes(q) ||
+    (r.business_type||'').toLowerCase().includes(q) ||
+    (r.registrant_role||'').toLowerCase().includes(q) ||
+    (roleLabels[r.registrant_role]||'').toLowerCase().includes(q) ||
     (r.location||'').toLowerCase().includes(q) ||
     (r.wa_number||'').includes(q)
   ));
