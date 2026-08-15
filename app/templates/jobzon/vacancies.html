@@ -70,12 +70,13 @@
             </thead>
             <tbody>
                 {% for v in vacancies %}
-                <tr>
+                <tr style="cursor:pointer;" onclick="window.location='/jobzon/vacancies/{{ v.id }}'">
                     <td>
                         <code style="font-size:.78rem;background:#f1f5f9;padding:2px 6px;border-radius:4px;">{{ v.job_code }}</code>
                     </td>
                     <td>
                         <span style="font-weight:500;">{{ v.job_title }}</span>
+                        <span style="font-size:.72rem;color:var(--muted);margin-left:6px;">→</span>
                     </td>
                     <td style="font-size:.83rem;">
                         {{ v.recruiter.company_name if v.recruiter else '—' }}

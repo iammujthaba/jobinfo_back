@@ -247,6 +247,7 @@ async def jobzon_recruiters(
             "id": rec.id,
             "company_name": rec.company_name,
             "business_type": rec.business_type,
+            "registrant_role": getattr(rec, "registrant_role", "other") or "other",
             "location": rec.location,
             "wa_number": rec.wa_number,
             "created_at": rec.created_at,
@@ -271,6 +272,8 @@ async def jobzon_recruiters(
 
 
 # ─── Create Recruiter (by JobZon — no OTP) ───────────────────────────────────
+# NOTE: /create must be registered BEFORE /{recruiter_id} so FastAPI doesn't
+# try to parse the literal string "create" as an integer.
 
 @router.get("/recruiters/create", response_class=HTMLResponse)
 async def jobzon_recruiter_create_form(
@@ -346,6 +349,73 @@ async def jobzon_recruiter_create_submit(
     )
 
 
+# ─── Recruiter Detail — All Vacancies + Application Counts ───────────────────
+
+@router.get("/recruiters/{recruiter_id}", response_class=HTMLResponse)
+async def jobzon_recruiter_detail(
+    request: Request,
+    recruiter_id: int,
+    status: str = "",       # optional status filter: approved | pending | rejected | all | ""
+    db: Session = Depends(get_db),
+    _: str = Depends(require_jobzon_admin),
+):
+    """
+    Recruiter detail page: profile card + all vacancies with application counts.
+    Accessible via clicking any row in the Recruiter Directory.
+    """
+    from app.whatsapp.templates import REGISTRANT_ROLE_LABELS
+
+    recruiter = db.query(Recruiter).filter(Recruiter.id == recruiter_id).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+
+    # Fetch all vacancies for this recruiter
+    vac_q = db.query(JobVacancy).filter(JobVacancy.recruiter_id == recruiter_id)
+    all_vacancies = vac_q.order_by(JobVacancy.created_at.desc()).all()
+
+    # Aggregate stats across ALL vacancies (ignore status filter for counts)
+    stats_approved  = sum(1 for v in all_vacancies if v.status == "approved")
+    stats_pending   = sum(1 for v in all_vacancies if v.status == "pending")
+    stats_rejected  = sum(1 for v in all_vacancies if v.status == "rejected")
+    stats_total     = len(all_vacancies)
+
+    # Application counts per vacancy
+    from app.db.models import CandidateApplication
+    app_rows = (
+        db.query(CandidateApplication.vacancy_id, sqlfunc.count(CandidateApplication.id))
+        .filter(CandidateApplication.vacancy_id.in_([v.id for v in all_vacancies]))
+        .group_by(CandidateApplication.vacancy_id)
+        .all()
+    )
+    app_map = {vid: cnt for vid, cnt in app_rows}
+    stats_total_apps = sum(app_map.values())
+
+    # Apply status filter
+    if status and status != "all":
+        filtered_vacancies = [v for v in all_vacancies if v.status == status]
+    else:
+        filtered_vacancies = all_vacancies
+
+    return templates.TemplateResponse(
+        "jobzon/recruiter_detail.html",
+        {
+            "request": request,
+            "recruiter": recruiter,
+            "vacancies": filtered_vacancies,
+            "app_map": app_map,
+            "filter_status": status,
+            "role_labels": REGISTRANT_ROLE_LABELS,
+            "stats": {
+                "total": stats_total,
+                "approved": stats_approved,
+                "pending": stats_pending,
+                "rejected": stats_rejected,
+                "total_applications": stats_total_apps,
+            },
+        },
+    )
+
+
 # ─── Approved Vacancies Directory ─────────────────────────────────────────────
 
 @router.get("/vacancies", response_class=HTMLResponse)
@@ -414,6 +484,8 @@ async def jobzon_vacancies(
 
 
 # ─── Post Vacancy on Behalf of Recruiter ──────────────────────────────────────
+# NOTE: /create must be registered BEFORE /{vacancy_id} so FastAPI doesn't
+# try to parse the literal string "create" as an integer.
 
 @router.get("/vacancies/create", response_class=HTMLResponse)
 async def jobzon_vacancy_create_form(
@@ -433,6 +505,82 @@ async def jobzon_vacancy_create_form(
             "selected_recruiter_id": selected_recruiter_id,
             "error": None,
             "success": None,
+        },
+    )
+
+
+# ─── Vacancy Detail — Applicants Drilldown ────────────────────────────────────
+
+@router.get("/vacancies/{vacancy_id}", response_class=HTMLResponse)
+async def jobzon_vacancy_detail(
+    request: Request,
+    vacancy_id: int,
+    status_filter: str = "",   # "" | "applied" | "shortlisted"
+    db: Session = Depends(get_db),
+    _: str = Depends(require_jobzon_admin),
+):
+    """
+    Vacancy detail page: full job info card + table of all applicants with
+    candidate details (name, WA, category, district, age, gender, CV link).
+    Accessible from both the Active Jobs list and the Recruiter Detail page.
+    """
+    vacancy = (
+        db.query(JobVacancy)
+        .filter(JobVacancy.id == vacancy_id)
+        .first()
+    )
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found")
+
+    # Fetch applications, eager-loading candidate + resume
+    app_q = (
+        db.query(CandidateApplication)
+        .filter(CandidateApplication.vacancy_id == vacancy_id)
+        .join(Candidate, Candidate.id == CandidateApplication.candidate_id)
+        .order_by(CandidateApplication.applied_at.desc())
+    )
+    if status_filter in ("applied", "shortlisted"):
+        from app.db.models import ApplicationStatus as AppSt
+        target = AppSt.shortlisted if status_filter == "shortlisted" else AppSt.applied
+        app_q = app_q.filter(CandidateApplication.status == target)
+
+    all_applications = app_q.all()
+    total_applications_all = (
+        db.query(CandidateApplication)
+        .filter(CandidateApplication.vacancy_id == vacancy_id)
+        .count()
+    )
+    shortlisted_count = (
+        db.query(CandidateApplication)
+        .filter(
+            CandidateApplication.vacancy_id == vacancy_id,
+            CandidateApplication.status == "shortlisted",
+        )
+        .count()
+    )
+    cv_count = sum(
+        1 for a in all_applications
+        if a.resume or (a.candidate and a.candidate.cv_path)
+    )
+
+    # Determine a sensible "Back" URL
+    referer = request.headers.get("referer", "")
+    if vacancy.recruiter_id and f"/recruiters/{vacancy.recruiter_id}" in referer:
+        back_url = f"/jobzon/recruiters/{vacancy.recruiter_id}"
+    else:
+        back_url = "/jobzon/vacancies"
+
+    return templates.TemplateResponse(
+        "jobzon/vacancy_detail.html",
+        {
+            "request": request,
+            "vacancy": vacancy,
+            "applications": all_applications,
+            "total_applications": total_applications_all,
+            "shortlisted_count": shortlisted_count,
+            "cv_count": cv_count,
+            "filter_status": status_filter,
+            "back_url": back_url,
         },
     )
 

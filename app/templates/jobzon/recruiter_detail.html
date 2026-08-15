@@ -1,0 +1,212 @@
+{% extends "jobzon/base.html" %}
+{% block title %}{{ recruiter.company_name }} — Vacancies | JobZon CRM{% endblock %}
+{% block page_title %}Recruiter Profile{% endblock %}
+
+{% block content %}
+
+<!-- Back navigation -->
+<div style="margin-bottom:18px;">
+    <a href="/jobzon/recruiters" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;">
+        ← Back to Directory
+    </a>
+</div>
+
+<!-- Recruiter Profile Card -->
+<div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+
+        <!-- Avatar -->
+        <div style="
+            width:64px;height:64px;border-radius:14px;flex-shrink:0;
+            background:linear-gradient(135deg,#f59e0b,#f97316);
+            display:flex;align-items:center;justify-content:center;
+            font-size:1.7rem;font-weight:800;color:#fff;letter-spacing:-1px;
+        ">{{ recruiter.company_name[0].upper() }}</div>
+
+        <!-- Info -->
+        <div style="flex:1;min-width:220px;">
+            <div style="font-size:1.25rem;font-weight:700;color:var(--text);margin-bottom:6px;">
+                {{ recruiter.company_name }}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                {% if recruiter.business_type %}
+                <span class="badge badge-blue" style="font-size:.73rem;">{{ recruiter.business_type }}</span>
+                {% endif %}
+                {% if recruiter.registrant_role %}
+                <span class="badge badge-gray" style="font-size:.73rem;">{{ role_labels.get(recruiter.registrant_role, recruiter.registrant_role) }}</span>
+                {% endif %}
+                {% if recruiter.location %}
+                <span class="badge badge-gray" style="font-size:.73rem;">📍 {{ recruiter.location }}</span>
+                {% endif %}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:20px;font-size:.84rem;color:var(--muted);">
+                <span>
+                    <strong style="color:var(--text);">WhatsApp:</strong>
+                    <a href="https://wa.me/{{ recruiter.wa_number }}" target="_blank"
+                       style="color:var(--green);text-decoration:none;font-family:monospace;">
+                        +{{ recruiter.wa_number }}
+                    </a>
+                </span>
+                {% if recruiter.business_contact %}
+                <span>
+                    <strong style="color:var(--text);">Contact:</strong> {{ recruiter.business_contact }}
+                </span>
+                {% endif %}
+                <span>
+                    <strong style="color:var(--text);">Joined:</strong>
+                    {% if recruiter.created_at %}{{ recruiter.created_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;flex-shrink:0;">
+            <div style="text-align:center;background:var(--bg);border-radius:10px;padding:12px 20px;min-width:80px;">
+                <div style="font-size:1.6rem;font-weight:800;color:var(--text);">{{ stats.total }}</div>
+                <div style="font-size:.72rem;color:var(--muted);font-weight:500;margin-top:2px;">Total Posts</div>
+            </div>
+            <div style="text-align:center;background:#f0fdf4;border-radius:10px;padding:12px 20px;min-width:80px;">
+                <div style="font-size:1.6rem;font-weight:800;color:#16a34a;">{{ stats.approved }}</div>
+                <div style="font-size:.72rem;color:#6b7280;font-weight:500;margin-top:2px;">Approved</div>
+            </div>
+            <div style="text-align:center;background:#fffbeb;border-radius:10px;padding:12px 20px;min-width:80px;">
+                <div style="font-size:1.6rem;font-weight:800;color:#d97706;">{{ stats.pending }}</div>
+                <div style="font-size:.72rem;color:#6b7280;font-weight:500;margin-top:2px;">Pending</div>
+            </div>
+            <div style="text-align:center;background:#fef2f2;border-radius:10px;padding:12px 20px;min-width:80px;">
+                <div style="font-size:1.6rem;font-weight:800;color:#dc2626;">{{ stats.rejected }}</div>
+                <div style="font-size:.72rem;color:#6b7280;font-weight:500;margin-top:2px;">Rejected</div>
+            </div>
+            <div style="text-align:center;background:#f0f9ff;border-radius:10px;padding:12px 20px;min-width:80px;">
+                <div style="font-size:1.6rem;font-weight:800;color:#0284c7;">{{ stats.total_applications }}</div>
+                <div style="font-size:.72rem;color:#6b7280;font-weight:500;margin-top:2px;">Applications</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Actions Bar -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <h4 style="font-size:1rem;font-weight:600;color:var(--text);margin:0;">
+        📋 All Vacancies
+    </h4>
+    <a href="/jobzon/vacancies/create?recruiter_id={{ recruiter.id }}"
+       class="btn btn-primary" style="font-size:.85rem;">
+        📝 Post New Vacancy
+    </a>
+</div>
+
+<!-- Vacancies Table -->
+<div class="card" style="padding:0;overflow:hidden;">
+
+    {% if vacancies %}
+    <!-- Status filter tabs -->
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 20px;background:#fafbfc;">
+        {% set statuses = [('all','All',stats.total), ('approved','✅ Approved',stats.approved), ('pending','⏳ Pending',stats.pending), ('rejected','❌ Rejected',stats.rejected)] %}
+        {% for val, label, cnt in statuses %}
+        <a href="?status={{ val }}" style="
+            padding:12px 16px;font-size:.82rem;font-weight:500;text-decoration:none;white-space:nowrap;
+            border-bottom:2px solid {{ 'var(--gold)' if filter_status == val or (val == 'all' and not filter_status) else 'transparent' }};
+            color:{{ 'var(--gold)' if filter_status == val or (val == 'all' and not filter_status) else 'var(--muted)' }};
+        ">{{ label }} <span style="
+            display:inline-block;background:{{ '#f59e0b20' if filter_status == val or (val == 'all' and not filter_status) else '#f1f5f9' }};
+            color:{{ '#b45309' if filter_status == val or (val == 'all' and not filter_status) else 'var(--muted)' }};
+            border-radius:20px;padding:1px 7px;font-size:.7rem;margin-left:4px;
+        ">{{ cnt }}</span></a>
+        {% endfor %}
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Job Code</th>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Location</th>
+                    <th>Salary</th>
+                    <th>Status</th>
+                    <th style="text-align:center;">Applications</th>
+                    <th>Posted</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in vacancies %}
+                <tr style="cursor:pointer;" onclick="window.location='/jobzon/vacancies/{{ v.id }}'">
+                    <td>
+                        <code style="font-size:.76rem;background:#f1f5f9;padding:2px 6px;border-radius:4px;color:var(--muted);">
+                            {{ v.job_code }}
+                        </code>
+                    </td>
+                    <td>
+                        <span style="font-weight:500;color:var(--text);">{{ v.job_title }}</span>
+                    </td>
+                    <td>
+                        <span class="badge badge-blue" style="font-size:.7rem;">{{ v.job_category }}</span>
+                    </td>
+                    <td style="font-size:.82rem;color:var(--muted);">
+                        {{ v.exact_location }}, {{ v.district_region }}
+                    </td>
+                    <td style="font-size:.8rem;color:var(--muted);">{{ v.salary_range or '—' }}</td>
+                    <td>
+                        {% if v.status == 'approved' %}
+                        <span class="badge badge-green" style="font-size:.7rem;">✅ Approved</span>
+                        {% elif v.status == 'pending' %}
+                        <span class="badge badge-gold" style="font-size:.7rem;">⏳ Pending</span>
+                        {% elif v.status == 'rejected' %}
+                        <span class="badge badge-red" style="font-size:.7rem;">❌ Rejected</span>
+                        {% else %}
+                        <span class="badge badge-gray" style="font-size:.7rem;">{{ v.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% set app_cnt = app_map.get(v.id, 0) %}
+                        {% if app_cnt > 0 %}
+                        <span class="badge badge-green" style="font-size:.78rem;font-weight:700;">{{ app_cnt }}</span>
+                        {% else %}
+                        <span style="color:var(--muted);font-size:.8rem;">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:.78rem;color:var(--muted);white-space:nowrap;">
+                        {% if v.created_at %}{{ v.created_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
+                    </td>
+                    <td onclick="event.stopPropagation()">
+                        {% if v.status == 'approved' %}
+                        <a href="/jobzon/vacancies/{{ v.id }}" class="btn btn-ghost btn-sm" style="font-size:.75rem;white-space:nowrap;">
+                            {{ app_map.get(v.id, 0) }} applicant{{ 's' if app_map.get(v.id, 0) != 1 else '' }} →
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% if v.status == 'rejected' and v.rejection_reason %}
+                <tr style="background:#fef9f9;">
+                    <td colspan="9" style="padding:6px 16px 10px;font-size:.8rem;color:#b91c1c;">
+                        <i>Rejection reason:</i> {{ v.rejection_reason }}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No vacancies
+            {% if filter_status and filter_status != 'all' %}with status <strong>{{ filter_status }}</strong>{% endif %}
+            found for this recruiter.
+        </p>
+        <a href="/jobzon/vacancies/create?recruiter_id={{ recruiter.id }}" class="btn btn-primary" style="margin-top:12px;">
+            📝 Post First Vacancy
+        </a>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Extra padding at bottom -->
+<div style="height:32px;"></div>
+
+{% endblock %}

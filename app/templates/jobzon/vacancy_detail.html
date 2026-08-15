@@ -1,0 +1,210 @@
+{% extends "jobzon/base.html" %}
+{% block title %}{{ vacancy.job_title }} — Applications | JobZon CRM{% endblock %}
+{% block page_title %}Vacancy Applications{% endblock %}
+
+{% block content %}
+
+<!-- Back navigation -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+    <a href="{{ back_url }}" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;">
+        ← Back
+    </a>
+    <a href="/jobzon/vacancies" class="btn btn-ghost btn-sm" style="font-size:.85rem;">
+        Active Jobs
+    </a>
+    {% if vacancy.recruiter %}
+    <a href="/jobzon/recruiters/{{ vacancy.recruiter.id }}" class="btn btn-ghost btn-sm" style="font-size:.85rem;">
+        🏢 {{ vacancy.recruiter.company_name }}
+    </a>
+    {% endif %}
+</div>
+
+<!-- Vacancy Info Card -->
+<div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-color:rgba(245,158,11,.15);">
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+
+        <!-- Left: Job info -->
+        <div style="flex:1;min-width:260px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                <code style="background:rgba(245,158,11,.15);color:#f59e0b;padding:3px 10px;border-radius:6px;font-size:.82rem;font-weight:700;letter-spacing:.04em;">
+                    {{ vacancy.job_code }}
+                </code>
+                {% if vacancy.status == 'approved' %}
+                <span class="badge badge-green" style="font-size:.7rem;">✅ Approved</span>
+                {% elif vacancy.status == 'pending' %}
+                <span class="badge badge-gold" style="font-size:.7rem;">⏳ Pending</span>
+                {% else %}
+                <span class="badge badge-red" style="font-size:.7rem;">❌ Rejected</span>
+                {% endif %}
+                {% if vacancy.cv_required %}
+                <span class="badge badge-gold" style="font-size:.7rem;">📄 CV Required</span>
+                {% endif %}
+            </div>
+
+            <div style="font-size:1.3rem;font-weight:700;color:#f1f5f9;margin-bottom:8px;">
+                {{ vacancy.job_title }}
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:.84rem;color:rgba(255,255,255,.5);">
+                {% if vacancy.recruiter %}
+                <span>🏢 <span style="color:rgba(255,255,255,.75);">{{ vacancy.recruiter.company_name }}</span></span>
+                {% endif %}
+                <span>📍 <span style="color:rgba(255,255,255,.75);">{{ vacancy.exact_location }}, {{ vacancy.district_region }}</span></span>
+                <span>🗂️ <span style="color:rgba(255,255,255,.75);">{{ vacancy.job_category }}</span></span>
+                <span>⏱️ <span style="color:rgba(255,255,255,.75);">{{ vacancy.experience_required }}</span></span>
+                <span>💰 <span style="color:rgba(255,255,255,.75);">{{ vacancy.salary_range or '—' }}</span></span>
+                <span>🏷️ <span style="color:rgba(255,255,255,.75);">{{ vacancy.job_mode }}</span></span>
+            </div>
+        </div>
+
+        <!-- Right: Stats chips -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;flex-shrink:0;align-items:flex-start;">
+            <div style="text-align:center;background:rgba(255,255,255,.06);border-radius:10px;padding:12px 22px;min-width:80px;">
+                <div style="font-size:1.8rem;font-weight:800;color:#f59e0b;">{{ total_applications }}</div>
+                <div style="font-size:.72rem;color:rgba(255,255,255,.35);font-weight:500;margin-top:2px;">Applicants</div>
+            </div>
+            <div style="text-align:center;background:rgba(37,211,102,.08);border-radius:10px;padding:12px 22px;min-width:80px;">
+                <div style="font-size:1.8rem;font-weight:800;color:#25d366;">{{ shortlisted_count }}</div>
+                <div style="font-size:.72rem;color:rgba(255,255,255,.35);font-weight:500;margin-top:2px;">Shortlisted</div>
+            </div>
+            <div style="text-align:center;background:rgba(255,255,255,.06);border-radius:10px;padding:12px 22px;min-width:80px;">
+                <div style="font-size:1.8rem;font-weight:800;color:rgba(255,255,255,.6);">{{ cv_count }}</div>
+                <div style="font-size:.72rem;color:rgba(255,255,255,.35);font-weight:500;margin-top:2px;">With CV</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Job Description toggle -->
+    <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,.07);padding-top:14px;">
+        <button onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.textContent.includes('Show') ? '▲ Hide Job Description' : '▼ Show Job Description'"
+                style="background:none;border:none;cursor:pointer;font-size:.78rem;color:rgba(255,255,255,.4);font-family:inherit;padding:0;">
+            ▼ Show Job Description
+        </button>
+        <div style="display:none;margin-top:10px;font-size:.84rem;color:rgba(255,255,255,.55);line-height:1.65;white-space:pre-wrap;">{{ vacancy.job_description }}</div>
+    </div>
+</div>
+
+<!-- Applications Table -->
+<div class="card" style="padding:0;overflow:hidden;">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div>
+            <span class="card-title">Applicants</span>
+            <span style="font-size:.82rem;color:var(--muted);margin-left:8px;">{{ total_applications }} total</span>
+        </div>
+        {% if total_applications > 0 %}
+        <!-- Status filter tabs -->
+        <div style="display:flex;gap:0;">
+            {% set tab_opts = [('', 'Applied', total_applications), ('shortlisted', '⭐ Shortlisted', shortlisted_count)] %}
+            {% for val, label, cnt in tab_opts %}
+            <a href="?status_filter={{ val }}" style="
+                padding:6px 14px;font-size:.78rem;font-weight:500;text-decoration:none;white-space:nowrap;
+                border-radius:6px;margin-left:4px;
+                background:{{ '#f59e0b' if filter_status == val or (val == '' and not filter_status) else 'var(--bg)' }};
+                color:{{ '#fff' if filter_status == val or (val == '' and not filter_status) else 'var(--muted)' }};
+            ">{{ label }} ({{ cnt }})</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if applications %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>WhatsApp</th>
+                    <th>Category</th>
+                    <th>District</th>
+                    <th>Age</th>
+                    <th>Gender</th>
+                    <th>Alt. Phone</th>
+                    <th style="text-align:center;">Status</th>
+                    <th>Applied</th>
+                    <th>CV</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for app in applications %}
+                <tr>
+                    <td style="color:var(--muted);font-size:.78rem;">{{ loop.index }}</td>
+                    <td>
+                        <div style="font-weight:600;color:var(--text);">{{ app.candidate.name }}</div>
+                        {% if app.candidate.sub_category %}
+                        <div style="font-size:.75rem;color:var(--muted);">{{ app.candidate.sub_category }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="https://wa.me/{{ app.candidate.wa_number }}" target="_blank"
+                           style="font-family:monospace;font-size:.81rem;color:var(--green);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"
+                           onclick="event.stopPropagation()">
+                            💬 {{ app.candidate.wa_number }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if app.candidate.category %}
+                        <span class="badge badge-blue" style="font-size:.7rem;">{{ app.candidate.category }}</span>
+                        {% else %}
+                        <span style="color:var(--muted);">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:.83rem;">{{ app.candidate.district or '—' }}</td>
+                    <td style="font-size:.83rem;color:var(--muted);">{{ app.candidate.age or '—' }}</td>
+                    <td style="font-size:.83rem;color:var(--muted);">{{ app.candidate.gender or '—' }}</td>
+                    <td style="font-size:.82rem;color:var(--muted);">
+                        {% if app.candidate.alt_phone %}
+                        <a href="tel:{{ app.candidate.alt_phone }}" style="color:var(--muted);text-decoration:none;">
+                            {{ app.candidate.alt_phone }}
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if app.status.value == 'shortlisted' %}
+                        <span class="badge badge-green" style="font-size:.7rem;">⭐ Shortlisted</span>
+                        {% else %}
+                        <span class="badge badge-gray" style="font-size:.7rem;">Applied</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:.78rem;color:var(--muted);white-space:nowrap;">
+                        {% if app.applied_at %}{{ app.applied_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% set has_cv = app.resume or app.candidate.cv_path %}
+                        {% if has_cv %}
+                        <a href="/jobzon/seekers/cv/{{ app.candidate.id }}" target="_blank"
+                           class="btn btn-cv btn-sm" style="font-size:.75rem;white-space:nowrap;"
+                           onclick="event.stopPropagation()">
+                            📄 View CV
+                        </a>
+                        {% else %}
+                        <span style="color:var(--muted);font-size:.78rem;">No CV</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📬</div>
+        <p>
+            {% if filter_status %}
+                No <strong>{{ filter_status }}</strong> applications yet.
+                <br><a href="?" style="color:var(--gold);">View all applicants</a>
+            {% else %}
+                No applications have been received for this vacancy yet.
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+
+</div>
+
+<div style="height:32px;"></div>
+
+{% endblock %}
