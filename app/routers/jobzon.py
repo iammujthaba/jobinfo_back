@@ -303,7 +303,10 @@ async def jobzon_recruiter_create_submit(
     Create a recruiter profile on behalf of a client (no OTP required).
     JobZon is acting as a trusted intermediary.
     """
-    wa_number = wa_number.strip()
+    # Normalize: strip non-digits, then ensure the 91 country code is present
+    wa_number = "".join(c for c in wa_number if c.isdigit())
+    if not wa_number.startswith("91"):
+        wa_number = "91" + wa_number
     existing = db.query(Recruiter).filter_by(wa_number=wa_number).first()
     if existing:
         return templates.TemplateResponse(

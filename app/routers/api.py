@@ -747,6 +747,63 @@ def recruiter_dashboard(
         "vacancies": vacancy_list,
     }
 
+
+# ─── Edit Recruiter Profile ───────────────────────────────────────────────────
+
+class EditRecruiterProfileRequest(BaseModel):
+    wa_number: str
+    session_token: str
+    registrant_role: str
+    location: str
+    business_contact: str
+
+
+@router.post("/recruiters/profile/edit")
+def edit_recruiter_profile(
+    body: EditRecruiterProfileRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Allows an authenticated recruiter to update their registrant_role,
+    location, and business_contact. WhatsApp number and company name
+    are intentionally locked and cannot be changed here.
+    """
+    _require_session(body.wa_number, body.session_token)
+
+    recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+    if not recruiter:
+        raise HTTPException(status_code=404, detail="Recruiter not found.")
+
+    # Validate
+    allowed_roles = {"founder", "hr", "manager", "employee", "other"}
+    role = (body.registrant_role or "").strip().lower()
+    if role not in allowed_roles:
+        raise HTTPException(status_code=422, detail="Invalid registrant role.")
+
+    allowed_locations = {"Kerala", "Karnataka", "GCC", "Other"}
+    location = (body.location or "").strip()
+    if location not in allowed_locations:
+        raise HTTPException(status_code=422, detail="Invalid location value.")
+
+    contact = (body.business_contact or "").strip()
+    if not contact:
+        raise HTTPException(status_code=422, detail="Business contact number is required.")
+
+    recruiter.registrant_role = role
+    recruiter.location = location
+    recruiter.business_contact = contact
+
+    db.commit()
+    db.refresh(recruiter)
+
+    return {
+        "message": "Profile updated successfully.",
+        "registrant_role": recruiter.registrant_role,
+        "location": recruiter.location,
+        "business_contact": recruiter.business_contact,
+    }
+
+
 @router.post("/recruiters/vacancy/toggle-ad")
 def toggle_vacancy_ad(
     body: ToggleAdRequest,
