@@ -1224,7 +1224,7 @@ def _generate_magic_dashboard_url(wa_number: str, db: Session) -> str:
     import secrets
     from datetime import datetime, timedelta, timezone
     token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(days=365)
+    expires = datetime.now(timezone.utc) + timedelta(days=90)
     magic = MagicLink(
         token=token,
         wa_number=wa_number,

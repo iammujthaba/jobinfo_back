@@ -349,8 +349,8 @@ def generate_magic_link(body: MagicTokenGenerateRequest, db: Session = Depends(g
     """Internal use: generates a short-lived magic token for a user."""
     import secrets
     token = secrets.token_urlsafe(32)
-    # 365 days expiry for persistent usage
-    expires = datetime.now(timezone.utc) + timedelta(days=365)
+    # 90 days expiry
+    expires = datetime.now(timezone.utc) + timedelta(days=90)
 
     magic = MagicLink(
         token=token,
