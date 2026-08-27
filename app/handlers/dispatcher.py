@@ -200,7 +200,28 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
     from app.handlers import seeker as seeker_handler
     from app.services.job_code import parse_job_code
 
-    normalized = text.strip().lower()
+    normalized = text.strip()
+
+    # ── Reverse OTP: plain 6-digit message from a number with a pending session ──
+    import re
+    if re.match(r"^\d{6}$", normalized):
+        from app.db.models import WebLoginSession as _WLS
+        from datetime import datetime as _dt, timezone as _tz
+        _now = _dt.now(_tz.utc)
+        _pending = (
+            db.query(_WLS)
+            .filter(
+                _WLS.wa_number == wa_number,
+                _WLS.status == "pending",
+                _WLS.expires_at > _now,
+            )
+            .first()
+        )
+        if _pending:
+            await _handle_login_otp(wa_number, normalized, db)
+            return
+
+    normalized = normalized.lower()
 
     # Recruiter entry point
     if normalized == "my vacancy" or normalized == "my vacancies":
@@ -220,6 +241,66 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
 
     # Default: personalized routing
     await global_handler.route_unrecognized_message(wa_number, db)
+
+
+async def _handle_login_otp(wa_number: str, otp_code: str, db: Session) -> None:
+    """
+    Called when a WhatsApp user sends a plain 6-digit message and has a
+    pending WebLoginSession. Validates the OTP and replies accordingly.
+    """
+    from app.whatsapp.client import wa_client
+    from app.routers.api import bot_verify_pin, PinBotVerifyRequest
+
+    req = PinBotVerifyRequest(otp_code=otp_code, wa_number=wa_number)
+    result = bot_verify_pin(req, db)
+
+    if result.get("success"):
+        if result.get("is_new_user"):
+            await wa_client.send_cta_url(
+                to=wa_number,
+                body_text=(
+                    "✅ *Your WhatsApp number has been verified!*\n\n"
+                    "You're almost there! 🎉 Tap the button below to switch back to the website "
+                    "and complete your profile registration."
+                ),
+                button_text="Complete Profile",
+                url="https://jobinfo.pro/recruiter.html",
+            )
+        else:
+            await wa_client.send_cta_url(
+                to=wa_number,
+                body_text=(
+                    "✅ *Your WhatsApp number has been verified!*\n\n"
+                    "Welcome back! 👋 Tap the button below to open your recruiter dashboard."
+                ),
+                button_text="My Dashboard",
+                url="https://jobinfo.pro/recruiter-dashboard.html",
+            )
+    else:
+        reason = result.get("reason", "unknown")
+        if reason == "wrong_otp":
+            await wa_client.send_text(
+                to=wa_number,
+                body=(
+                    "❌ *Incorrect OTP.*\n\n"
+                    "You have entered a wrong OTP. Please check the OTP shown on the website "
+                    "and try again. The OTP expires in 5 minutes."
+                ),
+            )
+        elif reason == "no_pending_session":
+            await wa_client.send_text(
+                to=wa_number,
+                body=(
+                    "❌ *OTP expired or not found.*\n\n"
+                    "This code is no longer valid. Please visit the website "
+                    "and request a new OTP. 🔁"
+                ),
+            )
+        else:
+            await wa_client.send_text(
+                to=wa_number,
+                body="❌ Something went wrong. Please try again from the website.",
+            )
 
 
 async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:

@@ -237,6 +237,28 @@ class UserQuestion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class WebLoginSession(Base):
+    """
+    Stores a pending 'Reverse OTP' PIN session created by the website.
+    The frontend polls /api/auth/pin/status/{session_id} every 5 s.
+    The bot dispatcher calls the internal verify endpoint when it
+    receives a "Login PIN: XXXXXX" WhatsApp message from the user.
+    TTL: 10 minutes.
+    """
+    __tablename__ = "web_login_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(64), unique=True, nullable=False, index=True)
+    pin = Column(String(6), nullable=False, index=True)
+    wa_number = Column(String(20), nullable=True, index=True)   # null until bot verifies
+    role = Column(String(20), default="seeker", nullable=False)  # "seeker" | "recruiter"
+    status = Column(String(20), default="pending", nullable=False)  # "pending" | "verified"
+    session_token = Column(String(100), nullable=True)           # filled on verification
+    is_new_user = Column(Boolean, nullable=True)                 # filled on verification
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class MagicLink(Base):
     __tablename__ = "magic_links"
 

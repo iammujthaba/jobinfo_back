@@ -102,6 +102,31 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
         await seeker_handler.send_seeker_greeting_menu(wa_number)
         return True
 
+    # ── OTP verification CTA buttons ─────────────────────────────────────────
+    # Sent after successful OTP entry; user taps to open the relevant website page.
+
+    if button_id == "otp_complete_registration":
+        await wa_client.send_cta_url(
+            to=wa_number,
+            body_text=(
+                "Tap the button below to open the registration page in your browser👇."
+            ),
+            button_text="Complete Profile",
+            url="https://jobinfo.pro/recruiter.html",
+        )
+        return True
+
+    if button_id == "otp_my_dashboard":
+        await wa_client.send_cta_url(
+            to=wa_number,
+            body_text=(
+                "👆 Tap the button below to open your recruiter dashboard."
+            ),
+            button_text="My Dashboard",
+            url="https://jobinfo.pro/recruiter-dashboard.html",
+        )
+        return True
+
     return False
 
 
@@ -115,7 +140,7 @@ def _reset_state(wa_number: str, db: Session) -> None:
 async def route_unrecognized_message(wa_number: str, db: Session) -> None:
     """
     Personalized fallback router.
-    Routes registered users directly to their respective menus, 
+    Routes registered users directly to their respective menus,
     otherwise falls back to the generic help menu.
     """
     from app.db.models import Recruiter, Candidate

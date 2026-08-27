@@ -47,7 +47,10 @@ app.add_middleware(
         "https://jobinfo.pro",
         "https://www.jobinfo.pro",
         "http://localhost:5500",
-        "http://127.0.0.1:5500"
+        "http://127.0.0.1:5500",
+        "http://[::1]:5500",        # python -m http.server binds IPv6 by default
+        "http://localhost:5173",    # Vite dev server (if used)
+        "http://127.0.0.1:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],

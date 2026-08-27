@@ -15,7 +15,8 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.db.models import (
     ApplicationStatus, Candidate, CandidateApplication, JobVacancy,
-    Recruiter, SubscriptionPlan, UserQuestion, MagicLink, CandidateResume
+    Recruiter, SubscriptionPlan, UserQuestion, MagicLink, CandidateResume,
+    WebLoginSession
 )
 from app.services import otp as otp_service
 from app.services.job_code import generate_job_code
@@ -64,6 +65,18 @@ class MagicTokenGenerateRequest(BaseModel):
 
 class MagicTokenVerifyRequest(BaseModel):
     token: str
+
+
+class PinCreateRequest(BaseModel):
+    role: str = "seeker"       # "seeker" | "recruiter"
+    wa_number: str              # Captured from the website login form
+
+
+class PinBotVerifyRequest(BaseModel):
+    """Called internally by the bot dispatcher only."""
+    otp_code: str               # The plain 6-digit number the user sent
+    wa_number: str
+    role: str = "seeker"
 
 
 class CheckRecruiterRequest(BaseModel):
@@ -342,6 +355,54 @@ async def register_recruiter(body: RegisterRecruiterRequest, db: Session = Depen
     }
 
 
+class RegisterRecruiterVerifiedRequest(BaseModel):
+    """Used when the number was pre-verified via Reverse OTP — no OTP code needed."""
+    session_token: str
+    wa_number: str
+    company_name: str
+    business_type: str
+    location: str
+    business_contact: str
+    registrant_role: str | None = "other"
+
+
+@router.post("/auth/recruiter/register-verified")
+def register_recruiter_verified(
+    body: RegisterRecruiterVerifiedRequest, db: Session = Depends(get_db)
+):
+    """
+    Register a new recruiter whose WhatsApp number was already verified via
+    the Reverse OTP flow. Validates the existing session token (no OTP needed).
+    """
+    # Validate the session token issued during Reverse OTP verification
+    session_data = _get_session_data(body.session_token)
+    if not session_data or session_data.get("wa_number") != body.wa_number:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    if db.query(Recruiter).filter_by(wa_number=body.wa_number).first():
+        raise HTTPException(status_code=400, detail="Recruiter already exists")
+
+    recruiter = Recruiter(
+        wa_number=body.wa_number,
+        company_name=body.company_name,
+        business_type=body.business_type,
+        location=body.location,
+        business_contact=body.business_contact,
+        registrant_role=body.registrant_role or "other",
+    )
+    db.add(recruiter)
+    db.commit()
+    db.refresh(recruiter)
+
+    # Reuse the existing session — no new token needed
+    return {
+        "session_token": body.session_token,
+        "wa_number": body.wa_number,
+        "role": "recruiter",
+        "is_new_user": True,
+    }
+
+
 # ─── Magic Links ──────────────────────────────────────────────────────────────
 
 @router.post("/auth/magic/generate")
@@ -399,6 +460,133 @@ def verify_magic_link(body: MagicTokenVerifyRequest, db: Session = Depends(get_d
         "role": magic.role,
         "is_new_user": is_new_user
     }
+
+
+# ─── Reverse OTP — Number-aware Web Login ─────────────────────────────────────
+_PIN_TTL_MINUTES = 5  # 5-minute window matches traditional OTP expectations
+
+
+@router.post("/auth/pin/create")
+def create_pin_session(body: PinCreateRequest, db: Session = Depends(get_db)):
+    """
+    Website calls this when the user enters their number and the 24h window is closed.
+    Stores the wa_number alongside the generated OTP so the bot can match
+    by sender identity alone — no message prefix required.
+    Self-cleans expired rows and invalidates any previous pending session
+    for the same number.
+    """
+    import secrets, random, string as _string
+
+    now = datetime.now(timezone.utc)
+
+    # ── Lazy cleanup: delete all expired rows on every create ─────────────────
+    db.query(WebLoginSession).filter(WebLoginSession.expires_at < now).delete(
+        synchronize_session="fetch"
+    )
+
+    # ── Invalidate any previous pending session for this wa_number ────────────
+    db.query(WebLoginSession).filter(
+        WebLoginSession.wa_number == body.wa_number,
+        WebLoginSession.status == "pending",
+    ).update({"status": "superseded"}, synchronize_session="fetch")
+
+    db.commit()
+
+    session_id = secrets.token_urlsafe(32)
+    otp = "".join(random.choices(_string.digits, k=6))
+    expires = now + timedelta(minutes=_PIN_TTL_MINUTES)
+
+    ws = WebLoginSession(
+        session_id=session_id,
+        pin=otp,
+        wa_number=body.wa_number,   # ← stored at creation time
+        role=body.role,
+        expires_at=expires,
+    )
+    db.add(ws)
+    db.commit()
+
+    return {"session_id": session_id, "otp": otp, "expires_at": expires}
+
+
+@router.get("/auth/pin/status/{session_id}")
+def poll_pin_status(session_id: str, db: Session = Depends(get_db)):
+    """
+    Frontend polls this every 5 s to check if the bot has verified the OTP.
+    Returns { status: 'pending' | 'verified' | 'expired' } and on verified,
+    includes session_token, wa_number, role, is_new_user.
+    """
+    ws = db.query(WebLoginSession).filter_by(session_id=session_id).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    now = datetime.now(timezone.utc)
+    expires_at = ws.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if now > expires_at:
+        return {"status": "expired"}
+
+    if ws.status == "verified":
+        return {
+            "status": "verified",
+            "session_token": ws.session_token,
+            "wa_number": ws.wa_number,
+            "role": ws.role,
+            "is_new_user": ws.is_new_user,
+        }
+
+    return {"status": "pending"}
+
+
+@router.post("/auth/pin/bot-verify")
+def bot_verify_pin(body: PinBotVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Internal endpoint — called by the bot dispatcher when it receives a
+    plain 6-digit message from a number that has a pending web login session.
+    Looks up the session by wa_number (not by OTP), then validates the code.
+    """
+    now = datetime.now(timezone.utc)
+
+    # ── Find the pending session for this wa_number ───────────────────────────
+    ws = (
+        db.query(WebLoginSession)
+        .filter(
+            WebLoginSession.wa_number == body.wa_number,
+            WebLoginSession.status == "pending",
+            WebLoginSession.expires_at > now,
+        )
+        .first()
+    )
+
+    if not ws:
+        return {"success": False, "reason": "no_pending_session"}
+
+    # ── Validate the OTP ──────────────────────────────────────────────────────
+    if ws.pin != body.otp_code:
+        return {"success": False, "reason": "wrong_otp"}
+
+    # ── Determine is_new_user (role was fixed at session-creation time) ───────
+    role = ws.role
+    is_new = False
+    if role == "seeker":
+        candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+        if not candidate:
+            is_new = True
+    elif role == "recruiter":
+        recruiter = db.query(Recruiter).filter_by(wa_number=body.wa_number).first()
+        if not recruiter:
+            is_new = True
+
+    session_token = _create_session(body.wa_number, role)
+
+    ws.status = "verified"
+    ws.session_token = session_token
+    ws.is_new_user = is_new
+    db.commit()
+
+    return {"success": True, "is_new_user": is_new, "role": role}
 
 
 # ─── Vacancies (public) ───────────────────────────────────────────────────────
