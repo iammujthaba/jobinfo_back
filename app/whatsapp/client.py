@@ -225,7 +225,7 @@ class WhatsAppClient:
             "action": {
                 "name": "cta_url",
                 "parameters": {
-                    "display_text": button_text,
+                    "display_text": button_text[:20],
                     "url": url,
                 },
             },
@@ -260,7 +260,7 @@ class WhatsAppClient:
                 "action": {
                     "name": "cta_url",
                     "parameters": {
-                        "display_text": button_display_text,
+                        "display_text": button_display_text[:20],
                         "url": button_url
                     }
                 }

@@ -243,6 +243,29 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
     await global_handler.route_unrecognized_message(wa_number, db)
 
 
+def _generate_magic_url(wa_number: str, role: str, path: str, db: Session) -> str:
+    """Generate an authenticated single-sign-on magic link URL for the user."""
+    import secrets
+    from datetime import datetime, timezone, timedelta
+    from app.db.models import MagicLink
+
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    magic = MagicLink(
+        token=token,
+        wa_number=wa_number,
+        role=role,
+        expires_at=expires,
+        is_used=False,
+    )
+    db.add(magic)
+    db.commit()
+    base = "https://jobinfo.pro"
+    if path:
+        return f"{base}/{path}?magic_token={token}"
+    return f"{base}/?magic_token={token}"
+
+
 async def _handle_login_otp(wa_number: str, otp_code: str, db: Session) -> None:
     """
     Called when a WhatsApp user sends a plain 6-digit message and has a
@@ -255,26 +278,57 @@ async def _handle_login_otp(wa_number: str, otp_code: str, db: Session) -> None:
     result = bot_verify_pin(req, db)
 
     if result.get("success"):
-        if result.get("is_new_user"):
-            await wa_client.send_cta_url(
+        is_new = result.get("is_new_user")
+        role = result.get("role", "seeker")
+
+        if is_new:
+            if role == "seeker":
+                body_text = (
+                    "✅ *OTP verification successful!*\n\n"
+                    "Please switch back to your browser to complete your registration, "
+                    "or tap *Create My Profile* below to complete it here on WhatsApp."
+                )
+                buttons = [
+                    {"id": "btn_wa_reg_seeker", "title": "Create My Profile"},
+                ]
+            else:
+                body_text = (
+                    "✅ *OTP verification successful!*\n\n"
+                    "Please switch back to your browser to complete your registration, "
+                    "or tap *Create My Profile* below to complete it here on WhatsApp."
+                )
+                buttons = [
+                    {"id": "btn_wa_reg_recruiter", "title": "Create My Profile"},
+                ]
+
+            await wa_client.send_buttons(
                 to=wa_number,
-                body_text=(
-                    "✅ *Your WhatsApp number has been verified!*\n\n"
-                    "You're almost there! 🎉 Tap the button below to switch back to the website "
-                    "and complete your profile registration."
-                ),
-                button_text="Complete Profile",
-                url="https://jobinfo.pro/recruiter.html",
+                body_text=body_text,
+                buttons=buttons,
+                footer_text="Powered by JobInfo.pro",
             )
         else:
-            await wa_client.send_cta_url(
+            if role == "recruiter":
+                buttons = [
+                    {"id": "btn_post_vacancy", "title": "Post Vacancy"},
+                    {"id": "btn_my_vacancies", "title": "My Vacancies"},
+                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                ]
+            else:
+                buttons = [
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                    {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
+                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                ]
+
+            await wa_client.send_buttons(
                 to=wa_number,
                 body_text=(
-                    "✅ *Your WhatsApp number has been verified!*\n\n"
-                    "Welcome back! 👋 Tap the button below to open your recruiter dashboard."
+                    "✅ *OTP verification successful!*\n\n"
+                    "Please switch back to the website to access your account. 🎉"
                 ),
-                button_text="My Dashboard",
-                url="https://jobinfo.pro/recruiter-dashboard.html",
+                buttons=buttons,
+                footer_text="Powered by JobInfo.pro",
             )
     else:
         reason = result.get("reason", "unknown")
@@ -307,10 +361,48 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
     """Route a quick-reply button press."""
     from app.handlers import recruiter as recruiter_handler
     from app.handlers import seeker as seeker_handler
+    from app.whatsapp.client import wa_client
 
     # ── Global menu buttons ─────────────────────────────────────────────────
     handled = await global_handler.handle_global_button(wa_number, button_id, db)
     if handled:
+        return
+
+    # ── Login / OTP Verification Action Buttons ──────────────────────────────
+    if button_id == "btn_wa_reg_seeker":
+        await seeker_handler.handle_my_applications_menu(wa_number, db)
+        return
+
+    if button_id == "btn_wa_reg_recruiter":
+        await recruiter_handler.start(wa_number, db)
+        return
+
+    if button_id == "btn_my_dashboard":
+        from app.db.models import Recruiter
+        is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first() is not None
+        role = "recruiter" if is_recruiter else "seeker"
+        path = "recruiter-dashboard.html" if is_recruiter else "dashboard.html"
+        url = _generate_magic_url(wa_number, role, path, db)
+        await wa_client.send_cta_url(
+            to=wa_number,
+            body_text=(
+                "🎉 *Open Your Dashboard*\n\n"
+                "Tap the button below to open your dashboard directly in your browser."
+            ),
+            button_text="My Dashboard",
+            url=url,
+            footer_text="Link valid for 24 hours",
+        )
+        return
+
+    if button_id in ("btn_continue_web", "btn_complete_registration", "btn_complete_profile"):
+        await wa_client.send_text(
+            to=wa_number,
+            body=(
+                "🌐 *Session Active!*\n\n"
+                "Please switch back to your browser window on the website to continue. 🎉"
+            ),
+        )
         return
 
     # ── Recruiter buttons ───────────────────────────────────────────────────

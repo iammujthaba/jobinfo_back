@@ -1114,8 +1114,9 @@ async def _send_application_summary_cta(
                 "the latest walk-in openings.\n\n"
                 "Your career journey starts with a single tap! 💪"
             ),
-            button_text="Explore Dashboard",
-            url=_generate_magic_dashboard_url(wa_number, db),
+            button_text="Browse Jobs Channel",
+            url=WHATSAPP_CHANNEL_URL,
+            footer_text="Updated daily with new opportunities",
         )
         return
 
@@ -1320,6 +1321,27 @@ async def handle_my_applications_menu(wa_number: str, db: Session) -> None:
         )
 
 
+def _get_preferred_role_title(candidate: Candidate) -> str:
+    raw_sub = (candidate.sub_category or "").strip()
+    if raw_sub:
+        try:
+            from app.routers.flows import CATEGORY_SUBCATEGORIES
+            for sub_list in CATEGORY_SUBCATEGORIES.values():
+                for item in sub_list:
+                    if item["id"] == raw_sub:
+                        return item["title"]
+        except Exception:
+            pass
+        return raw_sub.replace("_", " ").title()
+
+    raw_cat = (candidate.category or "").strip().lower()
+    if raw_cat in CATEGORY_DISPLAY_NAMES:
+        return CATEGORY_DISPLAY_NAMES[raw_cat]
+    if raw_cat:
+        return raw_cat.replace("_", " ").title()
+    return "your field"
+
+
 async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
     """
     Suggest matching jobs: if registered → find jobs by category, else → registration flow.
@@ -1358,30 +1380,19 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         .order_by(JobVacancy.approved_at.desc())
         .limit(5)
         .all()
-    )
-
-    # Fallback: if no category match, show latest jobs
-    if not matching_jobs:
-        matching_jobs = (
-            db.query(JobVacancy)
-            .filter(JobVacancy.status == "approved")
-            .filter(JobVacancy.is_active == True)
-            .order_by(JobVacancy.approved_at.desc())
-            .limit(3)
-            .all()
-        )
+    ) if category else []
 
     if not matching_jobs:
-        # No active jobs at all
+        preferred_role = _get_preferred_role_title(candidate)
+        # No matching active jobs
         await wa_client.send_cta_url(
             to=wa_number,
             header_text="JobInfo — Job Suggestions",
             body_text=(
-                "*We're currently sourcing new roles in your field.*\n\n"
-                "Our team is working hard to bring fresh opportunities that match "
-                f"your expertise. In the meantime, keep an eye on our Jobs Channel "
-                "for daily walk-in interviews and urgent openings.\n\n"
-                "We'll match you as soon as new roles come in — hang tight! 💪"
+                f"📋 *Currently the positions for {preferred_role} are filled or hiring has completed.*\n\n"
+                "Our team is working actively to bring fresh opportunities daily. "
+                "Keep an eye on the *JobInfo Channel* for daily urgent openings and walk-in interviews.\n\n"
+                "We'll match you as soon as new roles match your profile — hang tight! 💪"
             ),
             button_text="Browse Jobs Channel",
             url=WHATSAPP_CHANNEL_URL,

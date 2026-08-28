@@ -83,6 +83,10 @@ class CheckRecruiterRequest(BaseModel):
     wa_number: str
 
 
+class CheckSeekerRequest(BaseModel):
+    wa_number: str
+
+
 class RegisterRecruiterRequest(BaseModel):
     wa_number: str
     otp_code: str
@@ -91,6 +95,32 @@ class RegisterRecruiterRequest(BaseModel):
     location: str
     business_contact: str
     registrant_role: str = "other"
+
+
+class RegisterSeekerRequest(BaseModel):
+    wa_number: str
+    otp_code: str
+    name: str
+    district: str
+    category: str
+    sub_category: str | None = None
+    exact_location: str | None = None
+    gender: str | None = "male"
+    age: int | None = None
+    alt_phone: str | None = None
+
+
+class RegisterSeekerVerifiedRequest(BaseModel):
+    session_token: str
+    wa_number: str
+    name: str
+    district: str
+    category: str
+    sub_category: str | None = None
+    exact_location: str | None = None
+    gender: str | None = "male"
+    age: int | None = None
+    alt_phone: str | None = None
 
 
 class RecruiterVacancyRequest(BaseModel):
@@ -201,11 +231,6 @@ async def send_otp(body: OTPSendRequest, db: Session = Depends(get_db)):
     """Generate OTP and send it via WhatsApp."""
     import httpx
     try:
-        if body.role == "seeker":
-            candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
-            if not candidate:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_registered")
-
         otp_code = otp_service.create_otp(db, body.wa_number)
         
         # Check 24-hour window
@@ -277,6 +302,34 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
         if not candidate:
             is_new_user = True
 
+    # Send WhatsApp confirmation to user
+    try:
+        if not is_new_user:
+            if body.role == "recruiter":
+                buttons = [
+                    {"id": "btn_post_vacancy", "title": "Post Vacancy"},
+                    {"id": "btn_my_vacancies", "title": "My Vacancies"},
+                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                ]
+            else:
+                buttons = [
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                    {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
+                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                ]
+
+            await wa_client.send_buttons(
+                to=body.wa_number,
+                body_text=(
+                    "✅ *OTP verification successful!*\n\n"
+                    "You are now logged in on the website. 🎉"
+                ),
+                buttons=buttons,
+                footer_text="Powered by JobInfo.pro",
+            )
+    except Exception as e:
+        logger.warning(f"Could not send OTP verification confirmation to {body.wa_number}: {e}")
+
     return {
         "session_token": token, 
         "wa_number": body.wa_number,
@@ -347,6 +400,26 @@ async def register_recruiter(body: RegisterRecruiterRequest, db: Session = Depen
     db.refresh(recruiter)
     
     token = _create_session(body.wa_number, "recruiter")
+
+    # Send WhatsApp confirmation to recruiter
+    try:
+        buttons = [
+            {"id": "btn_post_vacancy", "title": "Post Vacancy"},
+            {"id": "btn_my_vacancies", "title": "My Vacancies"},
+            {"id": "btn_my_dashboard", "title": "My Dashboard"},
+        ]
+        await wa_client.send_buttons(
+            to=body.wa_number,
+            body_text=(
+                "✅ *Registration Successful!*\n\n"
+                "Welcome to JobInfo! 🎉 Your recruiter profile has been created. You can now post vacancies and hire talent."
+            ),
+            buttons=buttons,
+            footer_text="Powered by JobInfo.pro",
+        )
+    except Exception as e:
+        logger.warning(f"Could not send recruiter registration confirmation to {body.wa_number}: {e}")
+
     return {
         "session_token": token,
         "wa_number": body.wa_number,
@@ -367,7 +440,7 @@ class RegisterRecruiterVerifiedRequest(BaseModel):
 
 
 @router.post("/auth/recruiter/register-verified")
-def register_recruiter_verified(
+async def register_recruiter_verified(
     body: RegisterRecruiterVerifiedRequest, db: Session = Depends(get_db)
 ):
     """
@@ -394,11 +467,202 @@ def register_recruiter_verified(
     db.commit()
     db.refresh(recruiter)
 
+    # Send WhatsApp confirmation to recruiter
+    try:
+        buttons = [
+            {"id": "btn_post_vacancy", "title": "Post Vacancy"},
+            {"id": "btn_my_vacancies", "title": "My Vacancies"},
+            {"id": "btn_my_dashboard", "title": "My Dashboard"},
+        ]
+        await wa_client.send_buttons(
+            to=body.wa_number,
+            body_text=(
+                "✅ *Registration Successful!*\n\n"
+                "Welcome to JobInfo! 🎉 Your recruiter profile has been created. You can now post vacancies and hire talent."
+            ),
+            buttons=buttons,
+            footer_text="Powered by JobInfo.pro",
+        )
+    except Exception as e:
+        logger.warning(f"Could not send recruiter registration confirmation to {body.wa_number}: {e}")
+
     # Reuse the existing session — no new token needed
     return {
         "session_token": body.session_token,
         "wa_number": body.wa_number,
         "role": "recruiter",
+        "is_new_user": True,
+    }
+
+
+# ─── Seeker Authentication Endpoints ──────────────────────────────────────────
+
+@router.post("/auth/check-seeker")
+async def check_seeker(body: CheckSeekerRequest, db: Session = Depends(get_db)):
+    """
+    Check if a job seeker exists and whether they are within the 24h WhatsApp window.
+    If they exist and are within 24h, automatically trigger OTP.
+    """
+    from app.db.models import ConversationState
+    state = db.query(ConversationState).filter_by(wa_number=body.wa_number).first()
+    within_24h = False
+    if state and state.last_user_message_at:
+        last_msg_at = state.last_user_message_at
+        if last_msg_at.tzinfo is None:
+            last_msg_at = last_msg_at.replace(tzinfo=timezone.utc)
+        time_diff = datetime.now(timezone.utc) - last_msg_at
+        if time_diff.total_seconds() <= 24 * 3600:
+            within_24h = True
+
+    candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+    if candidate:
+        if within_24h:
+            # Trigger OTP internally
+            otp_request = OTPSendRequest(wa_number=body.wa_number, role="seeker")
+            await send_otp(otp_request, db)
+            return {"exists": True, "within_24h": True}
+        else:
+            return {"exists": True, "within_24h": False}
+
+    return {"exists": False, "within_24h": within_24h}
+
+
+@router.post("/auth/seeker/register")
+async def register_seeker(body: RegisterSeekerRequest, db: Session = Depends(get_db)):
+    """Verify OTP and register a new job seeker, returning a session token."""
+    if not otp_service.verify_otp(db, body.wa_number, body.otp_code):
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+    if not candidate:
+        candidate = Candidate(
+            wa_number=body.wa_number,
+            name=body.name,
+            district=body.district,
+            category=body.category,
+            sub_category=body.sub_category,
+            gender=body.gender or "male",
+            age=body.age,
+            exact_location=body.exact_location,
+            alt_phone=body.alt_phone,
+            registration_complete=not settings.subscription_enabled,
+        )
+        db.add(candidate)
+    else:
+        candidate.name = body.name
+        candidate.district = body.district
+        candidate.category = body.category
+        if body.sub_category:
+            candidate.sub_category = body.sub_category
+        candidate.gender = body.gender or "male"
+        if body.age:
+            candidate.age = body.age
+        if body.exact_location:
+            candidate.exact_location = body.exact_location
+        if body.alt_phone:
+            candidate.alt_phone = body.alt_phone
+        candidate.registration_complete = not settings.subscription_enabled
+
+    db.commit()
+    db.refresh(candidate)
+
+    token = _create_session(body.wa_number, "seeker")
+
+    # Send WhatsApp confirmation to seeker
+    try:
+        buttons = [
+            {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
+            {"id": "btn_my_dashboard", "title": "My Dashboard"},
+        ]
+        await wa_client.send_buttons(
+            to=body.wa_number,
+            body_text=(
+                "✅ *Registration Successful!*\n\n"
+                "Welcome to JobInfo! 🎉 Your candidate profile has been created. You can now explore vacancies and apply to jobs."
+            ),
+            buttons=buttons,
+            footer_text="Powered by JobInfo.pro",
+        )
+    except Exception as e:
+        logger.warning(f"Could not send seeker registration confirmation to {body.wa_number}: {e}")
+
+    return {
+        "session_token": token,
+        "wa_number": body.wa_number,
+        "role": "seeker",
+        "is_new_user": True,
+    }
+
+
+@router.post("/auth/seeker/register-verified")
+async def register_seeker_verified(
+    body: RegisterSeekerVerifiedRequest, db: Session = Depends(get_db)
+):
+    """
+    Register a new job seeker whose WhatsApp number was already verified via
+    the Reverse OTP flow. Validates the existing session token (no OTP needed).
+    """
+    session_data = _get_session_data(body.session_token)
+    if not session_data or session_data.get("wa_number") != body.wa_number:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
+    if not candidate:
+        candidate = Candidate(
+            wa_number=body.wa_number,
+            name=body.name,
+            district=body.district,
+            category=body.category,
+            sub_category=body.sub_category,
+            gender=body.gender or "male",
+            age=body.age,
+            exact_location=body.exact_location,
+            alt_phone=body.alt_phone,
+            registration_complete=not settings.subscription_enabled,
+        )
+        db.add(candidate)
+    else:
+        candidate.name = body.name
+        candidate.district = body.district
+        candidate.category = body.category
+        if body.sub_category:
+            candidate.sub_category = body.sub_category
+        candidate.gender = body.gender or "male"
+        if body.age:
+            candidate.age = body.age
+        if body.exact_location:
+            candidate.exact_location = body.exact_location
+        if body.alt_phone:
+            candidate.alt_phone = body.alt_phone
+        candidate.registration_complete = not settings.subscription_enabled
+
+    db.commit()
+    db.refresh(candidate)
+
+    # Send WhatsApp confirmation to seeker
+    try:
+        buttons = [
+            {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
+            {"id": "btn_my_dashboard", "title": "My Dashboard"},
+        ]
+        await wa_client.send_buttons(
+            to=body.wa_number,
+            body_text=(
+                "✅ *Registration Successful!*\n\n"
+                "Welcome to JobInfo! 🎉 Your candidate profile has been created. You can now explore vacancies and apply to jobs."
+            ),
+            buttons=buttons,
+            footer_text="Powered by JobInfo.pro",
+        )
+    except Exception as e:
+        logger.warning(f"Could not send seeker registration confirmation to {body.wa_number}: {e}")
+
+    return {
+        "session_token": body.session_token,
+        "wa_number": body.wa_number,
+        "role": "seeker",
         "is_new_user": True,
     }
 

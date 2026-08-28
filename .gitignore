@@ -45,3 +45,4 @@ keys/
 seed_test_jobs.py
 stop24hour-free-window-for-test.py
 delete_user.py
+test.db-journal

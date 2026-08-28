@@ -211,10 +211,6 @@ class OTPRecord(Base):
 
 
 class ConversationState(Base):
-    """
-    Tracks the current step in a multi-step WhatsApp conversation per number.
-    This replaces N8N's workflow state.
-    """
     __tablename__ = "conversation_states"
 
     id = Column(Integer, primary_key=True, index=True)
