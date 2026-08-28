@@ -94,6 +94,10 @@
                   {
                     "id": "Kasaragod",
                     "title": "Kasaragod"
+                  },
+                  {
+                    "id": "Other",
+                    "title": "Other"
                   }
                 ]
               },
