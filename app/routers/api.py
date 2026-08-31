@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -861,13 +862,35 @@ def list_vacancies(
     page_size: int = 20,
     district_region: str | None = None,
     job_title: str | None = None,
+    location: str | None = None,
+    title: str | None = None,
+    keyword: str | None = None,
+    q: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(JobVacancy).filter_by(status="approved", is_active=True)
-    if district_region:
-        query = query.filter(JobVacancy.district_region.ilike(f"%{district_region}%"))
-    if job_title:
-        query = query.filter(JobVacancy.job_title.ilike(f"%{job_title}%"))
+
+    loc_filter = (location or district_region or "").strip()
+    if loc_filter:
+        query = query.filter(
+            or_(
+                JobVacancy.district_region.ilike(f"%{loc_filter}%"),
+                JobVacancy.exact_location.ilike(f"%{loc_filter}%"),
+            )
+        )
+
+    title_filter = (title or job_title or keyword or q or "").strip()
+    if title_filter:
+        query = query.outerjoin(Recruiter, JobVacancy.recruiter_id == Recruiter.id).filter(
+            or_(
+                JobVacancy.job_title.ilike(f"%{title_filter}%"),
+                JobVacancy.job_description.ilike(f"%{title_filter}%"),
+                JobVacancy.job_category.ilike(f"%{title_filter}%"),
+                JobVacancy.job_code.ilike(f"%{title_filter}%"),
+                Recruiter.company_name.ilike(f"%{title_filter}%"),
+            )
+        )
+
     total = query.count()
     vacancies = query.order_by(JobVacancy.approved_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
@@ -899,18 +922,45 @@ def suggest_locations(
     db: Session = Depends(get_db),
 ):
     """Suggests locations based on current approved and active vacancies."""
-    if not query or len(query.strip()) < 1:
+    q = (query or "").strip()
+    if not q or len(q) < 1:
         return {"results": []}
-    locations = (
+
+    district_rows = (
         db.query(JobVacancy.district_region)
-        .filter(JobVacancy.status == "approved")
-        .filter(JobVacancy.is_active == True)
-        .filter(JobVacancy.district_region.ilike(f"{query.strip()}%"))
+        .filter(JobVacancy.status == "approved", JobVacancy.is_active == True)
+        .filter(JobVacancy.district_region.ilike(f"%{q}%"))
         .distinct()
-        .limit(10)
         .all()
     )
-    return {"results": [loc[0] for loc in locations]}
+    exact_rows = (
+        db.query(JobVacancy.exact_location)
+        .filter(JobVacancy.status == "approved", JobVacancy.is_active == True)
+        .filter(JobVacancy.exact_location.ilike(f"%{q}%"))
+        .distinct()
+        .all()
+    )
+
+    seen = set()
+    prefix_matches = []
+    other_matches = []
+
+    for row in district_rows + exact_rows:
+        val = row[0]
+        if not val or not val.strip():
+            continue
+        cleaned = val.strip()
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if key.startswith(q.lower()):
+            prefix_matches.append(cleaned)
+        else:
+            other_matches.append(cleaned)
+
+    results = (prefix_matches + other_matches)[:10]
+    return {"results": results}
 
 
 @router.get("/vacancies/titles/suggest")
@@ -919,18 +969,38 @@ def suggest_titles(
     db: Session = Depends(get_db),
 ):
     """Suggests job titles based on current approved and active vacancies."""
-    if not query or len(query.strip()) < 1:
+    q = (query or "").strip()
+    if not q or len(q) < 1:
         return {"results": []}
-    titles = (
+
+    title_rows = (
         db.query(JobVacancy.job_title)
-        .filter(JobVacancy.status == "approved")
-        .filter(JobVacancy.is_active == True)
-        .filter(JobVacancy.job_title.ilike(f"{query.strip()}%"))
+        .filter(JobVacancy.status == "approved", JobVacancy.is_active == True)
+        .filter(JobVacancy.job_title.ilike(f"%{q}%"))
         .distinct()
-        .limit(10)
         .all()
     )
-    return {"results": [t[0] for t in titles]}
+
+    seen = set()
+    prefix_matches = []
+    other_matches = []
+
+    for row in title_rows:
+        val = row[0]
+        if not val or not val.strip():
+            continue
+        cleaned = val.strip()
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if key.startswith(q.lower()):
+            prefix_matches.append(cleaned)
+        else:
+            other_matches.append(cleaned)
+
+    results = (prefix_matches + other_matches)[:10]
+    return {"results": results}
 
 
 @router.get("/vacancies/{vacancy_id}")
