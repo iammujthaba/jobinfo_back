@@ -1009,7 +1009,10 @@ async def post_vacancy_web(
     db.refresh(vacancy)
 
     # WhatsApp confirmation to recruiter
-    await wa_client.send_text(to=body.wa_number, body=vacancy_confirmation_body(vacancy))
+    try:
+        await wa_client.send_text(to=body.wa_number, body=vacancy_confirmation_body(vacancy))
+    except Exception as e:
+        logger.warning("Recruiter WhatsApp confirmation failed: %s", e)
 
     # Alert admin with interactive CTA magic link
     if settings.admin_wa_number:
@@ -1023,10 +1026,13 @@ async def post_vacancy_web(
             )
         except Exception as e:
             logger.warning("Admin CTA alert failed (web post), falling back to text: %s", e)
-            await wa_client.send_text(
-                to=settings.admin_wa_number,
-                body=admin_vacancy_alert_body(vacancy, recruiter),
-            )
+            try:
+                await wa_client.send_text(
+                    to=settings.admin_wa_number,
+                    body=admin_vacancy_alert_body(vacancy, recruiter),
+                )
+            except Exception as e2:
+                logger.warning("Admin fallback text alert failed: %s", e2)
 
     return {"job_code": vacancy.job_code, "status": "pending_review"}
 
