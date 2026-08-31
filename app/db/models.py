@@ -164,6 +164,7 @@ class CandidateResume(Base):
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(Integer, ForeignKey("candidate_table.id"), nullable=False)
     media_id = Column(String(500), nullable=False)      # WhatsApp media-id or storage path
+    file_name = Column(String(255), nullable=True)      # Original user-provided filename
     category_tag = Column(String(100))                   # industry this CV targets
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     is_default = Column(Boolean, default=False, nullable=False)

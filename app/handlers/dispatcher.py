@@ -560,31 +560,61 @@ async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
 
     state_rec = db.query(ConversationState).filter_by(wa_number=wa_number).first()
     if state_rec and state_rec.state == "seeker_updating_cv":
-        from app.services.storage import save_cv_from_whatsapp
-        cv_path = await save_cv_from_whatsapp(
+        from app.services.storage import MAX_CV_SIZE_BYTES, save_cv_from_whatsapp
+        from app.whatsapp.client import wa_client
+        doc_size = doc.get("file_size", 0)
+        if doc_size and int(doc_size) > MAX_CV_SIZE_BYTES:
+            await wa_client.send_text(
+                to=wa_number,
+                body=(
+                    f"❌ Your CV file size ({int(doc_size) // 1024} KB) exceeds the *350 KB* limit.\n\n"
+                    "Please compress your CV (e.g. using a free tool like smallpdf.com or ilovepdf.com) and send it again."
+                ),
+            )
+            return
+
+        original_doc_name = doc.get("filename")
+        cv_path, filename = await save_cv_from_whatsapp(
             wa_number=wa_number,
             media_id=doc.get("id", ""),
             mime_type=doc.get("mime_type", "application/pdf"),
+            original_filename=original_doc_name,
         )
         if cv_path:
-            from app.db.models import Candidate
+            from app.db.models import Candidate, CandidateResume
             from app.whatsapp.templates import cv_update_confirmation_body
-            from app.whatsapp.client import wa_client
 
             candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
             if candidate:
                 candidate.cv_path = cv_path
                 candidate.cv_updates_used = (candidate.cv_updates_used or 0) + 1
+                existing_default = db.query(CandidateResume).filter_by(candidate_id=candidate.id, is_default=True).first()
+                if existing_default:
+                    existing_default.media_id = cv_path
+                    existing_default.file_name = filename
+                else:
+                    new_res = CandidateResume(
+                        candidate_id=candidate.id,
+                        media_id=cv_path,
+                        file_name=filename,
+                        category_tag=candidate.category or "other",
+                        is_default=True,
+                    )
+                    db.add(new_res)
                 db.commit()
                 await wa_client.send_text(
                     to=wa_number,
                     body=cv_update_confirmation_body(candidate),
                 )
         else:
-            from app.whatsapp.client import wa_client
             await wa_client.send_text(
                 to=wa_number,
-                body="❌ Invalid file format. Please upload a PDF or CSV.",
+                body=(
+                    "❌ Could not accept this CV.\n\n"
+                    "• Maximum allowed file size: *350 KB*\n"
+                    "• Allowed formats: *PDF, Word (.doc, .docx)*\n\n"
+                    "Please compress your document and try again."
+                ),
             )
     else:
         from app.whatsapp.client import wa_client

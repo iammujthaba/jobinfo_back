@@ -250,7 +250,22 @@ async def _show_job_apply_prompt(
         return
 
     # ── Branch 2: Has CV(s) + Category Mismatch ───────────────────────────
-    candidate_cat = (candidate.category or "").strip().lower()
+    default_resume = (
+        db.query(CandidateResume)
+        .filter_by(candidate_id=candidate.id, is_default=True)
+        .first()
+    )
+    if not default_resume:
+        default_resume = (
+            db.query(CandidateResume)
+            .filter_by(candidate_id=candidate.id)
+            .order_by(CandidateResume.uploaded_at.desc())
+            .first()
+        )
+
+    candidate_cat = (
+        (default_resume.category_tag if default_resume and default_resume.category_tag else candidate.category) or ""
+    ).strip().lower()
 
     if (
         candidate_cat
@@ -260,12 +275,26 @@ async def _show_job_apply_prompt(
         candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title())
         job_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat, inferred_cat.replace("_", " ").title())
 
+        matching_resume = (
+            db.query(CandidateResume)
+            .filter(
+                CandidateResume.candidate_id == candidate.id,
+                CandidateResume.category_tag == inferred_cat,
+            )
+            .first()
+        )
+        match_note = (
+            f"\n\n💡 *Tip:* We found your saved *{matching_resume.file_name or job_label}* CV! "
+            f"Tap *Choose Existing* to apply with it, or upload a new one."
+            if matching_resume else ""
+        )
+
         await wa_client.send_buttons(
             to=wa_number,
             header_text="🌟 Maximize Your Chances!",
             body_text=(
                 f"We noticed your default CV is tailored for *{candidate_label.strip()}*, "
-                f"but you're applying for an exciting *{job_label.strip()}* role!\n\n"
+                f"but you're applying for an exciting *{job_label.strip()}* role!{match_note}\n\n"
                 "Sending a customized CV dramatically boosts your chances of "
                 "getting shortlisted. Choose how you'd like to proceed below:"
             ),
@@ -412,18 +441,36 @@ async def handle_registration_flow_completion(
     
     if raw_media:
         # Meta's File Upload returns a list of dictionaries
+        actual_filename = None
         if isinstance(raw_media, list) and len(raw_media) > 0:
             actual_media_id = raw_media[0].get("id")
             actual_mime = raw_media[0].get("mime_type", "application/pdf")
+            actual_filename = (
+                raw_media[0].get("file_name")
+                or raw_media[0].get("filename")
+                or raw_media[0].get("name")
+                or flow_data.get("file_name")
+            )
+        elif isinstance(raw_media, dict):
+            actual_media_id = raw_media.get("id")
+            actual_mime = raw_media.get("mime_type", "application/pdf")
+            actual_filename = (
+                raw_media.get("file_name")
+                or raw_media.get("filename")
+                or raw_media.get("name")
+                or flow_data.get("file_name")
+            )
         else:
             actual_media_id = raw_media
             actual_mime = flow_data.get("mime_type", "application/pdf")
+            actual_filename = flow_data.get("file_name")
             
         if actual_media_id:
-            cv_path = await save_cv_from_whatsapp(
+            cv_path, filename = await save_cv_from_whatsapp(
                 wa_number=wa_number,
                 media_id=actual_media_id,
                 mime_type=actual_mime,
+                original_filename=actual_filename,
             )
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     if not candidate:
@@ -469,6 +516,7 @@ async def handle_registration_flow_completion(
             new_resume = CandidateResume(
                 candidate_id=candidate.id,
                 media_id=candidate.cv_path,
+                file_name=filename if 'filename' in locals() and filename else None,
                 category_tag=candidate.category or "other",
                 is_default=True,
             )
@@ -783,12 +831,16 @@ async def handle_manage_cv(wa_number: str, job_code: str, db: Session) -> None:
                 (r.category_tag or "").lower(),
                 (r.category_tag or "General").replace("_", " ").title(),
             )
-            default_marker = " ★ Default" if r.is_default else ""
+            default_marker = " ★" if r.is_default else ""
             date_str = r.uploaded_at.strftime("%d %b %Y") if r.uploaded_at else "Recently"
+            raw_fn = r.file_name or (r.media_id.split("/")[-1].split("\\")[-1] if r.media_id else "")
+            
+            display_title = (raw_fn[:24 - len(default_marker)] + default_marker) if raw_fn else f"{tag_label} CV{default_marker}"[:24]
+            description_text = f"{tag_label} · {date_str}"[:72]
             rows.append({
                 "id": f"SELECT_CV_{r.id}_{job_code}",
-                "title": f"{tag_label} CV{default_marker}"[:24],
-                "description": f"Uploaded on {date_str}",
+                "title": display_title[:24],
+                "description": description_text,
             })
         sections.append({"title": "Your Saved CVs", "rows": rows})
 
@@ -966,20 +1018,73 @@ async def handle_cv_update_flow_completion(
             )
         return
 
-    # Extract ID from Meta's list structure
+    # Extract ID and filename from Meta's list or dict structure
+    actual_filename = None
     if isinstance(raw_media, list) and len(raw_media) > 0:
         actual_media_id = raw_media[0].get("id")
         actual_mime = raw_media[0].get("mime_type", "application/pdf")
+        doc_size = raw_media[0].get("file_size")
+        if doc_size and int(doc_size) > 350 * 1024:
+            btn_id = f"UPLOAD_NEW_CV_{job_code}" if job_code else "UPLOAD_NEW_CV_"
+            await wa_client.send_buttons(
+                to=wa_number,
+                header_text="❌ File Too Large",
+                body_text=(
+                    f"Your CV file size ({int(doc_size) // 1024} KB) exceeds the *350 KB* limit.\n\n"
+                    "Please compress your CV (e.g. using a free tool like smallpdf.com or ilovepdf.com) and try uploading again."
+                ),
+                buttons=[{"id": btn_id, "title": "🔄 Try Again"}],
+            )
+            return
+
+        actual_filename = (
+            raw_media[0].get("file_name")
+            or raw_media[0].get("filename")
+            or raw_media[0].get("name")
+            or flow_data.get("file_name")
+        )
+    elif isinstance(raw_media, dict):
+        actual_media_id = raw_media.get("id")
+        actual_mime = raw_media.get("mime_type", "application/pdf")
+        doc_size = raw_media.get("file_size")
+        if doc_size and int(doc_size) > 350 * 1024:
+            btn_id = f"UPLOAD_NEW_CV_{job_code}" if job_code else "UPLOAD_NEW_CV_"
+            await wa_client.send_buttons(
+                to=wa_number,
+                header_text="❌ File Too Large",
+                body_text=(
+                    f"Your CV file size ({int(doc_size) // 1024} KB) exceeds the *350 KB* limit.\n\n"
+                    "Please compress your CV and try uploading again."
+                ),
+                buttons=[{"id": btn_id, "title": "🔄 Try Again"}],
+            )
+            return
+
+        actual_filename = (
+            raw_media.get("file_name")
+            or raw_media.get("filename")
+            or raw_media.get("name")
+            or flow_data.get("file_name")
+        )
     else:
         actual_media_id = raw_media
         actual_mime = flow_data.get("mime_type", "application/pdf")
+        actual_filename = flow_data.get("file_name")
 
-    cv_path = await save_cv_from_whatsapp(wa_number, actual_media_id, actual_mime)
+    cv_path, filename = await save_cv_from_whatsapp(
+        wa_number, actual_media_id, actual_mime, original_filename=actual_filename
+    )
     if not cv_path:
         btn_id = f"UPLOAD_NEW_CV_{job_code}" if job_code else "UPLOAD_NEW_CV_"
         await wa_client.send_buttons(
             to=wa_number,
-            body_text="❌ Invalid file format. Please upload a PDF or CSV file.",
+            header_text="❌ CV Upload Failed",
+            body_text=(
+                "We could not accept this file.\n\n"
+                "• Maximum allowed file size: *350 KB*\n"
+                "• Allowed formats: *PDF, Word (.doc, .docx)*\n\n"
+                "Please compress your CV and try uploading again."
+            ),
             buttons=[
                 {"id": btn_id, "title": "📤 Upload CV"}
             ]
@@ -1013,6 +1118,7 @@ async def handle_cv_update_flow_completion(
         new_resume = CandidateResume(
             candidate_id=candidate.id,
             media_id=cv_path,
+            file_name=filename,
             category_tag=new_cv_category,
             is_default=True,
         )
@@ -1042,7 +1148,11 @@ async def handle_cv_update_flow_completion(
             _set_state(wa_number, "idle", {}, db)
             return
 
-        application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id)
+        application = CandidateApplication(
+            candidate_id=candidate.id,
+            vacancy_id=vacancy.id,
+            resume_id=new_resume.id,
+        )
         db.add(application)
         candidate.applications_used = (candidate.applications_used or 0) + 1
         db.commit()
@@ -1052,11 +1162,13 @@ async def handle_cv_update_flow_completion(
             new_cv_category.replace("_", " ").title(),
         )
 
+        display_name = filename or f"{tag_label} CV"
+
         await wa_client.send_buttons(
             to=wa_number,
             header_text="🎉 CV Uploaded & Application Sent!",
             body_text=(
-                f"Your new *{tag_label}* CV has been securely uploaded Successfully!\n"
+                f"Your CV *{display_name}* ({tag_label}) has been securely uploaded successfully!\n"
                 f"Your application for *{vacancy.job_title.strip()}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
                 "You're one step closer to landing your dream role. "
                 "Keep the momentum going! 🚀"
@@ -1069,6 +1181,19 @@ async def handle_cv_update_flow_completion(
     # ── Legacy flow (no category/job_code) ────────────────────────────────
     candidate.cv_path = cv_path
     candidate.cv_updates_used = (candidate.cv_updates_used or 0) + 1
+    existing_default = db.query(CandidateResume).filter_by(candidate_id=candidate.id, is_default=True).first()
+    if existing_default:
+        existing_default.media_id = cv_path
+        existing_default.file_name = filename
+    else:
+        new_resume = CandidateResume(
+            candidate_id=candidate.id,
+            media_id=cv_path,
+            file_name=filename,
+            category_tag=candidate.category or "other",
+            is_default=True,
+        )
+        db.add(new_resume)
     db.commit()
     await wa_client.send_text(
         to=wa_number,

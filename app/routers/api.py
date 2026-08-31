@@ -1890,12 +1890,18 @@ def list_candidate_cvs(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
         
+    from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
     resumes = db.query(CandidateResume).filter_by(candidate_id=candidate.id).order_by(CandidateResume.uploaded_at.desc()).all()
     return {
         "cvs": [
             {
                 "id": r.id,
-                "filename": r.media_id.split("/")[-1].split("\\")[-1],
+                "filename": r.file_name or r.media_id.split("/")[-1].split("\\")[-1],
+                "category_tag": r.category_tag,
+                "category_label": CATEGORY_DISPLAY_NAMES.get(
+                    (r.category_tag or "").lower(),
+                    (r.category_tag or "General").replace("_", " ").title()
+                ) if r.category_tag else "General",
                 "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
                 "is_default": r.is_default
             } for r in resumes
@@ -1908,6 +1914,7 @@ async def upload_candidate_cv(
     wa_number: str = Form(...),
     session_token: str = Form(...),
     file: UploadFile = File(...),
+    category_tag: str | None = Form(None),
     db: Session = Depends(get_db)
 ):
     _require_session(wa_number, session_token, expected_role="seeker")
@@ -1921,14 +1928,17 @@ async def upload_candidate_cv(
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_CANDIDATE_RESUMES} CVs allowed.")
         
     from app.services.storage import save_cv_from_upload_file
-    cv_path = await save_cv_from_upload_file(wa_number, file)
+    cv_path, filename = await save_cv_from_upload_file(wa_number, file, original_filename=file.filename)
     if not cv_path:
-        raise HTTPException(status_code=400, detail="Invalid file format. Only PDF and Document formats allowed.")
+        raise HTTPException(status_code=400, detail="Invalid file or size exceeded. Only PDF/Word documents under 350 KB are allowed.")
         
     is_default = (resume_count == 0)
+    effective_category = category_tag.strip() if category_tag and category_tag.strip() else (candidate.category or "other")
     resume = CandidateResume(
         candidate_id=candidate.id,
         media_id=cv_path,
+        file_name=filename,
+        category_tag=effective_category,
         is_default=is_default
     )
     db.add(resume)
@@ -1936,7 +1946,12 @@ async def upload_candidate_cv(
         candidate.cv_path = cv_path
     db.commit()
     db.refresh(resume)
-    return {"message": "CV uploaded successfully", "resume_id": resume.id}
+    return {
+        "message": "CV uploaded successfully",
+        "resume_id": resume.id,
+        "filename": filename,
+        "category_tag": effective_category
+    }
 
 
 @router.delete("/candidates/cvs/{resume_id}")

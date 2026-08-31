@@ -1,0 +1,77 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "CV_UPDATE_SCREEN",
+      "title": "Upload New CV",
+      "terminal": true,
+      "success": true,
+      "data": {
+        "job_code": {
+          "type": "string",
+          "__example__": "JC1001"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "cv_update_form",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "Select which job category is more suitable for your new CV?"
+              },
+              {
+                "type": "Dropdown",
+                "name": "new_cv_category",
+                "label": "Select CV Category",
+                "required": true,
+                "data-source": [
+                  {"id": "retail", "title": "Retail & Showrooms"},
+                  {"id": "sales_business", "title": "Sales & Business Executive"},
+                  {"id": "hospitality", "title": "Hospitality & Food Service"},
+                  {"id": "healthcare", "title": "Healthcare & Caretaking"},
+                  {"id": "education", "title": "Education & Academic Advisor"},
+                  {"id": "office_data_entry", "title": "Office Admin & Data Entry"},
+                  {"id": "front_office", "title": "Receptionist & Front Office"},
+                  {"id": "finance_accounts", "title": "Accountant & Billing Staff"},
+                  {"id": "hr_management", "title": "HR, Branch Manager & Team Lead"},
+                  {"id": "telecalling", "title": "Telecaller & Customer Support"},
+                  {"id": "it_digital_marketing", "title": "IT & Digital Marketing"},
+                  {"id": "logistics_store", "title": "Driving, Logistics & Store Keeper"},
+                  {"id": "beauty_wellness", "title": "Beauty & Wellness"},
+                  {"id": "maintenance_technician", "title": "Maintenance & Technician"},
+                  {"id": "construction_labor", "title": "Construction & Manual Labor"},
+                  {"id": "gulf_abroad", "title": "Gulf / Abroad Jobs"},
+                  {"id": "other", "title": "Other / General"}
+                ]
+              },
+              {
+                "type": "DocumentPicker",
+                "name": "cv_file",
+                "label": "Upload Your CV (PDF Max 350 KB)",
+                "max-uploaded-documents": 1,
+                "max-file-size-kb": 350
+              },
+              {
+                "type": "Footer",
+                "label": "Submit Application",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "new_cv_category": "${form.new_cv_category}",
+                    "media_id": "${form.cv_file}",
+                    "mime_type": "application/pdf",
+                    "job_code": "${data.job_code}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
