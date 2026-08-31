@@ -909,6 +909,7 @@ def list_vacancies(
                 "experience_required": v.experience_required,
                 "job_mode": v.job_mode,
                 "job_description": v.job_description,
+                "cv_required": bool(v.cv_required),
                 "apply_link": f"https://wa.me/{settings.business_wa_number}?text=Apply%20{v.job_code}",
             }
             for v in vacancies
@@ -1020,6 +1021,7 @@ def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
         "experience_required": vacancy.experience_required,
         "job_mode": vacancy.job_mode,
         "job_category": vacancy.job_category,
+        "cv_required": bool(vacancy.cv_required),
         "apply_link": f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}",
     }
 
@@ -1152,12 +1154,40 @@ async def register_candidate_web(
     return {"registered": True, "subscription_required": settings.subscription_enabled}
 
 
+@router.get("/candidates/applications/check")
+def check_application_status(
+    vacancy_id: int,
+    wa_number: str,
+    session_token: str,
+    db: Session = Depends(get_db),
+):
+    """Checks if the candidate has already applied to this vacancy."""
+    _require_session(wa_number, session_token, expected_role="seeker")
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    existing = (
+        db.query(CandidateApplication)
+        .filter_by(candidate_id=candidate.id, vacancy_id=vacancy_id)
+        .first()
+    )
+    if existing:
+        status_str = str(getattr(existing.status, 'value', existing.status)).title()
+        return {
+            "has_applied": True,
+            "status": status_str,
+            "applied_at": existing.applied_at.isoformat() if existing.applied_at else None,
+        }
+    return {"has_applied": False, "status": None, "applied_at": None}
+
+
 @router.post("/candidates/apply")
 async def apply_for_vacancy_web(
     body: CandidateApplyRequest,
     db: Session = Depends(get_db),
 ):
-    _require_session(body.wa_number, body.session_token)
+    _require_session(body.wa_number, body.session_token, expected_role="seeker")
 
     candidate = db.query(Candidate).filter_by(wa_number=body.wa_number).first()
     if not candidate or not candidate.registration_complete:
@@ -1171,13 +1201,30 @@ async def apply_for_vacancy_web(
     if not ensure_ad_active(vacancy, db):
         raise HTTPException(status_code=403, detail="Position no longer available")
 
+    from app.handlers.seeker import _has_active_plan
+    if not _has_active_plan(candidate):
+        raise HTTPException(status_code=402, detail="Subscription renewal required to submit applications")
+
     existing = db.query(CandidateApplication).filter_by(
         candidate_id=candidate.id, vacancy_id=vacancy.id
     ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="Already applied")
+        raise HTTPException(status_code=409, detail="You have already applied for this vacancy")
 
-    application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id, resume_id=body.resume_id)
+    # CV required check
+    resume_id = body.resume_id
+    if vacancy.cv_required:
+        if not resume_id:
+            default_resume = db.query(CandidateResume).filter_by(candidate_id=candidate.id, is_default=True).first()
+            if default_resume:
+                resume_id = default_resume.id
+            elif candidate.cv_path:
+                # Seeker has a legacy CV path but no resume record
+                pass
+            else:
+                raise HTTPException(status_code=400, detail="A CV is required for this role. Please upload or select a CV.")
+
+    application = CandidateApplication(candidate_id=candidate.id, vacancy_id=vacancy.id, resume_id=resume_id)
     db.add(application)
     candidate.applications_used = (candidate.applications_used or 0) + 1
     db.commit()
@@ -1190,7 +1237,7 @@ async def apply_for_vacancy_web(
         to=body.wa_number,
         body=application_confirmation_body(candidate, vacancy),
     )
-    return {"applied": True, "vacancy": vacancy.title}
+    return {"applied": True, "vacancy": vacancy.job_title}
 
 
 # ─── Recruiter Dashboard ──────────────────────────────────────────────────────
@@ -1888,7 +1935,8 @@ async def upload_candidate_cv(
     if is_default and not candidate.cv_path:
         candidate.cv_path = cv_path
     db.commit()
-    return {"message": "CV uploaded successfully"}
+    db.refresh(resume)
+    return {"message": "CV uploaded successfully", "resume_id": resume.id}
 
 
 @router.delete("/candidates/cvs/{resume_id}")
