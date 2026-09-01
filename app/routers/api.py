@@ -406,7 +406,6 @@ async def register_recruiter(body: RegisterRecruiterRequest, db: Session = Depen
     try:
         buttons = [
             {"id": "btn_post_vacancy", "title": "Post Vacancy"},
-            {"id": "btn_my_vacancies", "title": "My Vacancies"},
             {"id": "btn_my_dashboard", "title": "My Dashboard"},
         ]
         await wa_client.send_buttons(
@@ -472,7 +471,6 @@ async def register_recruiter_verified(
     try:
         buttons = [
             {"id": "btn_post_vacancy", "title": "Post Vacancy"},
-            {"id": "btn_my_vacancies", "title": "My Vacancies"},
             {"id": "btn_my_dashboard", "title": "My Dashboard"},
         ]
         await wa_client.send_buttons(
@@ -573,8 +571,8 @@ async def register_seeker(body: RegisterSeekerRequest, db: Session = Depends(get
     try:
         buttons = [
             {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-            {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
             {"id": "btn_my_dashboard", "title": "My Dashboard"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "WhatsApp Channel"},
         ]
         await wa_client.send_buttons(
             to=body.wa_number,
@@ -645,8 +643,8 @@ async def register_seeker_verified(
     try:
         buttons = [
             {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-            {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
             {"id": "btn_my_dashboard", "title": "My Dashboard"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "WhatsApp Channel"},
         ]
         await wa_client.send_buttons(
             to=body.wa_number,

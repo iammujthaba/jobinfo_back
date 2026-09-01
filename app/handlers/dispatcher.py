@@ -419,7 +419,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await seeker_handler.handle_suggest_jobs(wa_number, db)
         return
 
-    if button_id == "ACTION_EXPLORE_JOBS":
+    if button_id in ("ACTION_EXPLORE_JOBS", "btn_whatsapp_channel", "btn_channel"):
         await seeker_handler.handle_explore_jobs(wa_number)
         return
 

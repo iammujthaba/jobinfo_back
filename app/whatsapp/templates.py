@@ -310,7 +310,7 @@ def registration_confirmation_body(name: str, user_type: str = "candidate") -> s
         f"🎉 *Registration Successful, {name}!*\n\n"
         f"You're now part of JobInfo! Stay tuned to our WhatsApp channel "
         f"for the latest vacancies.\n\n"
-        f"📢 Join the channel: https://whatsapp.com/channel/jobinfo\n\n"
+        f"📢 Join the channel: https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k\n\n"
         f"_JobInfo – Connecting Kerala's talent_"
     )
 
