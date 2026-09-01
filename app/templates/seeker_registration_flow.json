@@ -188,9 +188,9 @@
               {
                 "type": "DocumentPicker",
                 "name": "cv_file",
-                "label": "Upload CV (PDF Max 350 KB)",
+                "label": "Upload CV",
                 "max-uploaded-documents": 1,
-                "max-file-size-kb": 350
+                "max-file-size-kb": 1024
               }
             ]
           },

@@ -198,10 +198,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
     cta_text = (
-        "_Tap the link below or click the 'Start Chatting' button to apply this job!_"
-        if is_admin else
-        "_Tap the link below to apply this position!_"
-    )
+        "_👉 Click 'Start chatting' or use the link below to apply:_")
 
     return (
         f"🚀 *New Job Alert*\n\n"

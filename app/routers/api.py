@@ -1930,7 +1930,7 @@ async def upload_candidate_cv(
     from app.services.storage import save_cv_from_upload_file
     cv_path, filename = await save_cv_from_upload_file(wa_number, file, original_filename=file.filename)
     if not cv_path:
-        raise HTTPException(status_code=400, detail="Invalid file or size exceeded. Only PDF/Word documents under 350 KB are allowed.")
+        raise HTTPException(status_code=400, detail="Invalid file or size exceeded. Only PDF/Word documents under 1MB are allowed.")
         
     is_default = (resume_count == 0)
     effective_category = category_tag.strip() if category_tag and category_tag.strip() else (candidate.category or "other")

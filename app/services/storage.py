@@ -24,7 +24,7 @@ ALLOWED_MIMETYPES = {
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
-MAX_CV_SIZE_BYTES = 350 * 1024  # 350 KB maximum CV upload limit
+MAX_CV_SIZE_BYTES = 1024 * 1024  # 1 MB maximum CV upload limit
 
 
 def sanitize_cv_filename(raw_name: str | None, fallback_ext: str = ".pdf") -> str:

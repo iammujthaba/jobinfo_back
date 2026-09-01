@@ -29,31 +29,82 @@
                 "label": "Select CV Category",
                 "required": true,
                 "data-source": [
-                  {"id": "retail", "title": "Retail & Showrooms"},
-                  {"id": "sales_business", "title": "Sales & Business Executive"},
-                  {"id": "hospitality", "title": "Hospitality & Food Service"},
-                  {"id": "healthcare", "title": "Healthcare & Caretaking"},
-                  {"id": "education", "title": "Education & Academic Advisor"},
-                  {"id": "office_data_entry", "title": "Office Admin & Data Entry"},
-                  {"id": "front_office", "title": "Receptionist & Front Office"},
-                  {"id": "finance_accounts", "title": "Accountant & Billing Staff"},
-                  {"id": "hr_management", "title": "HR, Branch Manager & Team Lead"},
-                  {"id": "telecalling", "title": "Telecaller & Customer Support"},
-                  {"id": "it_digital_marketing", "title": "IT & Digital Marketing"},
-                  {"id": "logistics_store", "title": "Driving, Logistics & Store Keeper"},
-                  {"id": "beauty_wellness", "title": "Beauty & Wellness"},
-                  {"id": "maintenance_technician", "title": "Maintenance & Technician"},
-                  {"id": "construction_labor", "title": "Construction & Manual Labor"},
-                  {"id": "gulf_abroad", "title": "Gulf / Abroad Jobs"},
-                  {"id": "other", "title": "Other / General"}
+                  {
+                    "id": "retail",
+                    "title": "Retail & Showrooms"
+                  },
+                  {
+                    "id": "sales_business",
+                    "title": "Sales & Business Executive"
+                  },
+                  {
+                    "id": "hospitality",
+                    "title": "Hospitality & Food Service"
+                  },
+                  {
+                    "id": "healthcare",
+                    "title": "Healthcare & Caretaking"
+                  },
+                  {
+                    "id": "education",
+                    "title": "Education & Academic Advisor"
+                  },
+                  {
+                    "id": "office_data_entry",
+                    "title": "Office Admin & Data Entry"
+                  },
+                  {
+                    "id": "front_office",
+                    "title": "Receptionist & Front Office"
+                  },
+                  {
+                    "id": "finance_accounts",
+                    "title": "Accountant & Billing Staff"
+                  },
+                  {
+                    "id": "hr_management",
+                    "title": "HR, Branch Manager & Team Lead"
+                  },
+                  {
+                    "id": "telecalling",
+                    "title": "Telecaller & Customer Support"
+                  },
+                  {
+                    "id": "it_digital_marketing",
+                    "title": "IT & Digital Marketing"
+                  },
+                  {
+                    "id": "logistics_store",
+                    "title": "Driving, Logistics & Store Keeper"
+                  },
+                  {
+                    "id": "beauty_wellness",
+                    "title": "Beauty & Wellness"
+                  },
+                  {
+                    "id": "maintenance_technician",
+                    "title": "Maintenance & Technician"
+                  },
+                  {
+                    "id": "construction_labor",
+                    "title": "Construction & Manual Labor"
+                  },
+                  {
+                    "id": "gulf_abroad",
+                    "title": "Gulf / Abroad Jobs"
+                  },
+                  {
+                    "id": "other",
+                    "title": "Other / General"
+                  }
                 ]
               },
               {
                 "type": "DocumentPicker",
                 "name": "cv_file",
-                "label": "Upload Your CV (PDF Max 350 KB)",
+                "label": "Upload Your CV",
                 "max-uploaded-documents": 1,
-                "max-file-size-kb": 350
+                "max-file-size-kb": 1024
               },
               {
                 "type": "Footer",

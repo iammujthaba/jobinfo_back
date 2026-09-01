@@ -945,7 +945,7 @@ async def handle_upload_new_cv(wa_number: str, job_code: str, db: Session) -> No
         body_text=(
             "📄 *Upload Your Tailored CV*\n\n"
             "Tap the button below to securely upload your newly tailored CV. "
-            "We accept files up to 5MB.\n\n"
+            "We accept files up to 1MB.\n\n"
             "A targeted CV = more interview calls! 🚀"
         ),
         footer_text = "Maximum 4 CVs allowed per user",
@@ -1024,13 +1024,13 @@ async def handle_cv_update_flow_completion(
         actual_media_id = raw_media[0].get("id")
         actual_mime = raw_media[0].get("mime_type", "application/pdf")
         doc_size = raw_media[0].get("file_size")
-        if doc_size and int(doc_size) > 350 * 1024:
+        if doc_size and int(doc_size) > 1024 * 1024:
             btn_id = f"UPLOAD_NEW_CV_{job_code}" if job_code else "UPLOAD_NEW_CV_"
             await wa_client.send_buttons(
                 to=wa_number,
                 header_text="❌ File Too Large",
                 body_text=(
-                    f"Your CV file size ({int(doc_size) // 1024} KB) exceeds the *350 KB* limit.\n\n"
+                    f"Your CV file size ({int(doc_size) // 1024} KB) exceeds the *1MB* limit.\n\n"
                     "Please compress your CV (e.g. using a free tool like smallpdf.com or ilovepdf.com) and try uploading again."
                 ),
                 buttons=[{"id": btn_id, "title": "🔄 Try Again"}],
@@ -1047,13 +1047,13 @@ async def handle_cv_update_flow_completion(
         actual_media_id = raw_media.get("id")
         actual_mime = raw_media.get("mime_type", "application/pdf")
         doc_size = raw_media.get("file_size")
-        if doc_size and int(doc_size) > 350 * 1024:
+        if doc_size and int(doc_size) > 1024 * 1024:
             btn_id = f"UPLOAD_NEW_CV_{job_code}" if job_code else "UPLOAD_NEW_CV_"
             await wa_client.send_buttons(
                 to=wa_number,
                 header_text="❌ File Too Large",
                 body_text=(
-                    f"Your CV file size ({int(doc_size) // 1024} KB) exceeds the *350 KB* limit.\n\n"
+                    f"Your CV file size ({int(doc_size) // 1024} KB) exceeds the *1MB* limit.\n\n"
                     "Please compress your CV and try uploading again."
                 ),
                 buttons=[{"id": btn_id, "title": "🔄 Try Again"}],
@@ -1081,7 +1081,7 @@ async def handle_cv_update_flow_completion(
             header_text="❌ CV Upload Failed",
             body_text=(
                 "We could not accept this file.\n\n"
-                "• Maximum allowed file size: *350 KB*\n"
+                "• Maximum allowed file size: *1MB*\n"
                 "• Allowed formats: *PDF, Word (.doc, .docx)*\n\n"
                 "Please compress your CV and try uploading again."
             ),

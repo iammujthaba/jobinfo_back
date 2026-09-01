@@ -567,7 +567,7 @@ async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
             await wa_client.send_text(
                 to=wa_number,
                 body=(
-                    f"❌ Your CV file size ({int(doc_size) // 1024} KB) exceeds the *350 KB* limit.\n\n"
+                    f"❌ Your CV file size ({int(doc_size) // 1024} KB) exceeds the *1MB* limit.\n\n"
                     "Please compress your CV (e.g. using a free tool like smallpdf.com or ilovepdf.com) and send it again."
                 ),
             )
@@ -611,7 +611,7 @@ async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
                 to=wa_number,
                 body=(
                     "❌ Could not accept this CV.\n\n"
-                    "• Maximum allowed file size: *350 KB*\n"
+                    "• Maximum allowed file size: *1MB*\n"
                     "• Allowed formats: *PDF, Word (.doc, .docx)*\n\n"
                     "Please compress your document and try again."
                 ),
