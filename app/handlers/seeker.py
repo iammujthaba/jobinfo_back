@@ -1495,13 +1495,28 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
 
     # ── Find matching jobs based on candidate's category ──────────────────
     from sqlalchemy import func
+    from app.db.models import CandidateApplication
     category = (candidate.category or "").strip().lower()
 
-    matching_jobs = (
+    # Collect vacancy IDs the candidate has already applied to so we can exclude them
+    applied_vacancy_ids = [
+        row.vacancy_id
+        for row in db.query(CandidateApplication.vacancy_id)
+        .filter(CandidateApplication.candidate_id == candidate.id)
+        .all()
+    ]
+
+    jobs_query = (
         db.query(JobVacancy)
         .filter(JobVacancy.status == "approved")
         .filter(JobVacancy.is_active == True)
         .filter(func.lower(JobVacancy.job_category) == category)
+    )
+    if applied_vacancy_ids:
+        jobs_query = jobs_query.filter(JobVacancy.id.notin_(applied_vacancy_ids))
+
+    matching_jobs = (
+        jobs_query
         .order_by(JobVacancy.approved_at.desc())
         .limit(5)
         .all()
