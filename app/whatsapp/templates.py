@@ -321,15 +321,15 @@ def seeker_job_detail_body(vacancy: JobVacancy) -> str:
     job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
     description = _truncate(vacancy.job_description, 600)
     return (
-        f"📋 *Job Details*\n\n"
-        f"*Position:* {vacancy.job_title}\n"
-        f"*Company:* {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
-        f"*Location:* {vacancy.district_region}\n"
-        f"*Mode:* {job_mode}\n"
-        f"*Experience:* {experience}\n"
-        f"*Salary:* {salary}\n\n"
-        f"*Description:*\n{description}\n\n"
-        f"Ready to apply? Tap *Apply Now* below."
+        f"✅ *You're Ready to Apply!*\n\n"
+        f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+        f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
+        f"💰 Salary: {salary}\n"
+        f"💼 Mode: {job_mode}\n"
+        f"🎓 Experience: {experience}\n\n"
+        f"📋 *About the Role:*\n{description}\n\n"
+        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
     )
 
 

@@ -76,10 +76,18 @@ def _fire_cta_send(wa_number, header, body):
             logger.warning("Milestone CTA send failed to %s: %s", wa_number, exc)
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()          # inside async context (uvicorn/FastAPI)
         loop.create_task(_send())
     except RuntimeError:
-        logger.debug("No event loop; skipping milestone send to %s", wa_number)
+        # No running loop — called from a sync context; try get_event_loop as fallback
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(_send())
+            else:
+                logger.debug("No running event loop; skipping milestone send to %s", wa_number)
+        except RuntimeError:
+            logger.debug("No event loop; skipping milestone send to %s", wa_number)
 
 
 def dispatch_milestone_notification(vacancy, app_count, db):

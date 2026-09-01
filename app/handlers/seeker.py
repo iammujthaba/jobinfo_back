@@ -28,6 +28,8 @@ from app.whatsapp.templates import (
     seeker_job_detail_body,
     _label,
     SALARY_LABELS,
+    JOB_MODE_LABELS,
+    EXPERIENCE_LABELS,
 )
 from app.services.milestone import dispatch_milestone_notification
 
@@ -316,8 +318,15 @@ async def _show_job_apply_prompt(
     # ── Standard apply prompt ─────────────────────────────────────────────
     candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title()) if candidate_cat else ""
 
-    # Message 1: Full job card — seeker sees role details before deciding
-    await wa_client.send_text(to=wa_number, body=seeker_job_detail_body(vacancy))
+    # Message 1: Full job card with Apply Now button
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=seeker_job_detail_body(vacancy),
+        buttons=[
+            {"id": f"btn_apply_now_{vacancy.id}", "title": "Apply Now"},
+        ],
+        footer_text=f"Job Code: {vacancy.job_code}",
+    )
 
     # Message 2: Action buttons
     await wa_client.send_buttons(
@@ -1544,25 +1553,31 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
     await wa_client.send_text(
         to=wa_number,
         body=(
-            f"🎯 *Great picks for you, {candidate.name.split()[0] if candidate.name else 'there'}!*\n\n"
-            "Based on your profile, here are the top opportunities we've found. "
-            "Tap *Apply Now* on any job that excites you! 👇\n\n"
-            "_We suggest up to 3 jobs_"
+            f"🎯 *Here is the Great picks for you, {candidate.name.split()[0] if candidate.name else 'there'}!*\n\n"
+            "Based on your profile, here are the best vacancys we've found for you.\n\n"
+            f"If any of them excites you, Tap *Apply Now* button below! 👇"
         ),
     )
 
     for job in matching_jobs:
-        salary_val = _label(SALARY_LABELS, job.salary_range)
-        salary_line = f"💰 Salary: {salary_val}\n" if job.salary_range else ""
-        exp_line = f"📋 Experience: {job.experience_required}\n" if job.experience_required else ""
+        salary  = _label(SALARY_LABELS,     job.salary_range,       fallback="Not disclosed")
+        exp     = _label(EXPERIENCE_LABELS, job.experience_required, fallback="")
+        mode    = _label(JOB_MODE_LABELS,   job.job_mode,            fallback="")
+        desc    = (job.job_description[:120] + "…") if job.job_description and len(job.job_description) > 120 else (job.job_description or "")
+
+        salary_line = f"💰 Salary: {salary}\n"    if job.salary_range          else ""
+        exp_line    = f"🎓 Experience: {exp}\n" if job.experience_required     else ""
+        mode_line   = f"💼 Mode: {mode}\n"     if job.job_mode              else ""
 
         body = (
             f"🏷️ *{job.job_title.strip()}*\n"
             f"🏢 {job.recruiter.company_name if job.recruiter else 'Company'}\n"
             f"📍 {job.exact_location or '—'}, {job.district_region or '—'}\n"
-            f"💰 {salary_line}"
-            f"🎓 {exp_line}"
-            f"\n_{job.job_description[:120] + '…' if job.job_description and len(job.job_description) > 120 else job.job_description or ''}_"
+            f"{salary_line}"
+            f"{mode_line}"
+            f"{exp_line}"
+            f"📋 *About the Role:*\n_{desc}_\n\n"
+            f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
         )
 
         await wa_client.send_buttons(
