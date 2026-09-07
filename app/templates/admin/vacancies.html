@@ -1,4 +1,4 @@
-{% extends "admin/base.html" %}
+﻿{% extends "admin/base.html" %}
 {% block title %}Vacancies{% endblock %}
 {% block page_title %}Vacancies{% endblock %}
 {% block page_sub %}Review and manage all job postings{% endblock %}
@@ -8,7 +8,20 @@
   <button class="tab active" onclick="switchTab('pending',this)">Pending</button>
   <button class="tab" onclick="switchTab('approved',this)">Approved</button>
   <button class="tab" onclick="switchTab('rejected',this)">Rejected</button>
+  <button class="tab" id="tab-stopped" onclick="switchTab('stopped',this)" style="position:relative;">
+    Stopped Ads
+    <span id="stopped-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:#f59e0b;border-radius:8px;font-size:.55rem;font-weight:700;color:#fff;align-items:center;justify-content:center;padding:0 3px;"></span>
+  </button>
 </div>
+{% endblock %}
+
+{% block head %}
+<style>
+.stop-reason-badge-expired { background:#fffbeb; color:#b45309; border:1px solid #fde68a; }
+.stop-reason-badge-manual  { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+.stopped-card { border-left: 3px solid #f59e0b !important; }
+.approved-active-card { border-left: 3px solid #22c55e !important; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -47,11 +60,23 @@
 <!-- Detail modal -->
 <div class="modal-overlay" id="detail-modal">
   <div class="modal" style="width:600px;">
-    <h3 id="dm-title">—</h3>
+    <h3 id="dm-title">â€”</h3>
     <p class="modal-sub" id="dm-code" style="font-family:monospace;"></p>
     <div id="dm-body" style="font-size:.85rem;line-height:1.7;"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="document.getElementById('detail-modal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stop confirm modal -->
+<div class="modal-overlay" id="stop-modal">
+  <div class="modal" style="width:440px;">
+    <h3>&#9209; Stop This Ad?</h3>
+    <p class="modal-sub">The vacancy will be marked inactive immediately. The recruiter will no longer receive new applications. You can restart it later from the <strong>Stopped Ads</strong> tab.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('stop-modal').classList.remove('open')">Cancel</button>
+      <button class="btn" id="stop-confirm-btn" onclick="confirmStop()" style="background:#f59e0b;color:#fff;">&#9209; Stop Ad</button>
     </div>
   </div>
 </div>
@@ -61,36 +86,101 @@
 <script>
 let currentTab = 'pending';
 let rejectTargetId = null;
+let stopTargetId = null;
+
+// â”€â”€ Load by tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadVacancies(tab) {
   currentTab = tab;
   const el = document.getElementById('vac-list');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   try {
-    const r = await adminFetch(`/admin/api/vacancies?status_filter=${tab}`);
-    const d = await r.json();
-    if (!d.results.length) {
-      el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>No ' + tab + ' vacancies</p></div>';
-      return;
+    if (tab === 'stopped') {
+      await loadStopped(el);
+    } else {
+      await loadStandard(tab, el);
     }
-    el.innerHTML = d.results.map(v => buildCard(v)).join('');
-  } catch(e) { el.innerHTML = '<div class="empty-state"><p>Failed to load. Try refreshing.</p></div>'; }
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><p>Failed to load. Try refreshing.</p></div>';
+  }
 }
+
+async function loadStandard(tab, el) {
+  const r = await adminFetch(`/admin/api/vacancies?status_filter=${tab}`);
+  const d = await r.json();
+  if (!d.results.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128589;</div><p>No ' + tab + ' vacancies</p></div>';
+    return;
+  }
+  el.innerHTML = d.results.map(v => buildCard(v)).join('');
+}
+
+async function loadStopped(el) {
+  const r = await adminFetch('/admin/api/vacancies/stopped');
+  const d = await r.json();
+
+  // Update badge on the tab button
+  const badge = document.getElementById('stopped-badge');
+  if (d.total > 0) {
+    badge.textContent = d.total;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+
+  if (!d.results.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9989;</div><p>No stopped ads â€” all active vacancies are running!</p></div>';
+    return;
+  }
+
+  // Summary bar
+  const autoCount   = d.results.filter(v => v.stop_reason === 'auto_expired').length;
+  const manualCount = d.results.filter(v => v.stop_reason === 'manual').length;
+  const summaryHtml = `
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <div class="stat-card amber" style="flex:1;min-width:140px;padding:14px 16px;">
+        <div class="val" style="font-size:1.4rem;">${d.total}</div>
+        <div class="lbl">Total Stopped</div>
+      </div>
+      <div class="stat-card amber" style="flex:1;min-width:140px;padding:14px 16px;">
+        <div class="val" style="font-size:1.4rem;">${autoCount}</div>
+        <div class="lbl">Auto-Expired (30 days)</div>
+      </div>
+      <div class="stat-card" style="flex:1;min-width:140px;padding:14px 16px;">
+        <div class="val" style="font-size:1.4rem;">${manualCount}</div>
+        <div class="lbl">Manually Stopped</div>
+      </div>
+    </div>`;
+
+  el.innerHTML = summaryHtml + d.results.map(v => buildStoppedCard(v)).join('');
+}
+
+// â”€â”€ Card builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildCard(v) {
   const recruiter = v.recruiter || {};
   const editBadge = v.is_edited ? '<span class="badge badge-amber" style="margin-left:8px;">Edited</span>' : '';
   const statusBadge = { pending:'badge-amber', approved:'badge-green', rejected:'badge-red' };
 
-  const actions = currentTab === 'pending' ? `
-    <button class="btn btn-green btn-sm" onclick="approveVac(${v.id},this)">✓ Approve</button>
-    <button class="btn btn-primary btn-sm" onclick="openReject(${v.id})">✕ Reject</button>
-  ` : currentTab === 'approved' ? `
-    <button class="btn btn-ghost btn-sm" onclick="shareToChannel(${v.id},this)">📡 Share to Channel</button>
-  ` : `<span style="font-size:.75rem;color:#64748b;">${esc(v.rejection_reason||'No reason given')}</span>`;
+  let actions = '';
+  if (currentTab === 'pending') {
+    actions = `
+      <button class="btn btn-green btn-sm" onclick="approveVac(${v.id},this)">&#10003; Approve</button>
+      <button class="btn btn-primary btn-sm" onclick="openReject(${v.id})">&#10005; Reject</button>
+    `;
+  } else if (currentTab === 'approved') {
+    actions = `
+      <button class="btn btn-ghost btn-sm" onclick="shareToChannel(${v.id},this)">&#128225; Share to Channel</button>
+      <button class="btn btn-sm" onclick="openStop(${v.id})" style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;" title="Stop this ad from receiving applications">&#9209; Stop Ad</button>
+    `;
+  } else {
+    actions = `<span style="font-size:.75rem;color:#64748b;">${esc(v.rejection_reason||'No reason given')}</span>`;
+  }
+
+  const cardClass = currentTab === 'approved' ? 'approved-active-card' : '';
 
   return `
-  <div class="card" style="margin-bottom:14px;" id="vc-${v.id}">
+  <div class="card ${cardClass}" style="margin-bottom:14px;" id="vc-${v.id}">
     <div class="card-header" style="flex-wrap:wrap;gap:8px;">
       <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
         <span style="font-size:.95rem;font-weight:700;color:#1e293b;">${esc(v.job_title)}</span>
@@ -106,51 +196,139 @@ function buildCard(v) {
     <div class="card-body" style="display:grid;grid-template-columns:repeat(3,1fr) 2fr;gap:16px;">
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Company</div>
-        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||'—')}</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||'â€”')}</div>
         <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.business_type||'')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Location</div>
-        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'—')}</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'â€”')}</div>
         <div style="font-size:.75rem;color:#64748b;">${esc(v.exact_location||'')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Details</div>
-        <div style="font-size:.82rem;">💰 ${esc(v.salary_range||'—')}</div>
-        <div style="font-size:.82rem;">💼 ${esc(v.job_mode||'—')} &nbsp;·&nbsp; 🎓 ${esc(v.experience_required||'—')}</div>
+        <div style="font-size:.82rem;">&#128176; ${esc(v.salary_range||'â€”')}</div>
+        <div style="font-size:.82rem;">&#128188; ${esc(v.job_mode||'â€”')} &nbsp;&middot;&nbsp; &#127891; ${esc(v.experience_required||'â€”')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Recruiter</div>
-        <div style="font-size:.82rem;">${esc(recruiter.wa_number||'—')}</div>
+        <div style="font-size:.82rem;">${esc(recruiter.wa_number||'â€”')}</div>
         <div style="font-size:.75rem;color:#64748b;">Posted ${fmtDate(v.created_at)}</div>
       </div>
     </div>
   </div>`;
 }
 
+function buildStoppedCard(v) {
+  const recruiter = v.recruiter || {};
+  const isAutoExpired = v.stop_reason === 'auto_expired';
+  const reasonBadge = isAutoExpired
+    ? '<span class="badge stop-reason-badge-expired">&#9203; Auto-Expired (30 days)</span>'
+    : '<span class="badge stop-reason-badge-manual">&#9209; Manual Stop</span>';
+
+  const approvalBadge = { pending:'badge-amber', approved:'badge-green', rejected:'badge-red' };
+
+  const canRestart = v.status === 'approved';
+  const restartBtn = canRestart
+    ? `<button class="btn btn-green btn-sm" onclick="restartAd(${v.id},this)">&#9654; Restart Ad</button>`
+    : `<span class="badge badge-gray" title="Approve this vacancy first before restarting">${v.status} &mdash; approve to restart</span>`;
+
+  const stoppedDateStr = v.stopped_at ? fmtDate(v.stopped_at) : 'â€”';
+  const durationStr = (() => {
+    if (!v.last_enabled_at) return '';
+    const start = new Date(v.last_enabled_at);
+    const end   = v.stopped_at ? new Date(v.stopped_at) : new Date();
+    const days  = Math.round((end - start) / 86400000);
+    return 'Ran for ' + days + ' day' + (days !== 1 ? 's' : '');
+  })();
+
+  return `
+  <div class="card stopped-card" style="margin-bottom:14px;" id="vc-${v.id}">
+    <div class="card-header" style="flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;">
+        <span style="font-size:.95rem;font-weight:700;color:#1e293b;">${esc(v.job_title)}</span>
+        ${reasonBadge}
+        <span class="badge ${approvalBadge[v.status]||'badge-gray'}">${v.status}</span>
+        <span style="font-family:monospace;font-size:.72rem;color:#64748b;background:#f1f5f9;padding:2px 8px;border-radius:6px;">${esc(v.job_code)}</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
+        <button class="btn btn-ghost btn-sm" onclick="openStoppedDetail(${JSON.stringify(v).replace(/"/g,'&quot;')})">View Details</button>
+        ${restartBtn}
+      </div>
+    </div>
+    <div class="card-body" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Company</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||'â€”')}</div>
+        <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.business_type||'')}</div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Location</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'â€”')}</div>
+        <div style="font-size:.75rem;color:#64748b;">${esc(v.exact_location||'')}</div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Stopped On</div>
+        <div style="font-size:.85rem;font-weight:600;">${stoppedDateStr}</div>
+        <div style="font-size:.75rem;color:#64748b;">${durationStr}</div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Applications</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#1e293b;">${v.application_count}</div>
+        <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.wa_number||'â€”')}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// â”€â”€ Detail modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 function openDetail(v) {
   document.getElementById('dm-title').textContent = v.job_title;
-  document.getElementById('dm-code').textContent = v.job_code + ' · ' + (v.district_region||'') + (v.exact_location ? ', '+v.exact_location : '');
+  document.getElementById('dm-code').textContent = v.job_code + ' &middot; ' + (v.district_region||'') + (v.exact_location ? ', '+v.exact_location : '');
   const recruiter = v.recruiter || {};
   document.getElementById('dm-body').innerHTML = `
-    <p><strong>Company:</strong> ${esc(recruiter.company||'—')} (${esc(recruiter.business_type||'')})</p>
-    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'—')}</p>
-    <p><strong>Salary:</strong> ${esc(v.salary_range||'—')}</p>
-    <p><strong>Mode:</strong> ${esc(v.job_mode||'—')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'—')}</p>
+    <p><strong>Company:</strong> ${esc(recruiter.company||'â€”')} (${esc(recruiter.business_type||'')})</p>
+    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'â€”')}</p>
+    <p><strong>Salary:</strong> ${esc(v.salary_range||'â€”')}</p>
+    <p><strong>Mode:</strong> ${esc(v.job_mode||'â€”')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'â€”')}</p>
     <p><strong>CV Required:</strong> ${v.cv_required ? 'Yes' : 'No'}</p>
     <hr style="margin:12px 0;border:none;border-top:1px solid #e2e8f0;">
-    <p style="white-space:pre-wrap;">${esc(v.job_description||'No description provided.')}</p>`;
+    <p style="white-space:pre-wrap;">${esc(v.job_description||'No description provided.')}`;
   document.getElementById('detail-modal').classList.add('open');
 }
 
+function openStoppedDetail(v) {
+  document.getElementById('dm-title').textContent = v.job_title;
+  document.getElementById('dm-code').textContent = v.job_code + ' &middot; ' + (v.district_region||'') + (v.exact_location ? ', '+v.exact_location : '');
+  const recruiter = v.recruiter || {};
+  const isAutoExpired = v.stop_reason === 'auto_expired';
+  document.getElementById('dm-body').innerHTML = `
+    <p><strong>Company:</strong> ${esc(recruiter.company||'â€”')} (${esc(recruiter.business_type||'')})</p>
+    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'â€”')}</p>
+    <p><strong>Approval Status:</strong> ${esc(v.status)}</p>
+    <p><strong>Stop Reason:</strong> ${isAutoExpired ? '&#9203; Auto-Expired (ran for 30 days)' : '&#9209; Manually stopped by admin'}</p>
+    <p><strong>Stopped On:</strong> ${fmtDate(v.stopped_at)}</p>
+    <p><strong>Last Enabled:</strong> ${fmtDate(v.last_enabled_at)}</p>
+    <p><strong>Total Applications:</strong> ${v.application_count}</p>
+    <p><strong>Salary:</strong> ${esc(v.salary_range||'â€”')}</p>
+    <p><strong>Mode:</strong> ${esc(v.job_mode||'â€”')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'â€”')}</p>
+    <hr style="margin:12px 0;border:none;border-top:1px solid #e2e8f0;">
+    <p style="white-space:pre-wrap;">${esc(v.job_description||'No description provided.')}`;
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+// â”€â”€ Approve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 async function approveVac(id, btn) {
-  btn.disabled = true; btn.textContent = '…';
+  btn.disabled = true; btn.textContent = '&hellip;';
   try {
     const r = await adminFetch(`/admin/api/vacancies/${id}/approve`, {method:'POST'});
     if (r.ok) { document.getElementById('vc-'+id)?.remove(); toast('Vacancy approved! Recruiter notified.','ok'); }
     else toast('Failed to approve.','err');
   } catch(e) { toast('Error.','err'); }
 }
+
+// â”€â”€ Reject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function onRejectPresetChange(val) {
   const txt = document.getElementById('reject-reason');
@@ -169,7 +347,7 @@ async function confirmReject() {
   const reason = document.getElementById('reject-reason').value.trim();
   if (!reason) { toast('Please enter a reason.','err'); return; }
   const btn = document.getElementById('reject-confirm-btn');
-  btn.disabled = true; btn.textContent = 'Sending…';
+  btn.disabled = true; btn.textContent = 'Sending&hellip;';
   try {
     const fd = new FormData(); fd.append('reason', reason);
     const r = await adminFetch(`/admin/api/vacancies/${rejectTargetId}/reject`, {method:'POST', body:fd});
@@ -178,15 +356,72 @@ async function confirmReject() {
   } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='Send Rejection'; }
 }
 
+// â”€â”€ Share â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 async function shareToChannel(id, btn) {
-  btn.disabled = true; btn.textContent = '…';
+  btn.disabled = true; btn.textContent = '&hellip;';
   try {
     const r = await adminFetch(`/admin/api/vacancies/${id}/share-to-channel`, {method:'POST'});
     const d = await r.json();
     if (r.ok) toast('Shared to WhatsApp channel! (' + (d.job_code||'') + ')','ok');
     else toast('Share failed.','err');
-  } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='📡 Share to Channel'; }
+  } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='&#128225; Share to Channel'; }
 }
+
+// â”€â”€ Stop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function openStop(id) {
+  stopTargetId = id;
+  document.getElementById('stop-modal').classList.add('open');
+}
+
+async function confirmStop() {
+  const btn = document.getElementById('stop-confirm-btn');
+  btn.disabled = true; btn.textContent = 'Stopping&hellip;';
+  try {
+    const r = await adminFetch(`/admin/api/vacancies/${stopTargetId}/stop`, {method:'POST'});
+    if (r.ok) {
+      const d = await r.json();
+      document.getElementById('vc-'+stopTargetId)?.remove();
+      document.getElementById('stop-modal').classList.remove('open');
+      toast('Ad stopped. It now appears in the Stopped Ads tab.', 'ok');
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast('Failed to stop: ' + (err.detail || 'Unknown error'), 'err');
+    }
+  } catch(e) { toast('Error stopping ad.','err'); }
+  finally { btn.disabled=false; btn.textContent='&#9209; Stop Ad'; stopTargetId=null; }
+}
+
+// â”€â”€ Restart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+async function restartAd(id, btn) {
+  btn.disabled = true; btn.textContent = 'Restarting&hellip;';
+  try {
+    const r = await adminFetch(`/admin/api/vacancies/${id}/restart`, {method:'POST'});
+    const d = await r.json();
+    if (r.ok) {
+      document.getElementById('vc-'+id)?.remove();
+      toast('Ad restarted! (' + d.job_code + ') â€” 30-day clock reset.', 'ok');
+      // Update badge count
+      const remaining = document.querySelectorAll('[id^="vc-"]').length;
+      const badge = document.getElementById('stopped-badge');
+      if (remaining === 0) {
+        badge.style.display = 'none';
+        document.getElementById('vac-list').innerHTML =
+          '<div class="empty-state"><div class="empty-icon">&#9989;</div><p>No stopped ads â€” all active vacancies are running!</p></div>';
+      } else {
+        badge.textContent = remaining;
+      }
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast('Failed to restart: ' + (err.detail || 'Unknown error'), 'err');
+      btn.disabled = false; btn.textContent = '&#9654; Restart Ad';
+    }
+  } catch(e) { toast('Error restarting ad.','err'); btn.disabled=false; btn.textContent='&#9654; Restart Ad'; }
+}
+
+// â”€â”€ Tab switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -194,8 +429,22 @@ function switchTab(tab, el) {
   loadVacancies(tab);
 }
 
-document.addEventListener('DOMContentLoaded', () => loadVacancies('pending'));
+// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadVacancies('pending');
+  // Pre-fetch stopped count to show badge immediately
+  adminFetch('/admin/api/vacancies/stopped').then(r => r.json()).then(d => {
+    const badge = document.getElementById('stopped-badge');
+    if (d.total > 0) {
+      badge.textContent = d.total;
+      badge.style.display = 'inline-flex';
+    }
+  }).catch(() => {});
+});
+
 document.getElementById('reject-modal').addEventListener('click', e => { if(e.target.id==='reject-modal') closeRejectModal(); });
 document.getElementById('detail-modal').addEventListener('click', e => { if(e.target.id==='detail-modal') document.getElementById('detail-modal').classList.remove('open'); });
+document.getElementById('stop-modal').addEventListener('click', e => { if(e.target.id==='stop-modal') document.getElementById('stop-modal').classList.remove('open'); });
 </script>
 {% endblock %}

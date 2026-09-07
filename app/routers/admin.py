@@ -554,7 +554,7 @@ async def api_share_vacancy_to_channel(
         f"",
         f"📲 Apply now: {apply_link}",
         f"",
-        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
+        f"_Kerala's First WhatsApp powered Career Portal_"
     ]
 
     body_text = "\n".join(lines)
@@ -1424,3 +1424,133 @@ async def api_dual_users_stats(
         },
         "table_data": table_data
     }
+
+
+# ─── Stopped Ads API ──────────────────────────────────────────────────────────
+
+@router.get("/api/vacancies/stopped")
+async def api_list_stopped_vacancies(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Returns all vacancies where is_active=False, regardless of approval status.
+    Includes recruiter info, stopped_at, application count, and stop_reason:
+      - 'auto_expired' when the ad ran for ≥ 30 days before being stopped
+      - 'manual'       for all other admin/system stops
+    """
+    from sqlalchemy import func as sqlfunc
+    from app.db.models import CandidateApplication
+
+    stopped = (
+        db.query(JobVacancy)
+        .filter(JobVacancy.is_active == False)  # noqa: E712
+        .order_by(JobVacancy.stopped_at.desc().nullslast())
+        .all()
+    )
+
+    results = []
+    for v in stopped:
+        # Count applications for this vacancy
+        app_count = (
+            db.query(sqlfunc.count(CandidateApplication.id))
+            .filter(CandidateApplication.vacancy_id == v.id)
+            .scalar()
+        ) or 0
+
+        # Determine stop reason
+        stop_reason = "manual"
+        if v.stopped_at and v.last_enabled_at:
+            s = v.stopped_at
+            l = v.last_enabled_at
+            if s.tzinfo is None:
+                s = s.replace(tzinfo=timezone.utc)
+            if l.tzinfo is None:
+                l = l.replace(tzinfo=timezone.utc)
+            if (s - l).days >= 30:
+                stop_reason = "auto_expired"
+
+        results.append({
+            "id": v.id,
+            "job_code": v.job_code,
+            "job_title": v.job_title,
+            "job_category": v.job_category,
+            "district_region": v.district_region,
+            "exact_location": v.exact_location,
+            "job_description": v.job_description or "",
+            "job_mode": v.job_mode,
+            "salary_range": v.salary_range,
+            "experience_required": v.experience_required,
+            "status": v.status,
+            "is_active": v.is_active,
+            "stopped_at": v.stopped_at.isoformat() if v.stopped_at else None,
+            "last_enabled_at": v.last_enabled_at.isoformat() if v.last_enabled_at else None,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "stop_reason": stop_reason,
+            "application_count": app_count,
+            "recruiter": {
+                "name": v.recruiter.company_name,
+                "wa_number": v.recruiter.wa_number,
+                "company": v.recruiter.company_name,
+                "business_type": v.recruiter.business_type,
+                "location": v.recruiter.location,
+            } if v.recruiter else None,
+        })
+
+    return {"total": len(results), "results": results}
+
+
+@router.post("/api/vacancies/{vacancy_id}/stop")
+async def api_stop_vacancy(
+    vacancy_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Manually stop an active vacancy.
+    Sets is_active=False and records stopped_at timestamp.
+    Only acts on vacancies that are currently active.
+    """
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found")
+    if not vacancy.is_active:
+        raise HTTPException(status_code=400, detail="Vacancy is already stopped")
+
+    vacancy.is_active = False
+    vacancy.stopped_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("Admin manually stopped vacancy %s (id=%s)", vacancy.job_code, vacancy_id)
+    return {"success": True, "vacancy_id": vacancy_id, "job_code": vacancy.job_code}
+
+
+@router.post("/api/vacancies/{vacancy_id}/restart")
+async def api_restart_vacancy(
+    vacancy_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Restart a stopped vacancy.
+    Sets is_active=True, resets last_enabled_at to now() (restarts the 30-day clock),
+    and clears stopped_at.
+    Only approved vacancies can be restarted.
+    """
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found")
+    if vacancy.is_active:
+        raise HTTPException(status_code=400, detail="Vacancy is already active")
+    if vacancy.status != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail="Only approved vacancies can be restarted. Please approve the vacancy first.",
+        )
+
+    now = datetime.now(timezone.utc)
+    vacancy.is_active = True
+    vacancy.last_enabled_at = now
+    vacancy.stopped_at = None
+    db.commit()
+    logger.info("Admin restarted vacancy %s (id=%s)", vacancy.job_code, vacancy_id)
+    return {"success": True, "vacancy_id": vacancy_id, "job_code": vacancy.job_code}

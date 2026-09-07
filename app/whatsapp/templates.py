@@ -197,9 +197,6 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
 
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
-    cta_text = (
-        "_👉 Click 'Start chatting' or use the link below to apply:_")
-
     return (
         f"🚀 *New Job Alert*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
@@ -211,9 +208,9 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         f"📄 CV Required: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
-        f"{cta_text}\n"
-        f"📲 Apply now: {link}\n\n"
-        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
+        f"👉 _Click *\"Start chatting\"* or use the link to Apply_: {link}\n\n"
+        f"👥 Join WhatsApp Groups: https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR \n\n"
+        f"_Kerala's First WhatsApp powered Career Portal_"
     )
 
 
@@ -263,7 +260,7 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
         f"📄 CV Required: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
-        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_\n"
+        f"👉 _Click *\"Start chatting\"* or use the link to Apply_: [Link to apply]\n"
         f"{'─' * 25}\n\n"
         f"_📝 Want to make changes? Click the 'View Dashboard' button above to edit your poster._"
     )
