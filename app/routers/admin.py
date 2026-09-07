@@ -141,8 +141,8 @@ async def login_submit(
 
 @router.get("/logout", include_in_schema=False)
 async def logout():
-    """Clear the session cookie and redirect to the login page."""
-    response = RedirectResponse(url="/admin/login", status_code=302)
+    """Clear the session cookie and redirect to the JobInfo home page."""
+    response = RedirectResponse(url=settings.app_base_url or "/", status_code=302)
     response.delete_cookie(_COOKIE_NAME)
     return response
 
