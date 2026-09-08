@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JobZon -- Mobile View</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --gold: #f59e0b; --dark: #0f172a; --surface: #1e293b;
+            --border: rgba(255,255,255,.08); --text: #f1f5f9;
+            --muted: rgba(255,255,255,.45); --green: #25d366;
+            --grey-c: #475569; --tab-h: 60px; --topbar-h: 56px;
+        }
+        html, body { height: 100%; background: var(--dark); color: var(--text); font-family: 'Inter', sans-serif; overscroll-behavior: none; }
+        .topbar { position: fixed; top:0; left:0; right:0; height: var(--topbar-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 200; }
+        .topbar-brand { font-weight: 700; font-size: 1.1rem; color: var(--gold); letter-spacing: -.02em; }
+        .topbar-brand span { font-size: .65rem; color: var(--muted); font-weight: 400; display: block; margin-top: -2px; }
+        .topbar-actions { display: flex; gap: 8px; align-items: center; }
+        .btn-desktop { padding: 5px 11px; border-radius: 6px; background: rgba(245,158,11,.12); color: var(--gold); border: 1px solid rgba(245,158,11,.2); font-size: .73rem; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
+        .btn-signout { padding: 5px 11px; border-radius: 6px; background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: .73rem; font-weight: 500; cursor: pointer; text-decoration: none; }
+        .tabbar { position: fixed; bottom:0; left:0; right:0; height: var(--tab-h); background: var(--surface); border-top: 1px solid var(--border); display: flex; z-index: 200; }
+        .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--muted); font-size: .68rem; font-weight: 500; transition: color .15s; border: none; background: none; padding: 0; }
+        .tab.active { color: var(--gold); }
+        .tab-icon { font-size: 1.3rem; line-height: 1; }
+        .page-body { position: fixed; top: var(--topbar-h); bottom: var(--tab-h); left:0; right:0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .panel { display: none; padding: 12px; }
+        .panel.active { display: block; }
+        .search-wrap { position: sticky; top:0; z-index:10; background: var(--dark); padding: 10px 0 8px; }
+        .search-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px 10px 38px; color: var(--text); font-family: inherit; font-size: .9rem; outline: none; transition: border-color .15s; }
+        .search-input::placeholder { color: var(--muted); }
+        .search-input:focus { border-color: var(--gold); }
+        .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: .9rem; pointer-events: none; }
+        .search-box { position: relative; }
+        .results-info { font-size: .72rem; color: var(--muted); padding: 4px 2px 8px; }
+        .user-card { background: var(--surface); border-radius: 12px; padding: 13px 14px; margin-bottom: 8px; border: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+        .user-serial { font-size: .7rem; color: var(--muted); min-width: 22px; text-align: right; flex-shrink: 0; }
+        .user-info { flex: 1; min-width: 0; }
+        .user-name { font-size: .92rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-loc { font-size: .74rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .action-btn { width: 38px; height: 38px; border-radius: 10px; border: none; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; cursor: pointer; text-decoration: none; transition: background .15s, opacity .15s; flex-shrink: 0; }
+        .action-btn:active { opacity: .7; }
+        .btn-wa   { background: #dcfce7; color: #16a34a; }
+        .btn-call { background: #dbeafe; color: #1d4ed8; }
+        .btn-wa.contacted   { background: #1e293b; color: var(--grey-c); border: 1px solid rgba(255,255,255,.08); }
+        .btn-call.contacted { background: #1e293b; color: var(--grey-c); border: 1px solid rgba(255,255,255,.08); }
+        .load-more-wrap { text-align: center; padding: 16px 0 8px; }
+        .btn-load-more { background: var(--surface); border: 1px solid var(--border); color: var(--gold); border-radius: 8px; padding: 9px 24px; font-size: .82rem; font-weight: 600; font-family: inherit; cursor: pointer; transition: background .15s; }
+        .btn-load-more:hover { background: rgba(245,158,11,.08); }
+        .btn-load-more:disabled { opacity: .4; cursor: not-allowed; }
+        .spinner { text-align: center; padding: 32px; color: var(--muted); font-size: .85rem; }
+        .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
+        .empty-state .emoji { font-size: 2rem; margin-bottom: 10px; }
+        .toast { position: fixed; bottom: calc(var(--tab-h) + 10px); left: 50%; transform: translateX(-50%) translateY(20px); background: #1e293b; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 18px; font-size: .8rem; font-weight: 500; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; z-index: 300; white-space: nowrap; }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+<div class="topbar">
+    <div class="topbar-brand">JobZon<span>Mobile CRM</span></div>
+    <div class="topbar-actions">
+        <a href="/jobzon" class="btn-desktop" onclick="sessionStorage.setItem('jz_desktop_override','1')">Desktop</a>
+        <a href="/admin/logout" class="btn-signout">Sign Out</a>
+    </div>
+</div>
+<div class="page-body" id="page-body">
+    <div class="panel active" id="panel-seekers">
+        <div class="search-wrap">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="search" class="search-input" id="seeker-search" placeholder="Search name, phone, location..." autocomplete="off">
+            </div>
+            <div class="results-info" id="seeker-info">Loading...</div>
+        </div>
+        <div id="seeker-list"></div>
+        <div class="load-more-wrap" id="seeker-load-more-wrap" style="display:none;">
+            <button class="btn-load-more" id="seeker-load-more">Load more</button>
+        </div>
+    </div>
+    <div class="panel" id="panel-recruiters">
+        <div class="search-wrap">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="search" class="search-input" id="recruiter-search" placeholder="Search company, phone, location..." autocomplete="off">
+            </div>
+            <div class="results-info" id="recruiter-info">Loading...</div>
+        </div>
+        <div id="recruiter-list"></div>
+        <div class="load-more-wrap" id="recruiter-load-more-wrap" style="display:none;">
+            <button class="btn-load-more" id="recruiter-load-more">Load more</button>
+        </div>
+    </div>
+</div>
+<div class="tabbar">
+    <button class="tab active" id="tab-seekers" onclick="switchTab('seekers')">
+        <span class="tab-icon">👤</span>Job Seekers
+    </button>
+    <button class="tab" id="tab-recruiters" onclick="switchTab('recruiters')">
+        <span class="tab-icon">🏢</span>Recruiters
+    </button>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+var state = {
+    activeTab: 'seekers',
+    contacts: {},
+    seekers:   { page:1, total:0, loading:false, search:'', done:false, data:[] },
+    recruiters:{ page:1, total:0, loading:false, search:'', done:false, data:[] }
+};
+function switchTab(name) {
+    state.activeTab = name;
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+    document.getElementById('tab-' + name).classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+    document.getElementById('page-body').scrollTop = 0;
+}
+function loadContacts() {
+    fetch('/jobzon/api/mobile/contacts')
+        .then(function(r){ return r.json(); })
+        .then(function(d){ state.contacts = d.contacts || {}; applyContactedStyles(); })
+        .catch(function(){});
+}
+function markContacted(action_type, id) {
+    var key = action_type + '_' + id;
+    if (state.contacts[key]) return;
+    state.contacts[key] = true;
+    applyContactedStyles();
+    fetch('/jobzon/api/mobile/mark-contacted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_type: action_type, id: id })
+    }).catch(function(){});
+}
+function applyContactedStyles() {
+    document.querySelectorAll('[data-ck]').forEach(function(btn){
+        var key = btn.getAttribute('data-ck');
+        if (state.contacts[key]) { btn.classList.add('contacted'); }
+        else { btn.classList.remove('contacted'); }
+    });
+}
+function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function renderCard(item, type) {
+    var serial = item.serial;
+    var name   = esc(item.name || item.company_name || '');
+    var loc    = esc(item.location || item.district || '');
+    var waNum  = item.wa_number || '';
+    var id     = item.id;
+    var waKey  = 'wa_' + type + '_' + id;
+    var callKey= 'call_' + type + '_' + id;
+    var waCls  = state.contacts[waKey]   ? 'contacted' : '';
+    var callCls= state.contacts[callKey] ? 'contacted' : '';
+    return '<div class="user-card">' +
+        '<div class="user-serial">' + serial + '</div>' +
+        '<div class="user-info">' +
+            '<div class="user-name">' + name + '</div>' +
+            '<div class="user-loc">📍 ' + (loc || '—') + '</div>' +
+        '</div>' +
+        '<div class="user-actions">' +
+            '<a href="https://wa.me/' + waNum + '" target="_blank" rel="noopener"' +
+               ' class="action-btn btn-wa ' + waCls + '"' +
+               ' data-ck="' + waKey + '"' +
+               ' title="WhatsApp"' +
+               ' onclick="markContacted(\'wa_' + type + '\',' + id + ')">' +
+               '💬' +
+            '</a>' +
+            '<a href="tel:+' + waNum + '"' +
+               ' class="action-btn btn-call ' + callCls + '"' +
+               ' data-ck="' + callKey + '"' +
+               ' title="Call"' +
+               ' onclick="markContacted(\'call_' + type + '\',' + id + ')">' +
+               '📞' +
+            '</a>' +
+        '</div>' +
+    '</div>';
+}
+function fetchList(type, reset) {
+    var s = type === 'seeker' ? state.seekers : state.recruiters;
+    if (s.loading) return;
+    if (reset) {
+        s.page=1; s.done=false; s.data=[];
+        document.getElementById(type + '-list').innerHTML = '<div class="spinner">⏳ Loading...</div>';
+        document.getElementById(type + '-load-more-wrap').style.display = 'none';
+    }
+    if (s.done) return;
+    s.loading = true;
+    var url = '/jobzon/api/mobile/' + type + 's?page=' + s.page + '&search=' + encodeURIComponent(s.search);
+    fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            s.loading = false;
+            s.total   = d.total;
+            var listEl = document.getElementById(type + '-list');
+            if (reset) { s.data = d.results; listEl.innerHTML = ''; }
+            else { s.data = s.data.concat(d.results); }
+            if (!d.results || !d.results.length) {
+                if (reset) {
+                    listEl.innerHTML = '<div class="empty-state"><div class="emoji">🔍</div><p>No results found.</p></div>';
+                    document.getElementById(type + '-info').textContent = '0 found';
+                }
+                s.done = true;
+                document.getElementById(type + '-load-more-wrap').style.display = 'none';
+                return;
+            }
+            var html = '';
+            d.results.forEach(function(item){ html += renderCard(item, type); });
+            listEl.insertAdjacentHTML('beforeend', html);
+            applyContactedStyles();
+            var shown = s.data.length;
+            document.getElementById(type + '-info').textContent = shown + ' of ' + s.total + ' shown';
+            var lmWrap = document.getElementById(type + '-load-more-wrap');
+            if (shown < s.total) { lmWrap.style.display = 'block'; s.page++; }
+            else { lmWrap.style.display = 'none'; s.done = true; }
+        })
+        .catch(function(){
+            s.loading = false;
+            document.getElementById(type + '-list').innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><p>Error loading data.</p></div>';
+        });
+}
+function debounce(fn, ms) { var t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); }; }
+var seekerDebounce    = debounce(function(){ state.seekers.search = document.getElementById('seeker-search').value.trim(); fetchList('seeker', true); }, 350);
+var recruiterDebounce = debounce(function(){ state.recruiters.search = document.getElementById('recruiter-search').value.trim(); fetchList('recruiter', true); }, 350);
+document.getElementById('seeker-search').addEventListener('input', seekerDebounce);
+document.getElementById('recruiter-search').addEventListener('input', recruiterDebounce);
+document.getElementById('seeker-load-more').addEventListener('click', function(){ fetchList('seeker', false); });
+document.getElementById('recruiter-load-more').addEventListener('click', function(){ fetchList('recruiter', false); });
+document.getElementById('tab-recruiters').addEventListener('click', function(){
+    if (state.recruiters.data.length === 0 && !state.recruiters.loading) { fetchList('recruiter', true); }
+});
+loadContacts();
+fetchList('seeker', true);
+</script>
+</body>
+</html>

@@ -402,6 +402,18 @@
         .alert-error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     </style>
     {% block styles %}{% endblock %}
+    <script>
+    /* Mobile companion redirect — fires on pages that extend base.html (desktop) */
+    (function () {
+        var MOBILE_PATH = '/jobzon/mobile';
+        /* Don't redirect if already going to or coming from the mobile page */
+        if (window.location.pathname.indexOf(MOBILE_PATH) === 0) return;
+        if (sessionStorage.getItem('jz_desktop_override') === '1') return;
+        if (window.innerWidth < 768) {
+            window.location.replace(MOBILE_PATH);
+        }
+    })();
+    </script>
 </head>
 <body>
 

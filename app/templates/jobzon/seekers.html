@@ -56,14 +56,39 @@
 
 <!-- Results -->
 <div class="card" style="padding:0;overflow:hidden;">
-    <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0;">
-        <span class="card-title">Results</span>
-        <span style="font-size:.82rem;color:var(--muted);">
-            {{ total }} candidate{{ 's' if total != 1 else '' }} found
-            {% if filter_district or filter_category or filter_gender or filter_age_min or filter_age_max %}
-            — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+    <div class="card-header" style="padding:12px 16px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:0;gap:12px;flex-wrap:wrap;">
+        <!-- Left: count -->
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="card-title">Job Seekers</span>
+            <span style="font-size:.82rem;color:var(--muted);">
+                {{ total }} candidate{{ 's' if total != 1 else '' }}
+                {% if filter_district or filter_category or filter_gender or filter_age_min or filter_age_max or filter_search %}
+                — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+                {% endif %}
+            </span>
+        </div>
+        <!-- Right: inline search -->
+        <form method="GET" action="/jobzon/seekers" id="seeker-search-form" style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+            <!-- Carry existing filter values silently -->
+            {% if filter_district %}<input type="hidden" name="district" value="{{ filter_district }}">{% endif %}
+            {% if filter_category %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
+            {% if filter_gender %}<input type="hidden" name="gender" value="{{ filter_gender }}">{% endif %}
+            {% if filter_age_min %}<input type="hidden" name="age_min" value="{{ filter_age_min }}">{% endif %}
+            {% if filter_age_max %}<input type="hidden" name="age_max" value="{{ filter_age_max }}">{% endif %}
+            <div style="position:relative;">
+                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:.85rem;pointer-events:none;">🔍</span>
+                <input type="search" name="search" id="seeker-search-input"
+                       value="{{ filter_search }}"
+                       placeholder="Search name, phone, location…"
+                       autocomplete="off"
+                       style="padding:6px 10px 6px 30px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:.83rem;color:var(--text);background:#fff;outline:none;width:240px;transition:border-color .15s;"
+                       onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+            </div>
+            {% if filter_search %}
+            <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}"
+               style="font-size:.78rem;color:var(--muted);text-decoration:none;white-space:nowrap;padding:6px 8px;border:1px solid var(--border);border-radius:6px;" title="Clear search">✕</a>
             {% endif %}
-        </span>
+        </form>
     </div>
 
     {% if seekers %}
@@ -125,19 +150,19 @@
 {% if total_pages > 1 %}
 <div class="pagination">
     {% if page > 1 %}
-    <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ page - 1 }}">‹</a>
+    <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&search={{ filter_search }}&page={{ page - 1 }}">‹</a>
     {% endif %}
     {% for p in range(1, total_pages + 1) %}
         {% if p == page %}
         <span class="current">{{ p }}</span>
         {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
-        <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ p }}">{{ p }}</a>
+        <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&search={{ filter_search }}&page={{ p }}">{{ p }}</a>
         {% elif p == 4 or p == total_pages - 3 %}
         <span class="dots">…</span>
         {% endif %}
     {% endfor %}
     {% if page < total_pages %}
-    <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&page={{ page + 1 }}">›</a>
+    <a href="?district={{ filter_district }}&category={{ filter_category }}&gender={{ filter_gender }}&age_min={{ filter_age_min }}&age_max={{ filter_age_max }}&search={{ filter_search }}&page={{ page + 1 }}">›</a>
     {% endif %}
 </div>
 {% endif %}

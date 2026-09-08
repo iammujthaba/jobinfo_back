@@ -41,18 +41,6 @@
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:20px;font-size:.84rem;color:var(--muted);">
                 <span>
-                    <strong style="color:var(--text);">WhatsApp:</strong>
-                    <a href="https://wa.me/{{ recruiter.wa_number }}" target="_blank"
-                       style="color:var(--green);text-decoration:none;font-family:monospace;">
-                        +{{ recruiter.wa_number }}
-                    </a>
-                </span>
-                {% if recruiter.business_contact %}
-                <span>
-                    <strong style="color:var(--text);">Contact:</strong> {{ recruiter.business_contact }}
-                </span>
-                {% endif %}
-                <span>
                     <strong style="color:var(--text);">Joined:</strong>
                     {% if recruiter.created_at %}{{ recruiter.created_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
                 </span>

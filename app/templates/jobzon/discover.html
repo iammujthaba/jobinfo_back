@@ -37,7 +37,6 @@
                         <th style="color:rgba(255,255,255,.35);">Category</th>
                         <th style="color:rgba(255,255,255,.35);">Age</th>
                         <th style="color:rgba(255,255,255,.35);">Gender</th>
-                        <th style="color:rgba(255,255,255,.35);">WA Number</th>
                         <th style="color:rgba(255,255,255,.35);">CV</th>
                     </tr>
                 </thead>
@@ -141,7 +140,6 @@
                     <th>Sub-Category</th>
                     <th>Age</th>
                     <th>Gender</th>
-                    <th>WA Number</th>
                     <th>CV</th>
                 </tr>
             </thead>
@@ -161,7 +159,6 @@
                         </span>
                         {% else %}—{% endif %}
                     </td>
-                    <td style="font-family:monospace;font-size:.78rem;color:var(--muted);">{{ c.wa_number }}</td>
                     <td>
                         {% if c.cv_path or c.resumes %}
                         <a href="/jobzon/seekers/cv/{{ c.id }}" target="_blank" class="btn btn-cv btn-sm">📄 CV</a>
@@ -256,9 +253,8 @@ function runAutoMatch() {
                     '<td style="color:rgba(255,255,255,.6);">' + (c.category || '—') + '</td>',
                     '<td style="color:rgba(255,255,255,.5);">' + (c.age || '—') + '</td>',
                     '<td style="color:rgba(255,255,255,.5);">' + (c.gender || '—') + '</td>',
-                    '<td style="font-family:monospace;font-size:.78rem;color:rgba(255,255,255,.4);">' + escHtml(c.wa_number) + '</td>',
                     '<td>' + (c.cv_viewer_url
-                        ? '<a href="' + c.cv_viewer_url + '" target="_blank" style="color:#f59e0b;font-size:.78rem;font-weight:600;text-decoration:none;">📄 CV</a>'
+                        ? '<a href="' + c.cv_viewer_url + '" target="_blank" style="color:#f59e0b;font-size:.78rem;font-weight:600;text-decoration:none;">&#128196; CV</a>'
                         : '<span style="color:rgba(255,255,255,.25);font-size:.75rem;">—</span>')
                         + '</td>',
                 ].join('');

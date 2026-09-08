@@ -11,14 +11,18 @@ Access is intentionally read-only except for:
 
 No data export endpoints are provided anywhere in this router.
 """
+import json
 import logging
+import os
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func as sqlfunc
+from sqlalchemy import func as sqlfunc, or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -72,6 +76,21 @@ def _safe_int(val: Any, default: int = 0) -> int:
         return default
 
 
+def _phone_search_terms(search: str) -> list[str]:
+    """Extract possible phone number variations (with/without country code) from search string."""
+    digits = re.sub(r"\D", "", search)
+    if not digits or len(digits) < 3:
+        return []
+    terms = {digits}
+    if digits.startswith("91") and len(digits) > 10:
+        terms.add(digits[2:])
+    if digits.startswith("0"):
+        terms.add(digits.lstrip("0"))
+    if len(digits) == 10:
+        terms.add(f"91{digits}")
+    return list(terms)
+
+
 # ─── Job Seeker Directory ─────────────────────────────────────────────────────
 
 @router.get("/seekers", response_class=HTMLResponse)
@@ -82,11 +101,12 @@ async def jobzon_seekers(
     gender: str = "",
     age_min: str = "",
     age_max: str = "",
+    search: str = "",
     page: str = "1",
     db: Session = Depends(get_db),
     _: str = Depends(require_jobzon_admin),
 ):
-    """Job Seeker Directory with server-side filtering and pagination."""
+    """Job Seeker Directory with server-side filtering, name search, and pagination."""
     PAGE_SIZE = 50
 
     age_min_int = _safe_int(age_min, 0)
@@ -95,6 +115,17 @@ async def jobzon_seekers(
 
     query = db.query(Candidate).filter_by(registration_complete=True)
 
+    if search:
+        like = f"%{search.strip()}%"
+        conds = [
+            Candidate.name.ilike(like),
+            Candidate.district.ilike(like),
+            Candidate.category.ilike(like),
+        ]
+        for term in _phone_search_terms(search):
+            conds.append(Candidate.wa_number.ilike(f"%{term}%"))
+            conds.append(Candidate.alt_phone.ilike(f"%{term}%"))
+        query = query.filter(or_(*conds))
     if district:
         query = query.filter(Candidate.district.ilike(f"%{district}%"))
     if category:
@@ -137,6 +168,7 @@ async def jobzon_seekers(
             "filter_gender": gender,
             "filter_age_min": age_min_int if age_min_int > 0 else "",
             "filter_age_max": age_max_int if age_max_int > 0 else "",
+            "filter_search": search,
             "districts": districts,
             "categories": categories,
             "genders": genders,
@@ -200,11 +232,12 @@ async def jobzon_recruiters(
     request: Request,
     business_type: str = "",
     has_jobs: str = "",   # "yes" | "no" | ""
+    search: str = "",
     page: int = 1,
     db: Session = Depends(get_db),
     _: str = Depends(require_jobzon_admin),
 ):
-    """Recruiter Directory with vacancy-count and filter support."""
+    """Recruiter Directory with vacancy-count, name search, and filter support."""
     PAGE_SIZE = 50
 
     # Base query: recruiter + vacancy count
@@ -217,6 +250,17 @@ async def jobzon_recruiters(
         .group_by(Recruiter.id)
     )
 
+    if search:
+        like = f"%{search.strip()}%"
+        conds = [
+            Recruiter.company_name.ilike(like),
+            Recruiter.location.ilike(like),
+            Recruiter.business_type.ilike(like),
+        ]
+        for term in _phone_search_terms(search):
+            conds.append(Recruiter.wa_number.ilike(f"%{term}%"))
+            conds.append(Recruiter.business_contact.ilike(f"%{term}%"))
+        base_q = base_q.filter(or_(*conds))
     if business_type:
         base_q = base_q.filter(Recruiter.business_type.ilike(f"%{business_type}%"))
     if has_jobs == "yes":
@@ -266,6 +310,7 @@ async def jobzon_recruiters(
             "total_pages": total_pages,
             "filter_business_type": business_type,
             "filter_has_jobs": has_jobs,
+            "filter_search": search,
             "business_types": business_types,
         },
     )
@@ -832,3 +877,181 @@ async def jobzon_auto_match(
             for c in results
         ],
     }
+
+
+# ─── Mobile Companion Page + APIs ─────────────────────────────────────────────
+# Self-contained block. Remove entirely if the mobile companion feature is
+# no longer needed — no other code in this file depends on it.
+
+_CONTACTS_FILE = Path(__file__).parent.parent / "data" / "jobzon_contacts.json"
+
+
+def _read_contacts() -> dict:
+    """Read the contacts JSON file, returning an empty dict on any error."""
+    try:
+        if _CONTACTS_FILE.exists():
+            return json.loads(_CONTACTS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _write_contacts(data: dict) -> None:
+    """Safely write the contacts JSON file (atomic-ish via temp file)."""
+    try:
+        _CONTACTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _CONTACTS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_CONTACTS_FILE)
+    except Exception as exc:
+        logger.warning("jobzon_contacts write failed: %s", exc)
+
+
+@router.get("/mobile", response_class=HTMLResponse)
+async def jobzon_mobile(
+    request: Request,
+    _: str = Depends(require_jobzon_admin),
+):
+    """Mobile companion page — served to small-screen devices."""
+    return templates.TemplateResponse("jobzon/mobile.html", {"request": request})
+
+
+@router.get("/api/mobile/seekers")
+async def api_mobile_seekers(
+    search: str = "",
+    page: int = 1,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_jobzon_admin),
+):
+    """
+    Mobile API — paginated list of job seekers.
+    Ordered same as the desktop seekers page (newest first).
+    Search matches name or district (case-insensitive).
+    Exposes wa_number exclusively for the mobile contact buttons.
+    """
+    PAGE_SIZE = 30
+
+    query = db.query(Candidate).filter_by(registration_complete=True)
+    if search:
+        like = f"%{search.strip()}%"
+        conds = [
+            Candidate.name.ilike(like),
+            Candidate.district.ilike(like),
+        ]
+        for term in _phone_search_terms(search):
+            conds.append(Candidate.wa_number.ilike(f"%{term}%"))
+            conds.append(Candidate.alt_phone.ilike(f"%{term}%"))
+        query = query.filter(or_(*conds))
+
+    total = query.count()
+    offset = (page - 1) * PAGE_SIZE
+    rows = (
+        query
+        .order_by(Candidate.created_at.desc())
+        .offset(offset)
+        .limit(PAGE_SIZE)
+        .all()
+    )
+
+    results = []
+    for idx, c in enumerate(rows, start=offset + 1):
+        results.append({
+            "serial":    idx,
+            "id":        c.id,
+            "name":      c.name,
+            "district":  c.district or "",
+            "wa_number": c.wa_number,
+        })
+
+    return {"total": total, "page": page, "results": results}
+
+
+@router.get("/api/mobile/recruiters")
+async def api_mobile_recruiters(
+    search: str = "",
+    page: int = 1,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_jobzon_admin),
+):
+    """
+    Mobile API — paginated list of recruiters.
+    Ordered same as the desktop recruiter directory (most jobs first).
+    Search matches company_name or location (case-insensitive).
+    Exposes wa_number exclusively for the mobile contact buttons.
+    """
+    PAGE_SIZE = 30
+
+    base_q = (
+        db.query(
+            Recruiter,
+            sqlfunc.count(JobVacancy.id).label("vacancy_count"),
+        )
+        .outerjoin(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
+        .group_by(Recruiter.id)
+    )
+
+    if search:
+        like = f"%{search.strip()}%"
+        conds = [
+            Recruiter.company_name.ilike(like),
+            Recruiter.location.ilike(like),
+        ]
+        for term in _phone_search_terms(search):
+            conds.append(Recruiter.wa_number.ilike(f"%{term}%"))
+            conds.append(Recruiter.business_contact.ilike(f"%{term}%"))
+        base_q = base_q.filter(or_(*conds))
+
+    total = base_q.count()
+    offset = (page - 1) * PAGE_SIZE
+    rows = (
+        base_q
+        .order_by(sqlfunc.count(JobVacancy.id).desc())
+        .offset(offset)
+        .limit(PAGE_SIZE)
+        .all()
+    )
+
+    results = []
+    for idx, (rec, _cnt) in enumerate(rows, start=offset + 1):
+        results.append({
+            "serial":       idx,
+            "id":           rec.id,
+            "company_name": rec.company_name,
+            "location":     rec.location or "",
+            "wa_number":    rec.wa_number,
+        })
+
+    return {"total": total, "page": page, "results": results}
+
+
+@router.get("/api/mobile/contacts")
+async def api_mobile_contacts(
+    _: str = Depends(require_jobzon_admin),
+):
+    """Returns the full contact log so the mobile page can colour buttons correctly."""
+    return {"contacts": _read_contacts()}
+
+
+@router.post("/api/mobile/mark-contacted")
+async def api_mobile_mark_contacted(
+    payload: dict = Body(...),
+    _: str = Depends(require_jobzon_admin),
+):
+    """
+    Records that the admin contacted a user.
+    Payload: { "action_type": "wa_seeker"|"call_seeker"|"wa_recruiter"|"call_recruiter", "id": <int> }
+    Stored in a plain JSON file — no DB table involved.
+    """
+    action_type = str(payload.get("action_type", "")).strip()
+    user_id = payload.get("id")
+    if not action_type or user_id is None:
+        raise HTTPException(status_code=422, detail="action_type and id are required")
+
+    key = f"{action_type}_{user_id}"
+    contacts = _read_contacts()
+    if key not in contacts:
+        contacts[key] = datetime.now(timezone.utc).isoformat()
+        _write_contacts(contacts)
+
+    return {"success": True, "key": key}
+

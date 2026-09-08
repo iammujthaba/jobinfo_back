@@ -41,14 +41,36 @@
 
 <!-- Results -->
 <div class="card" style="padding:0;overflow:hidden;">
-    <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0;">
-        <span class="card-title">Recruiters</span>
-        <span style="font-size:.82rem;color:var(--muted);">
-            {{ total }} recruiter{{ 's' if total != 1 else '' }}
-            {% if filter_business_type or filter_has_jobs %}
-            — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+    <div class="card-header" style="padding:12px 16px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:0;gap:12px;flex-wrap:wrap;">
+        <!-- Left: count -->
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="card-title">Recruiters</span>
+            <span style="font-size:.82rem;color:var(--muted);">
+                {{ total }} recruiter{{ 's' if total != 1 else '' }}
+                {% if filter_business_type or filter_has_jobs or filter_search %}
+                — <span style="color:var(--gold);font-weight:600;">Filtered</span>
+                {% endif %}
+            </span>
+        </div>
+        <!-- Right: inline search -->
+        <form method="GET" action="/jobzon/recruiters" id="recruiter-search-form" style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+            <!-- Carry existing filter values silently -->
+            {% if filter_business_type %}<input type="hidden" name="business_type" value="{{ filter_business_type }}">{% endif %}
+            {% if filter_has_jobs %}<input type="hidden" name="has_jobs" value="{{ filter_has_jobs }}">{% endif %}
+            <div style="position:relative;">
+                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:.85rem;pointer-events:none;">🔍</span>
+                <input type="search" name="search" id="recruiter-search-input"
+                       value="{{ filter_search }}"
+                       placeholder="Search company, phone, location…"
+                       autocomplete="off"
+                       style="padding:6px 10px 6px 30px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:.83rem;color:var(--text);background:#fff;outline:none;width:240px;transition:border-color .15s;"
+                       onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+            </div>
+            {% if filter_search %}
+            <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}"
+               style="font-size:.78rem;color:var(--muted);text-decoration:none;white-space:nowrap;padding:6px 8px;border:1px solid var(--border);border-radius:6px;" title="Clear search">✕</a>
             {% endif %}
-        </span>
+        </form>
     </div>
 
     {% if recruiters %}
@@ -61,7 +83,6 @@
                     <th>Business Type</th>
                     <th>Role</th>
                     <th>Location</th>
-                    <th>WA Number</th>
                     <th>Joined</th>
                     <th style="text-align:center;">Total Job Posts</th>
                 </tr>
@@ -76,7 +97,6 @@
                     <td>{{ r.business_type or '—' }}</td>
                     <td><span class="badge badge-gray" style="font-size:.74rem;">{{ r.registrant_role or 'other' }}</span></td>
                     <td>{{ r.location or '—' }}</td>
-                    <td style="font-family:monospace;font-size:.82rem;color:var(--muted);">{{ r.wa_number }}</td>
                     <td style="font-size:.8rem;color:var(--muted);">
                         {% if r.created_at %}{{ r.created_at.strftime('%d %b %Y') }}{% else %}—{% endif %}
                     </td>
@@ -104,21 +124,35 @@
 {% if total_pages > 1 %}
 <div class="pagination">
     {% if page > 1 %}
-    <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&page={{ page - 1 }}">‹</a>
+    <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&search={{ filter_search }}&page={{ page - 1 }}">‹</a>
     {% endif %}
     {% for p in range(1, total_pages + 1) %}
         {% if p == page %}
         <span class="current">{{ p }}</span>
         {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
-        <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&page={{ p }}">{{ p }}</a>
+        <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&search={{ filter_search }}&page={{ p }}">{{ p }}</a>
         {% elif p == 4 or p == total_pages - 3 %}
         <span class="dots">…</span>
         {% endif %}
     {% endfor %}
     {% if page < total_pages %}
-    <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&page={{ page + 1 }}">›</a>
+    <a href="?business_type={{ filter_business_type }}&has_jobs={{ filter_has_jobs }}&search={{ filter_search }}&page={{ page + 1 }}">›</a>
     {% endif %}
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('form[method="GET"]').forEach(function (form) {
+    form.addEventListener('submit', function () {
+        Array.from(form.elements).forEach(function (input) {
+            if (!input.value && input.name) {
+                input.disabled = true;
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

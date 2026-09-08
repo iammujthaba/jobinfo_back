@@ -116,12 +116,10 @@
                 <tr>
                     <th>#</th>
                     <th>Name</th>
-                    <th>WhatsApp</th>
                     <th>Category</th>
                     <th>District</th>
                     <th>Age</th>
                     <th>Gender</th>
-                    <th>Alt. Phone</th>
                     <th style="text-align:center;">Status</th>
                     <th>Applied</th>
                     <th>CV</th>
@@ -138,13 +136,6 @@
                         {% endif %}
                     </td>
                     <td>
-                        <a href="https://wa.me/{{ app.candidate.wa_number }}" target="_blank"
-                           style="font-family:monospace;font-size:.81rem;color:var(--green);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"
-                           onclick="event.stopPropagation()">
-                            💬 {{ app.candidate.wa_number }}
-                        </a>
-                    </td>
-                    <td>
                         {% if app.candidate.category %}
                         <span class="badge badge-blue" style="font-size:.7rem;">{{ app.candidate.category }}</span>
                         {% else %}
@@ -154,13 +145,6 @@
                     <td style="font-size:.83rem;">{{ app.candidate.district or '—' }}</td>
                     <td style="font-size:.83rem;color:var(--muted);">{{ app.candidate.age or '—' }}</td>
                     <td style="font-size:.83rem;color:var(--muted);">{{ app.candidate.gender or '—' }}</td>
-                    <td style="font-size:.82rem;color:var(--muted);">
-                        {% if app.candidate.alt_phone %}
-                        <a href="tel:{{ app.candidate.alt_phone }}" style="color:var(--muted);text-decoration:none;">
-                            {{ app.candidate.alt_phone }}
-                        </a>
-                        {% else %}—{% endif %}
-                    </td>
                     <td style="text-align:center;">
                         {% if app.status.value == 'shortlisted' %}
                         <span class="badge badge-green" style="font-size:.7rem;">⭐ Shortlisted</span>
