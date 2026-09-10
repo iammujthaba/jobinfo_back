@@ -1041,18 +1041,36 @@ async def api_recruiters_stats(
     """Returns chart data and the overarching recruiter stats table."""
     from sqlalchemy import func as sqlfunc
     from app.db.models import JobVacancy, Recruiter, CandidateApplication
+    from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
 
     # Chart Data: Vacancies by District
     district_rows = db.query(
         JobVacancy.district_region, sqlfunc.count(JobVacancy.id).label("count")
     ).group_by(JobVacancy.district_region).all()
-    districts = {r.district_region: r.count for r in district_rows}
+    districts: dict[str, int] = {}
+    for r in district_rows:
+        raw_d = (r.district_region or "Other").strip()
+        d_name = "GCC" if raw_d.upper() == "GCC" else raw_d.title()
+        districts[d_name] = districts.get(d_name, 0) + r.count
     
     # Chart Data: Vacancies by Category
+    # Initialize with all updated categories from seeker.py so every modern category is present
+    legacy_cat_map = {
+        "driving": "Driving, Logistics & Store Keeper",
+        "logistics": "Driving, Logistics & Store Keeper",
+        "it_professional": "IT & Digital Marketing",
+        "office_admin": "Office Admin & Data Entry",
+        "hospitality_service": "Hospitality & Food Service",
+    }
+    categories: dict[str, int] = {disp: 0 for disp in CATEGORY_DISPLAY_NAMES.values()}
+    
     category_rows = db.query(
         JobVacancy.job_category, sqlfunc.count(JobVacancy.id).label("count")
     ).group_by(JobVacancy.job_category).all()
-    categories = {r.job_category: r.count for r in category_rows}
+    for r in category_rows:
+        raw_k = r.job_category or "other"
+        disp = CATEGORY_DISPLAY_NAMES.get(raw_k) or legacy_cat_map.get(raw_k) or raw_k.replace("_", " ").title()
+        categories[disp] = categories.get(disp, 0) + r.count
     
     # Total apps mapped by recruiter
     apps_raw = (
@@ -1066,7 +1084,7 @@ async def api_recruiters_stats(
     )
     apps_map = {r.recruiter_id: r.apps for r in apps_raw}
 
-    # Recruiter rows
+    # Recruiter rows ordered by most recently joined first
     rec_rows = (
         db.query(
             Recruiter.id,
@@ -1081,7 +1099,7 @@ async def api_recruiters_stats(
         )
         .outerjoin(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
         .group_by(Recruiter.id)
-        .order_by(sqlfunc.count(JobVacancy.id).desc())
+        .order_by(Recruiter.created_at.desc())
         .all()
     )
     
@@ -1094,6 +1112,7 @@ async def api_recruiters_stats(
         last_act = r.last_activity if r.last_activity else r.created_at
         
         recruiters_table.append({
+            "id": r.id,
             "company_name": r.company_name,
             "business_type": r.business_type,
             "registrant_role": r.registrant_role or "other",
@@ -1102,6 +1121,7 @@ async def api_recruiters_stats(
             "last_activity": last_act.isoformat() if last_act else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "total_vacancies": total_vac,
+            "total_applications": tot_apps,
             "avg_apps_per_vacancy": avg_apps
         })
         
@@ -1124,18 +1144,24 @@ async def api_recruiter_vacancies(
     from sqlalchemy import func as sqlfunc
     from app.db.models import JobVacancy, Recruiter, CandidateApplication
 
-    # Allow exact match or with '+' prefix if they stored it that way
-    recruiter = db.query(Recruiter).filter(Recruiter.wa_number.like(f"%{wa_number.replace('+','')} ")).first()
-    if not recruiter:
-        recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+    clean_wa = wa_number.replace('+', '').strip()
+    recruiter = db.query(Recruiter).filter(
+        (Recruiter.wa_number == wa_number) |
+        (Recruiter.wa_number == clean_wa) |
+        (Recruiter.wa_number.like(f"%{clean_wa}%"))
+    ).first()
         
     if not recruiter:
         raise HTTPException(status_code=404, detail="Recruiter not found")
         
     vac_rows = (
         db.query(
+            JobVacancy.id,
+            JobVacancy.job_code,
             JobVacancy.job_title,
             JobVacancy.status,
+            JobVacancy.is_active,
+            JobVacancy.district_region,
             JobVacancy.created_at,
             sqlfunc.count(CandidateApplication.id).label("apps")
         )
@@ -1149,8 +1175,12 @@ async def api_recruiter_vacancies(
     vac_list = []
     for v in vac_rows:
         vac_list.append({
+            "id": v.id,
+            "job_code": v.job_code,
             "job_title": v.job_title,
             "status": v.status,
+            "is_active": v.is_active,
+            "district_region": v.district_region,
             "created_at": v.created_at.isoformat() if v.created_at else None,
             "total_applications": v.apps
         })
