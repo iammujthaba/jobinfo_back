@@ -939,6 +939,21 @@ async def api_resolve_question(
     return {"success": True, "question_id": question_id}
 
 
+@router.post("/api/questions/{question_id}/reopen")
+async def api_reopen_question(
+    question_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Marks a user question as reopened (pending)."""
+    q = db.query(UserQuestion).filter_by(id=question_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    q.is_resolved = False
+    db.commit()
+    return {"success": True, "question_id": question_id}
+
+
 @router.get("/api/help-requests")
 async def api_list_help_requests(
     db: Session = Depends(get_db),
@@ -988,6 +1003,21 @@ async def api_resolve_help_request(
     if not req:
         raise HTTPException(status_code=404, detail="Help request not found")
     req.resolved = True
+    db.commit()
+    return {"success": True, "request_id": request_id}
+
+
+@router.patch("/api/help-requests/{request_id}/reopen")
+async def api_reopen_help_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Marks a help request as reopened (pending)."""
+    req = db.query(GetHelpRequest).filter_by(id=request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Help request not found")
+    req.resolved = False
     db.commit()
     return {"success": True, "request_id": request_id}
 
