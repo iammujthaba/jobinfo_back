@@ -503,14 +503,26 @@ async def api_list_vacancies(
 
 
 @router.post("/api/vacancies/{vacancy_id}/approve")
+@router.post("/api/vacancies/{vacancy_id}/re-verify")
 async def api_approve_vacancy(
     vacancy_id: int,
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    """Approve a vacancy and notify the recruiter via WhatsApp."""
+    """Approve or re-verify a vacancy and notify the recruiter via WhatsApp."""
+    vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
+    if not vacancy:
+        raise HTTPException(status_code=404, detail="Vacancy not found")
+    
+    vacancy.status = "approved"
+    vacancy.is_active = True
+    vacancy.rejection_reason = None
+    vacancy.approved_at = datetime.now(timezone.utc)
+    vacancy.last_enabled_at = vacancy.approved_at
+    db.commit()
+
     await recruiter_handler.notify_recruiter_approval(vacancy_id, db)
-    return {"success": True, "vacancy_id": vacancy_id}
+    return {"success": True, "vacancy_id": vacancy_id, "job_code": vacancy.job_code}
 
 
 @router.post("/api/vacancies/{vacancy_id}/reject")
@@ -641,7 +653,7 @@ async def api_analytics(
     # ── Vacancy status counts ────────────────────────────────────────────────
     pending_count = db.query(JobVacancy).filter_by(status="pending").count()
     approved_count = db.query(JobVacancy).filter(JobVacancy.status == "approved", JobVacancy.is_active == True).count()
-    stopped_count = db.query(JobVacancy).filter(JobVacancy.is_active == False).count()
+    stopped_count = db.query(JobVacancy).filter(JobVacancy.is_active == False, JobVacancy.status != "rejected").count()
     total_vac_status = pending_count + approved_count + stopped_count
 
     # ── Date calculation for selected period ─────────────────────────────────
@@ -1588,7 +1600,7 @@ async def api_list_stopped_vacancies(
 
     stopped = (
         db.query(JobVacancy)
-        .filter(JobVacancy.is_active == False)  # noqa: E712
+        .filter(JobVacancy.is_active == False, JobVacancy.status != "rejected")  # noqa: E712
         .order_by(JobVacancy.stopped_at.desc().nullslast())
         .all()
     )

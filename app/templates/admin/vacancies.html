@@ -21,10 +21,40 @@
 .stop-reason-badge-manual  { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
 .stopped-card { border-left: 3px solid #f59e0b !important; }
 .approved-active-card { border-left: 3px solid #22c55e !important; }
+
+.stopped-filter-card {
+  transition: all .18s ease;
+  border: 2px solid transparent !important;
+  user-select: none;
+  cursor: pointer;
+}
+.stopped-filter-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,.08);
+  border-color: #cbd5e1 !important;
+}
+.stopped-filter-card.active-filter {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+  background: #fffdfa;
+}
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Search & Filter Controls -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
+  <div class="search-bar" style="width:360px;max-width:100%;background:#fff;">
+    <svg width="15" height="15" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input type="text" id="vac-search-input" placeholder="Search job code, position, or company…" oninput="filterAndRenderVacancies()">
+  </div>
+  <div id="vac-search-count" style="font-size:.78rem;color:#64748b;font-weight:600;"></div>
+</div>
+
+<!-- Stopped Ads summary filter cards (rendered when on Stopped Ads tab) -->
+<div id="vac-stopped-summary" style="display:none;margin-bottom:16px;"></div>
+
+<!-- Main Vacancies List -->
 <div id="vac-list">
   <div class="loading-wrap"><div class="spinner"></div></div>
 </div>
@@ -60,7 +90,7 @@
 <!-- Detail modal -->
 <div class="modal-overlay" id="detail-modal">
   <div class="modal" style="width:600px;">
-    <h3 id="dm-title">â€”</h3>
+    <h3 id="dm-title">—</h3>
     <p class="modal-sub" id="dm-code" style="font-family:monospace;"></p>
     <div id="dm-body" style="font-size:.85rem;line-height:1.7;"></div>
     <div class="modal-actions">
@@ -85,77 +115,164 @@
 {% block scripts %}
 <script>
 let currentTab = 'pending';
+let loadedVacancies = [];
+let stoppedSubFilter = 'all'; // 'all', 'auto_expired', 'manual'
+let stoppedSummary = { total: 0, auto_expired: 0, manual: 0 };
 let rejectTargetId = null;
 let stopTargetId = null;
 
-// â”€â”€ Load by tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Load by tab ─────────────────────────────────────────────────────────────
 
 async function loadVacancies(tab) {
   currentTab = tab;
   const el = document.getElementById('vac-list');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  const summaryEl = document.getElementById('vac-stopped-summary');
+
   try {
     if (tab === 'stopped') {
-      await loadStopped(el);
+      const r = await adminFetch('/admin/api/vacancies/stopped');
+      const d = await r.json();
+
+      // Exclude any rejected vacancies defensively
+      loadedVacancies = (d.results || []).filter(v => v.status !== 'rejected');
+
+      // Update badge on the tab button
+      const badge = document.getElementById('stopped-badge');
+      const totalCount = loadedVacancies.length;
+      if (totalCount > 0) {
+        badge.textContent = totalCount;
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.style.display = 'none';
+      }
+
+      // Compute counts for top 3 interactive cards
+      const autoCount = loadedVacancies.filter(v => v.stop_reason === 'auto_expired').length;
+      const manualCount = loadedVacancies.filter(v => v.stop_reason === 'manual').length;
+      stoppedSummary = { total: totalCount, auto_expired: autoCount, manual: manualCount };
+
+      renderStoppedSummary();
+      summaryEl.style.display = 'block';
     } else {
-      await loadStandard(tab, el);
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+      const r = await adminFetch(`/admin/api/vacancies?status_filter=${tab}`);
+      const d = await r.json();
+      loadedVacancies = d.results || [];
     }
+
+    filterAndRenderVacancies();
   } catch(e) {
+    console.error('Error loading vacancies:', e);
     el.innerHTML = '<div class="empty-state"><p>Failed to load. Try refreshing.</p></div>';
   }
 }
 
-async function loadStandard(tab, el) {
-  const r = await adminFetch(`/admin/api/vacancies?status_filter=${tab}`);
-  const d = await r.json();
-  if (!d.results.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128589;</div><p>No ' + tab + ' vacancies</p></div>';
-    return;
-  }
-  el.innerHTML = d.results.map(v => buildCard(v)).join('');
-}
+// ─── Render Stopped Ads 3 Summary Cards ──────────────────────────────────────
 
-async function loadStopped(el) {
-  const r = await adminFetch('/admin/api/vacancies/stopped');
-  const d = await r.json();
-
-  // Update badge on the tab button
-  const badge = document.getElementById('stopped-badge');
-  if (d.total > 0) {
-    badge.textContent = d.total;
-    badge.style.display = 'inline-flex';
-  } else {
-    badge.style.display = 'none';
-  }
-
-  if (!d.results.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9989;</div><p>No stopped ads â€” all active vacancies are running!</p></div>';
+function renderStoppedSummary() {
+  const summaryEl = document.getElementById('vac-stopped-summary');
+  if (currentTab !== 'stopped') {
+    summaryEl.style.display = 'none';
     return;
   }
 
-  // Summary bar
-  const autoCount   = d.results.filter(v => v.stop_reason === 'auto_expired').length;
-  const manualCount = d.results.filter(v => v.stop_reason === 'manual').length;
-  const summaryHtml = `
-    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-      <div class="stat-card amber" style="flex:1;min-width:140px;padding:14px 16px;">
-        <div class="val" style="font-size:1.4rem;">${d.total}</div>
-        <div class="lbl">Total Stopped</div>
+  summaryEl.innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:4px;flex-wrap:wrap;">
+      <div class="stat-card stopped-filter-card amber ${stoppedSubFilter === 'all' ? 'active-filter' : ''}" id="card-stop-all" onclick="setStoppedFilter('all')" style="flex:1;min-width:140px;padding:14px 16px;" title="Click to view all stopped ads">
+        <div class="val" style="font-size:1.4rem;">${stoppedSummary.total}</div>
+        <div class="lbl">Total Stopped (All)</div>
       </div>
-      <div class="stat-card amber" style="flex:1;min-width:140px;padding:14px 16px;">
-        <div class="val" style="font-size:1.4rem;">${autoCount}</div>
+      <div class="stat-card stopped-filter-card amber ${stoppedSubFilter === 'auto_expired' ? 'active-filter' : ''}" id="card-stop-auto" onclick="setStoppedFilter('auto_expired')" style="flex:1;min-width:140px;padding:14px 16px;" title="Click to view only 30-day auto-expired ads">
+        <div class="val" style="font-size:1.4rem;">${stoppedSummary.auto_expired}</div>
         <div class="lbl">Auto-Expired (30 days)</div>
       </div>
-      <div class="stat-card" style="flex:1;min-width:140px;padding:14px 16px;">
-        <div class="val" style="font-size:1.4rem;">${manualCount}</div>
+      <div class="stat-card stopped-filter-card ${stoppedSubFilter === 'manual' ? 'active-filter' : ''}" id="card-stop-manual" onclick="setStoppedFilter('manual')" style="flex:1;min-width:140px;padding:14px 16px;" title="Click to view only manually stopped ads">
+        <div class="val" style="font-size:1.4rem;">${stoppedSummary.manual}</div>
         <div class="lbl">Manually Stopped</div>
       </div>
-    </div>`;
-
-  el.innerHTML = summaryHtml + d.results.map(v => buildStoppedCard(v)).join('');
+    </div>
+  `;
+  summaryEl.style.display = 'block';
 }
 
-// â”€â”€ Card builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function setStoppedFilter(subFilter) {
+  stoppedSubFilter = subFilter;
+  renderStoppedSummary();
+  filterAndRenderVacancies();
+}
+
+// ─── Filter & Render Vacancies (Search by Code, Position, Company) ───────────
+
+function filterAndRenderVacancies() {
+  const el = document.getElementById('vac-list');
+  const searchInput = document.getElementById('vac-search-input');
+  const q = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+  let list = loadedVacancies;
+
+  // 1. If on Stopped tab, filter by sub-card selection
+  if (currentTab === 'stopped') {
+    if (stoppedSubFilter === 'auto_expired') {
+      list = list.filter(v => v.stop_reason === 'auto_expired');
+    } else if (stoppedSubFilter === 'manual') {
+      list = list.filter(v => v.stop_reason === 'manual');
+    }
+  }
+
+  // 2. Search across job code, position, and company name
+  if (q) {
+    list = list.filter(v => {
+      const code = (v.job_code || '').toLowerCase();
+      const pos = (v.job_title || '').toLowerCase();
+      const rec = v.recruiter || {};
+      const company = (rec.company || rec.company_name || v.company_name || '').toLowerCase();
+      return code.includes(q) || pos.includes(q) || company.includes(q);
+    });
+  }
+
+  // 3. Update count indicator
+  const countEl = document.getElementById('vac-search-count');
+  if (countEl) {
+    if (q) {
+      countEl.textContent = `Showing ${list.length} of ${loadedVacancies.length} vacancies`;
+    } else {
+      countEl.textContent = `${list.length} vacancies`;
+    }
+  }
+
+  // 4. Render results or empty state
+  if (!list.length) {
+    if (q) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">&#128269;</div>
+          <p>No vacancies matching "<strong>${esc(q)}</strong>"</p>
+          <button class="btn btn-ghost btn-sm" onclick="clearSearch()" style="margin-top:12px;">Clear Search</button>
+        </div>`;
+    } else if (currentTab === 'stopped') {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9989;</div><p>No stopped ads found for this filter!</p></div>';
+    } else {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">&#128589;</div><p>No ${currentTab} vacancies</p></div>`;
+    }
+    return;
+  }
+
+  if (currentTab === 'stopped') {
+    el.innerHTML = list.map(v => buildStoppedCard(v)).join('');
+  } else {
+    el.innerHTML = list.map(v => buildCard(v)).join('');
+  }
+}
+
+function clearSearch() {
+  const searchInput = document.getElementById('vac-search-input');
+  if (searchInput) searchInput.value = '';
+  filterAndRenderVacancies();
+}
+
+// ─── Card builders ───────────────────────────────────────────────────────────
 
 function buildCard(v) {
   const recruiter = v.recruiter || {};
@@ -173,6 +290,14 @@ function buildCard(v) {
       <button class="btn btn-ghost btn-sm" onclick="shareToChannel(${v.id},this)">&#128225; Share to Channel</button>
       <button class="btn btn-sm" onclick="openStop(${v.id})" style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;" title="Stop this ad from receiving applications">&#9209; Stop Ad</button>
     `;
+  } else if (currentTab === 'rejected') {
+    // Rejected sub-tab with Re-verify Ad button
+    actions = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:.75rem;color:#ef4444;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fee2e2;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(v.rejection_reason||'')}">Reason: ${esc(v.rejection_reason||'No reason given')}</span>
+        <button class="btn btn-green btn-sm" onclick="reverifyVac(${v.id},this)" title="Re-verify and re-approve this vacancy">&#10003; Re-verify Ad</button>
+      </div>
+    `;
   } else {
     actions = `<span style="font-size:.75rem;color:#64748b;">${esc(v.rejection_reason||'No reason given')}</span>`;
   }
@@ -188,7 +313,7 @@ function buildCard(v) {
         ${editBadge}
         <span style="font-family:monospace;font-size:.72rem;color:#64748b;background:#f1f5f9;padding:2px 8px;border-radius:6px;">${esc(v.job_code)}</span>
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0;">
+      <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="openDetail(${JSON.stringify(v).replace(/"/g,'&quot;')})">View Details</button>
         ${actions}
       </div>
@@ -196,22 +321,22 @@ function buildCard(v) {
     <div class="card-body" style="display:grid;grid-template-columns:repeat(3,1fr) 2fr;gap:16px;">
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Company</div>
-        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||'â€”')}</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||recruiter.company_name||v.company_name||'—')}</div>
         <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.business_type||'')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Location</div>
-        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'â€”')}</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'—')}</div>
         <div style="font-size:.75rem;color:#64748b;">${esc(v.exact_location||'')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Details</div>
-        <div style="font-size:.82rem;">&#128176; ${esc(v.salary_range||'â€”')}</div>
-        <div style="font-size:.82rem;">&#128188; ${esc(v.job_mode||'â€”')} &nbsp;&middot;&nbsp; &#127891; ${esc(v.experience_required||'â€”')}</div>
+        <div style="font-size:.82rem;">&#128176; ${esc(v.salary_range||'—')}</div>
+        <div style="font-size:.82rem;">&#128188; ${esc(v.job_mode||'—')} &nbsp;&middot;&nbsp; &#127891; ${esc(v.experience_required||'—')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Recruiter</div>
-        <div style="font-size:.82rem;">${esc(recruiter.wa_number||'â€”')}</div>
+        <div style="font-size:.82rem;">${esc(recruiter.wa_number||'—')}</div>
         <div style="font-size:.75rem;color:#64748b;">Posted ${fmtDate(v.created_at)}</div>
       </div>
     </div>
@@ -232,7 +357,7 @@ function buildStoppedCard(v) {
     ? `<button class="btn btn-green btn-sm" onclick="restartAd(${v.id},this)">&#9654; Restart Ad</button>`
     : `<span class="badge badge-gray" title="Approve this vacancy first before restarting">${v.status} &mdash; approve to restart</span>`;
 
-  const stoppedDateStr = v.stopped_at ? fmtDate(v.stopped_at) : 'â€”';
+  const stoppedDateStr = v.stopped_at ? fmtDate(v.stopped_at) : '—';
   const durationStr = (() => {
     if (!v.last_enabled_at) return '';
     const start = new Date(v.last_enabled_at);
@@ -258,12 +383,12 @@ function buildStoppedCard(v) {
     <div class="card-body" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Company</div>
-        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||'â€”')}</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(recruiter.company||recruiter.company_name||v.company_name||'—')}</div>
         <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.business_type||'')}</div>
       </div>
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Location</div>
-        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'â€”')}</div>
+        <div style="font-size:.85rem;font-weight:600;">${esc(v.district_region||'—')}</div>
         <div style="font-size:.75rem;color:#64748b;">${esc(v.exact_location||'')}</div>
       </div>
       <div>
@@ -274,23 +399,23 @@ function buildStoppedCard(v) {
       <div>
         <div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Applications</div>
         <div style="font-size:1.3rem;font-weight:700;color:#1e293b;">${v.application_count}</div>
-        <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.wa_number||'â€”')}</div>
+        <div style="font-size:.75rem;color:#64748b;">${esc(recruiter.wa_number||'—')}</div>
       </div>
     </div>
   </div>`;
 }
 
-// â”€â”€ Detail modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Detail modals ───────────────────────────────────────────────────────────
 
 function openDetail(v) {
   document.getElementById('dm-title').textContent = v.job_title;
   document.getElementById('dm-code').textContent = v.job_code + ' &middot; ' + (v.district_region||'') + (v.exact_location ? ', '+v.exact_location : '');
   const recruiter = v.recruiter || {};
   document.getElementById('dm-body').innerHTML = `
-    <p><strong>Company:</strong> ${esc(recruiter.company||'â€”')} (${esc(recruiter.business_type||'')})</p>
-    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'â€”')}</p>
-    <p><strong>Salary:</strong> ${esc(v.salary_range||'â€”')}</p>
-    <p><strong>Mode:</strong> ${esc(v.job_mode||'â€”')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'â€”')}</p>
+    <p><strong>Company:</strong> ${esc(recruiter.company||recruiter.company_name||v.company_name||'—')} (${esc(recruiter.business_type||'')})</p>
+    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'—')}</p>
+    <p><strong>Salary:</strong> ${esc(v.salary_range||'—')}</p>
+    <p><strong>Mode:</strong> ${esc(v.job_mode||'—')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'—')}</p>
     <p><strong>CV Required:</strong> ${v.cv_required ? 'Yes' : 'No'}</p>
     <hr style="margin:12px 0;border:none;border-top:1px solid #e2e8f0;">
     <p style="white-space:pre-wrap;">${esc(v.job_description||'No description provided.')}`;
@@ -303,32 +428,60 @@ function openStoppedDetail(v) {
   const recruiter = v.recruiter || {};
   const isAutoExpired = v.stop_reason === 'auto_expired';
   document.getElementById('dm-body').innerHTML = `
-    <p><strong>Company:</strong> ${esc(recruiter.company||'â€”')} (${esc(recruiter.business_type||'')})</p>
-    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'â€”')}</p>
+    <p><strong>Company:</strong> ${esc(recruiter.company||recruiter.company_name||v.company_name||'—')} (${esc(recruiter.business_type||'')})</p>
+    <p><strong>Recruiter WA:</strong> ${esc(recruiter.wa_number||'—')}</p>
     <p><strong>Approval Status:</strong> ${esc(v.status)}</p>
     <p><strong>Stop Reason:</strong> ${isAutoExpired ? '&#9203; Auto-Expired (ran for 30 days)' : '&#9209; Manually stopped by admin'}</p>
     <p><strong>Stopped On:</strong> ${fmtDate(v.stopped_at)}</p>
     <p><strong>Last Enabled:</strong> ${fmtDate(v.last_enabled_at)}</p>
     <p><strong>Total Applications:</strong> ${v.application_count}</p>
-    <p><strong>Salary:</strong> ${esc(v.salary_range||'â€”')}</p>
-    <p><strong>Mode:</strong> ${esc(v.job_mode||'â€”')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'â€”')}</p>
+    <p><strong>Salary:</strong> ${esc(v.salary_range||'—')}</p>
+    <p><strong>Mode:</strong> ${esc(v.job_mode||'—')} &nbsp;|&nbsp; <strong>Experience:</strong> ${esc(v.experience_required||'—')}</p>
     <hr style="margin:12px 0;border:none;border-top:1px solid #e2e8f0;">
     <p style="white-space:pre-wrap;">${esc(v.job_description||'No description provided.')}`;
   document.getElementById('detail-modal').classList.add('open');
 }
 
-// â”€â”€ Approve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Actions: Approve, Re-verify, Reject, Share, Stop, Restart ───────────────
 
 async function approveVac(id, btn) {
-  btn.disabled = true; btn.textContent = '&hellip;';
+  btn.disabled = true; btn.textContent = '…';
   try {
     const r = await adminFetch(`/admin/api/vacancies/${id}/approve`, {method:'POST'});
-    if (r.ok) { document.getElementById('vc-'+id)?.remove(); toast('Vacancy approved! Recruiter notified.','ok'); }
-    else toast('Failed to approve.','err');
-  } catch(e) { toast('Error.','err'); }
+    if (r.ok) {
+      document.getElementById('vc-'+id)?.remove();
+      loadedVacancies = loadedVacancies.filter(v => v.id !== id);
+      filterAndRenderVacancies();
+      toast('Vacancy approved! Recruiter notified.','ok');
+    } else {
+      toast('Failed to approve.','err');
+      btn.disabled = false; btn.textContent = '✓ Approve';
+    }
+  } catch(e) {
+    toast('Error.','err');
+    btn.disabled = false; btn.textContent = '✓ Approve';
+  }
 }
 
-// â”€â”€ Reject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+async function reverifyVac(id, btn) {
+  btn.disabled = true; btn.textContent = 'Re-verifying…';
+  try {
+    const r = await adminFetch(`/admin/api/vacancies/${id}/re-verify`, {method:'POST'});
+    if (r.ok) {
+      toast('Vacancy re-verified & approved! Recruiter notified via WhatsApp.', 'ok');
+      document.getElementById('vc-'+id)?.remove();
+      loadedVacancies = loadedVacancies.filter(v => v.id !== id);
+      filterAndRenderVacancies();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast('Failed to re-verify: ' + (err.detail || 'Unknown error'), 'err');
+      btn.disabled = false; btn.textContent = '✓ Re-verify Ad';
+    }
+  } catch(e) {
+    toast('Error re-verifying vacancy.', 'err');
+    btn.disabled = false; btn.textContent = '✓ Re-verify Ad';
+  }
+}
 
 function onRejectPresetChange(val) {
   const txt = document.getElementById('reject-reason');
@@ -347,28 +500,33 @@ async function confirmReject() {
   const reason = document.getElementById('reject-reason').value.trim();
   if (!reason) { toast('Please enter a reason.','err'); return; }
   const btn = document.getElementById('reject-confirm-btn');
-  btn.disabled = true; btn.textContent = 'Sending&hellip;';
+  btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const fd = new FormData(); fd.append('reason', reason);
     const r = await adminFetch(`/admin/api/vacancies/${rejectTargetId}/reject`, {method:'POST', body:fd});
-    if (r.ok) { document.getElementById('vc-'+rejectTargetId)?.remove(); closeRejectModal(); toast('Rejection sent to recruiter.','ok'); }
-    else toast('Failed to reject.','err');
-  } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='Send Rejection'; }
+    if (r.ok) {
+      document.getElementById('vc-'+rejectTargetId)?.remove();
+      loadedVacancies = loadedVacancies.filter(v => v.id !== rejectTargetId);
+      filterAndRenderVacancies();
+      closeRejectModal();
+      toast('Rejection sent to recruiter.','ok');
+    } else {
+      toast('Failed to reject.','err');
+    }
+  } catch(e) { toast('Error.','err'); }
+  finally { btn.disabled=false; btn.textContent='Send Rejection'; }
 }
 
-// â”€â”€ Share â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 async function shareToChannel(id, btn) {
-  btn.disabled = true; btn.textContent = '&hellip;';
+  btn.disabled = true; btn.textContent = '…';
   try {
     const r = await adminFetch(`/admin/api/vacancies/${id}/share-to-channel`, {method:'POST'});
     const d = await r.json();
     if (r.ok) toast('Shared to WhatsApp channel! (' + (d.job_code||'') + ')','ok');
     else toast('Share failed.','err');
-  } catch(e) { toast('Error.','err'); } finally { btn.disabled=false; btn.textContent='&#128225; Share to Channel'; }
+  } catch(e) { toast('Error.','err'); }
+  finally { btn.disabled=false; btn.textContent='&#128225; Share to Channel'; }
 }
-
-// â”€â”€ Stop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function openStop(id) {
   stopTargetId = id;
@@ -377,12 +535,13 @@ function openStop(id) {
 
 async function confirmStop() {
   const btn = document.getElementById('stop-confirm-btn');
-  btn.disabled = true; btn.textContent = 'Stopping&hellip;';
+  btn.disabled = true; btn.textContent = 'Stopping…';
   try {
     const r = await adminFetch(`/admin/api/vacancies/${stopTargetId}/stop`, {method:'POST'});
     if (r.ok) {
-      const d = await r.json();
       document.getElementById('vc-'+stopTargetId)?.remove();
+      loadedVacancies = loadedVacancies.filter(v => v.id !== stopTargetId);
+      filterAndRenderVacancies();
       document.getElementById('stop-modal').classList.remove('open');
       toast('Ad stopped. It now appears in the Stopped Ads tab.', 'ok');
     } else {
@@ -393,43 +552,55 @@ async function confirmStop() {
   finally { btn.disabled=false; btn.textContent='&#9209; Stop Ad'; stopTargetId=null; }
 }
 
-// â”€â”€ Restart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 async function restartAd(id, btn) {
-  btn.disabled = true; btn.textContent = 'Restarting&hellip;';
+  btn.disabled = true; btn.textContent = 'Restarting…';
   try {
     const r = await adminFetch(`/admin/api/vacancies/${id}/restart`, {method:'POST'});
     const d = await r.json();
     if (r.ok) {
       document.getElementById('vc-'+id)?.remove();
-      toast('Ad restarted! (' + d.job_code + ') â€” 30-day clock reset.', 'ok');
-      // Update badge count
-      const remaining = document.querySelectorAll('[id^="vc-"]').length;
+      loadedVacancies = loadedVacancies.filter(v => v.id !== id);
+      toast('Ad restarted! (' + d.job_code + ') — 30-day clock reset.', 'ok');
+      
+      // Update counts
+      stoppedSummary.total = Math.max(0, stoppedSummary.total - 1);
+      const autoCount = loadedVacancies.filter(v => v.stop_reason === 'auto_expired').length;
+      const manualCount = loadedVacancies.filter(v => v.stop_reason === 'manual').length;
+      stoppedSummary.auto_expired = autoCount;
+      stoppedSummary.manual = manualCount;
+
       const badge = document.getElementById('stopped-badge');
-      if (remaining === 0) {
+      if (stoppedSummary.total === 0) {
         badge.style.display = 'none';
-        document.getElementById('vac-list').innerHTML =
-          '<div class="empty-state"><div class="empty-icon">&#9989;</div><p>No stopped ads â€” all active vacancies are running!</p></div>';
       } else {
-        badge.textContent = remaining;
+        badge.textContent = stoppedSummary.total;
       }
+
+      renderStoppedSummary();
+      filterAndRenderVacancies();
     } else {
       const err = await r.json().catch(() => ({}));
       toast('Failed to restart: ' + (err.detail || 'Unknown error'), 'err');
-      btn.disabled = false; btn.textContent = '&#9654; Restart Ad';
+      btn.disabled = false; btn.textContent = '▶ Restart Ad';
     }
-  } catch(e) { toast('Error restarting ad.','err'); btn.disabled=false; btn.textContent='&#9654; Restart Ad'; }
+  } catch(e) {
+    toast('Error restarting ad.','err');
+    btn.disabled=false; btn.textContent='▶ Restart Ad';
+  }
 }
 
-// â”€â”€ Tab switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tab switching ───────────────────────────────────────────────────────────
 
 function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
+  stoppedSubFilter = 'all'; // Reset sub-filter when switching tabs
+  const searchInput = document.getElementById('vac-search-input');
+  if (searchInput) searchInput.value = ''; // Clean search input on tab switch
   loadVacancies(tab);
 }
 
-// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Init ────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -444,8 +615,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Pre-fetch stopped count to show badge immediately
   adminFetch('/admin/api/vacancies/stopped').then(r => r.json()).then(d => {
     const badge = document.getElementById('stopped-badge');
-    if (d.total > 0) {
-      badge.textContent = d.total;
+    const validCount = (d.results || []).filter(v => v.status !== 'rejected').length;
+    if (validCount > 0) {
+      badge.textContent = validCount;
       badge.style.display = 'inline-flex';
     }
   }).catch(() => {});
