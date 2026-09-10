@@ -1206,22 +1206,33 @@ async def api_seekers_stats(
         Candidate.district, sqlfunc.count(Candidate.id).label("count")
     ).group_by(Candidate.district).all()
     
-    locations = {}
+    locations: dict[str, int] = {}
     for r in location_rows:
-        loc = r.district if r.district else "Unknown"
-        locations[loc] = locations.get(loc, 0) + r.count
+        raw_loc = (r.district or "Other").strip()
+        loc_name = "GCC" if raw_loc.upper() == "GCC" else raw_loc.title()
+        locations[loc_name] = locations.get(loc_name, 0) + r.count
     
     # Chart Data: Seekers by Job Category
+    from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
+    legacy_cat_map = {
+        "driving": "Driving, Logistics & Store Keeper",
+        "logistics": "Driving, Logistics & Store Keeper",
+        "it_professional": "IT & Digital Marketing",
+        "office_admin": "Office Admin & Data Entry",
+        "hospitality_service": "Hospitality & Food Service",
+    }
+    categories: dict[str, int] = {disp: 0 for disp in CATEGORY_DISPLAY_NAMES.values()}
+    
     category_rows = db.query(
         Candidate.category, sqlfunc.count(Candidate.id).label("count")
     ).group_by(Candidate.category).all()
     
-    categories = {}
     for r in category_rows:
-        cat = r.category if r.category else "Unknown"
-        categories[cat] = categories.get(cat, 0) + r.count
+        raw_k = r.category or "other"
+        disp = CATEGORY_DISPLAY_NAMES.get(raw_k) or legacy_cat_map.get(raw_k) or raw_k.replace("_", " ").title()
+        categories[disp] = categories.get(disp, 0) + r.count
     
-    # Seekers rows
+    # Seekers rows (LIFO order: most recently joined first)
     seek_rows = (
         db.query(
             Candidate.id,
@@ -1235,22 +1246,25 @@ async def api_seekers_stats(
         )
         .outerjoin(CandidateApplication, CandidateApplication.candidate_id == Candidate.id)
         .group_by(Candidate.id)
-        .order_by(sqlfunc.count(CandidateApplication.id).desc())
-        .limit(200) # Optional limit to keep frontend snappy
+        .order_by(Candidate.created_at.desc())
+        .limit(200) # Keep snappy
         .all()
     )
     
     seekers_table = []
     for s in seek_rows:
-        skills = s.category or ""
+        raw_cat = s.category or ""
+        cat_disp = CATEGORY_DISPLAY_NAMES.get(raw_cat) or legacy_cat_map.get(raw_cat) or raw_cat.replace("_", " ").title()
+        skills = cat_disp
         if s.sub_category:
             skills += f" ({s.sub_category})"
             
         seekers_table.append({
+            "id": s.id,
             "name": s.name,
             "wa_number": s.wa_number,
-            "location": s.district or "Unknown",
-            "skills": skills or "Unknown",
+            "location": (s.district or "Unknown").title(),
+            "skills": skills or "General",
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "total_applications": s.total_applications
         })
@@ -1274,17 +1288,21 @@ async def api_seeker_applications(
     from sqlalchemy import func as sqlfunc
     from app.db.models import Candidate, CandidateApplication, JobVacancy, Recruiter
 
-    # Allow exact match or format edge cases
-    candidate = db.query(Candidate).filter(Candidate.wa_number.like(f"%{wa_number.replace('+','')} ")).first()
-    if not candidate:
-        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    clean_wa = wa_number.replace('+', '').strip()
+    candidate = db.query(Candidate).filter(
+        (Candidate.wa_number == wa_number) |
+        (Candidate.wa_number == clean_wa) |
+        (Candidate.wa_number.like(f"%{clean_wa}%"))
+    ).first()
         
     if not candidate:
         raise HTTPException(status_code=404, detail="Seeker not found")
         
     app_rows = (
         db.query(
+            JobVacancy.job_code,
             JobVacancy.job_title,
+            JobVacancy.district_region,
             Recruiter.company_name,
             CandidateApplication.status,
             CandidateApplication.applied_at
@@ -1302,7 +1320,9 @@ async def api_seeker_applications(
         status_val = a.status.value if hasattr(a.status, "value") else str(a.status)
         
         app_list.append({
+            "job_code": a.job_code,
             "job_title": a.job_title,
+            "district_region": a.district_region,
             "company_name": a.company_name or "Confidential",
             "status": status_val,
             "applied_at": a.applied_at.isoformat() if a.applied_at else None

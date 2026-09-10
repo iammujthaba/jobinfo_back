@@ -4,25 +4,152 @@
 {% block page_sub %}Candidate directory and application history{% endblock %}
 
 {% block content %}
+<style>
+  .chart-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .chart-nav-btn {
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.75rem;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chart-nav-btn:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #0f172a;
+  }
+  .chart-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .chart-page-tag {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+  .chart-canvas-wrap {
+    height: 230px;
+    position: relative;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .seek-main-row {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  .seek-main-row:hover {
+    background-color: #f8fafc;
+  }
+  .seek-main-row.is-expanded {
+    background-color: #f0fdf4;
+  }
+  .seek-chevron {
+    display: inline-block;
+    transition: transform 0.2s ease, color 0.2s ease;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    font-weight: bold;
+  }
+  .seek-main-row.is-expanded .seek-chevron {
+    transform: rotate(90deg);
+    color: #10b981;
+  }
+  .seek-accordion-tr {
+    background: #fafafa;
+  }
+  .seek-accordion-panel {
+    padding: 16px 20px;
+    border-left: 4px solid #10b981;
+    background: #f8fafc;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.03);
+  }
+  .seek-subtable {
+    width: 100%;
+    margin-top: 10px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+  }
+  .seek-subtable th {
+    background: #f1f5f9;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .seek-subtable td {
+    padding: 9px 12px;
+    font-size: 0.8rem;
+    color: #1e293b;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .seek-subtable tr:last-child td {
+    border-bottom: none;
+  }
+  .seek-subtable tr:hover td {
+    background: #f8fafc;
+  }
+</style>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+  <!-- Seekers by Location Module -->
   <div class="card">
-    <div class="card-header"><span class="card-title">Seekers by Location</span></div>
-    <div class="card-body" style="height:220px;position:relative;"><canvas id="c-loc"></canvas></div>
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title">Seekers by Location</span>
+      <div class="chart-header-controls">
+        <span id="loc-page-indicator" class="chart-page-tag">Loading…</span>
+        <button id="btn-loc-prev" class="chart-nav-btn" onclick="navLocationChart(-1)" title="Previous 7" disabled>◀</button>
+        <button id="btn-loc-next" class="chart-nav-btn" onclick="navLocationChart(1)" title="Next 7 (Swipe)">▶</button>
+      </div>
+    </div>
+    <div class="card-body chart-canvas-wrap" id="wrap-loc">
+      <canvas id="c-loc"></canvas>
+    </div>
   </div>
+
+  <!-- Seekers by Job Category Module (Bar Chart replacing Donut) -->
   <div class="card">
-    <div class="card-header"><span class="card-title">Seekers by Job Category</span></div>
-    <div class="card-body" style="height:220px;position:relative;"><canvas id="c-cat"></canvas></div>
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title">Seekers by Job Category</span>
+      <div class="chart-header-controls">
+        <span id="cat-page-indicator" class="chart-page-tag">Loading…</span>
+        <button id="btn-cat-prev" class="chart-nav-btn" onclick="navCategoryChart(-1)" title="Previous 7" disabled>◀</button>
+        <button id="btn-cat-next" class="chart-nav-btn" onclick="navCategoryChart(1)" title="Next 7 (Swipe)">▶</button>
+      </div>
+    </div>
+    <div class="card-body chart-canvas-wrap" id="wrap-cat">
+      <canvas id="c-cat"></canvas>
+    </div>
   </div>
 </div>
 
+<!-- All Job Seekers Module -->
 <div class="card">
-  <div class="card-header">
-    <span class="card-title">All Job Seekers</span>
+  <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="card-title">All Job Seekers</span>
+      <span id="seek-total-badge" class="badge badge-gray" style="font-size:0.75rem;">0 Seekers</span>
+    </div>
     <div class="search-bar" style="width:280px;">
-      <svg width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24">
-        <circle cx="11" cy="11" r="8" />
-        <path d="M21 21l-4.35-4.35" />
-      </svg>
+      <svg width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input type="text" id="search-input" placeholder="Search by name, location, skills…" oninput="filterTable()">
     </div>
   </div>
@@ -30,121 +157,484 @@
     <table>
       <thead>
         <tr>
+          <th style="width:30px;"></th>
           <th>Name</th>
           <th>WhatsApp</th>
           <th>Location</th>
           <th>Skills / Category</th>
-          <th>Applications</th>
+          <th style="text-align:center;">Applications</th>
           <th>Joined</th>
-          <th></th>
         </tr>
       </thead>
       <tbody id="seek-tbody">
-        <tr>
-          <td colspan="7" style="text-align:center;padding:24px;color:#64748b;">Loading…</td>
-        </tr>
+        <tr><td colspan="7" style="text-align:center;padding:24px;color:#64748b;">Loading job seekers…</td></tr>
       </tbody>
     </table>
   </div>
-</div>
-
-<div id="drill-wrap" style="display:none;margin-top:16px;">
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title" id="drill-title">Applications</span>
-      <button class="btn btn-ghost btn-sm" onclick="closeDrill()">Close ✕</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Job Title</th>
-            <th>Company</th>
-            <th>Status</th>
-            <th>Applied</th>
-          </tr>
-        </thead>
-        <tbody id="drill-tbody"></tbody>
-      </table>
-    </div>
+  <!-- Load More Button -->
+  <div id="load-more-wrap" style="display:none;padding:16px;text-align:center;border-top:1px solid #f1f5f9;background:#fafbfc;">
+    <button id="btn-load-more" class="btn btn-primary btn-sm" onclick="loadMoreSeekers()" style="padding:7px 24px;font-size:0.82rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;">
+      <span>Load More Seekers</span>
+      <span id="load-more-counter" style="opacity:0.85;font-weight:normal;font-size:0.75rem;"></span>
+    </button>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  let allRows = [];
+// State management
+let allRows = [];
+let filteredRows = [];
+let visibleCount = 8;
+const PAGE_SIZE = 8;
 
-  document.addEventListener('DOMContentLoaded', async () => {
-    try {
-      const r = await adminFetch('/admin/api/seekers/stats');
-      const d = await r.json();
+// Seeker applications cache { wa_number: applicationsData }
+const applicationsCache = {};
+const expandedSeekers = new Set();
 
-      // Location chart (top 10)
-      const locs = Object.entries(d.chart_data.locations).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      new Chart(document.getElementById('c-loc'), {
-        type: 'bar',
-        data: { labels: locs.map(x => x[0]), datasets: [{ data: locs.map(x => x[1]), backgroundColor: 'rgba(34,197,94,.7)', borderRadius: 4 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, indexAxis: 'y', scales: { x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' } } } }
-      });
+// Location chart state
+let allLocations = [];
+let locationPage = 0;
+let locationChart = null;
 
-      // Category donut
-      const cats = Object.entries(d.chart_data.categories).sort((a, b) => b[1] - a[1]).slice(0, 8);
-      new Chart(document.getElementById('c-cat'), {
-        type: 'doughnut',
-        data: { labels: cats.map(x => x[0]), datasets: [{ data: cats.map(x => x[1]), backgroundColor: ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'], borderWidth: 0 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 10 } } } }
-      });
+// Category chart state
+let allCategories = [];
+let categoryPage = 0;
+let categoryChart = null;
 
-      allRows = d.seekers_table;
-      renderTable(allRows);
-    } catch (e) { console.error(e); }
+const ITEMS_PER_PAGE = 7;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await adminFetch('/admin/api/seekers/stats');
+    const d = await r.json();
+
+    // 1. Setup Location Data (Sorted Descending, 7 per page)
+    allLocations = Object.entries(d.chart_data.locations || {})
+      .map(([label, count]) => ({ label, count: Number(count) }))
+      .sort((a, b) => b.count - a.count);
+    initLocationChart();
+
+    // 2. Setup Category Data (Sorted Descending, Bar chart replacing Donut)
+    allCategories = Object.entries(d.chart_data.categories || {})
+      .map(([label, count]) => ({ label, count: Number(count) }))
+      .sort((a, b) => b.count - a.count);
+    initCategoryChart();
+
+    // 3. Setup Seekers Table (LIFO sorted from backend)
+    allRows = d.seekers_table || [];
+    filteredRows = [...allRows];
+    visibleCount = 8;
+    renderTable();
+
+    // Setup touch swipe listeners for both charts
+    setupSwipeListener('wrap-loc', navLocationChart);
+    setupSwipeListener('wrap-cat', navCategoryChart);
+
+  } catch(e) {
+    console.error('Error loading seekers stats:', e);
+  }
+});
+
+/* ─── Location Chart Logic (Horizontal Bar, Integer X-Axis) ───────────────── */
+function initLocationChart() {
+  const ctx = document.getElementById('c-loc').getContext('2d');
+  const maxPage = Math.max(0, Math.ceil(allLocations.length / ITEMS_PER_PAGE) - 1);
+  const startIdx = locationPage * ITEMS_PER_PAGE;
+  const pageSlice = allLocations.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+  updateLocationNavUI(startIdx, pageSlice.length, allLocations.length, maxPage);
+
+  locationChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: pageSlice.map(x => x.label),
+      datasets: [{
+        label: 'Job Seekers',
+        data: pageSlice.map(x => x.count),
+        backgroundColor: 'rgba(34, 197, 94, 0.75)',
+        hoverBackgroundColor: 'rgba(34, 197, 94, 0.95)',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => items[0].label,
+            label: (ctx) => ` ${ctx.raw} ${ctx.raw === 1 ? 'seeker' : 'seekers'}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            precision: 0,
+            stepSize: 1
+          },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 11 }
+          }
+        }
+      }
+    }
   });
+}
 
-  function renderTable(rows) {
-    const tbody = document.getElementById('seek-tbody');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#64748b;">No seekers found</td></tr>'; return; }
-    tbody.innerHTML = rows.map(s => `
-    <tr>
-      <td><strong>${esc(s.name || '—')}</strong></td>
-      <td style="font-family:monospace;font-size:.75rem;">${esc(s.wa_number)}</td>
-      <td>${esc(s.location || '—')}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.skills)}">${esc(s.skills || '—')}</td>
-      <td><strong>${s.total_applications}</strong></td>
-      <td style="font-size:.75rem;color:#64748b;">${fmtDate(s.created_at)}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="drillDown('${esc(s.wa_number)}','${esc(s.name || s.wa_number)}')">View Apps</button></td>
-    </tr>`).join('');
+function navLocationChart(dir) {
+  const maxPage = Math.max(0, Math.ceil(allLocations.length / ITEMS_PER_PAGE) - 1);
+  const newPage = locationPage + dir;
+  if (newPage < 0 || newPage > maxPage) return;
+  locationPage = newPage;
+
+  const startIdx = locationPage * ITEMS_PER_PAGE;
+  const pageSlice = allLocations.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+  updateLocationNavUI(startIdx, pageSlice.length, allLocations.length, maxPage);
+
+  locationChart.data.labels = pageSlice.map(x => x.label);
+  locationChart.data.datasets[0].data = pageSlice.map(x => x.count);
+  locationChart.update();
+}
+
+function updateLocationNavUI(startIdx, sliceLen, total, maxPage) {
+  const endIdx = sliceLen > 0 ? startIdx + sliceLen : 0;
+  const ind = document.getElementById('loc-page-indicator');
+  if (ind) ind.textContent = total > 0 ? `${startIdx + 1}–${endIdx} of ${total}` : '0 of 0';
+
+  const btnPrev = document.getElementById('btn-loc-prev');
+  const btnNext = document.getElementById('btn-loc-next');
+  if (btnPrev) btnPrev.disabled = locationPage <= 0;
+  if (btnNext) btnNext.disabled = locationPage >= maxPage;
+}
+
+/* ─── Category Chart Logic (Bar Chart replacing Donut) ────────────────────── */
+function initCategoryChart() {
+  const ctx = document.getElementById('c-cat').getContext('2d');
+  const maxPage = Math.max(0, Math.ceil(allCategories.length / ITEMS_PER_PAGE) - 1);
+  const startIdx = categoryPage * ITEMS_PER_PAGE;
+  const pageSlice = allCategories.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+  updateCategoryNavUI(startIdx, pageSlice.length, allCategories.length, maxPage);
+
+  categoryChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: pageSlice.map(x => x.label),
+      datasets: [{
+        label: 'Job Seekers',
+        data: pageSlice.map(x => x.count),
+        backgroundColor: 'rgba(14, 165, 233, 0.75)',
+        hoverBackgroundColor: 'rgba(14, 165, 233, 0.95)',
+        borderRadius: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => items[0].label,
+            label: (ctx) => ` ${ctx.raw} ${ctx.raw === 1 ? 'seeker' : 'seekers'}`
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            precision: 0,
+            stepSize: 1
+          },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 10 },
+            callback: function(val) {
+              const label = this.getLabelForValue(val) || '';
+              return label.length > 13 ? label.slice(0, 12) + '…' : label;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function navCategoryChart(dir) {
+  const maxPage = Math.max(0, Math.ceil(allCategories.length / ITEMS_PER_PAGE) - 1);
+  const newPage = categoryPage + dir;
+  if (newPage < 0 || newPage > maxPage) return;
+  categoryPage = newPage;
+
+  const startIdx = categoryPage * ITEMS_PER_PAGE;
+  const pageSlice = allCategories.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+  updateCategoryNavUI(startIdx, pageSlice.length, allCategories.length, maxPage);
+
+  categoryChart.data.labels = pageSlice.map(x => x.label);
+  categoryChart.data.datasets[0].data = pageSlice.map(x => x.count);
+  categoryChart.update();
+}
+
+function updateCategoryNavUI(startIdx, sliceLen, total, maxPage) {
+  const endIdx = sliceLen > 0 ? startIdx + sliceLen : 0;
+  const ind = document.getElementById('cat-page-indicator');
+  if (ind) ind.textContent = total > 0 ? `${startIdx + 1}–${endIdx} of ${total}` : '0 of 0';
+
+  const btnPrev = document.getElementById('btn-cat-prev');
+  const btnNext = document.getElementById('btn-cat-next');
+  if (btnPrev) btnPrev.disabled = categoryPage <= 0;
+  if (btnNext) btnNext.disabled = categoryPage >= maxPage;
+}
+
+/* ─── Touch Swipe Gesture Support ─────────────────────────────────────────── */
+function setupSwipeListener(elemId, callback) {
+  const elem = document.getElementById(elemId);
+  if (!elem) return;
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  elem.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  elem.addEventListener('touchend', (e) => {
+    if (e.changedTouches.length === 1) {
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const dx = touchEndX - touchStartX;
+      const dy = touchEndY - touchStartY;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) {
+          callback(1); // Swipe left = next
+        } else {
+          callback(-1); // Swipe right = prev
+        }
+      }
+    }
+  }, { passive: true });
+}
+
+/* ─── All Job Seekers Table Logic ─────────────────────────────────────────── */
+function renderTable() {
+  const tbody = document.getElementById('seek-tbody');
+  const totalBadge = document.getElementById('seek-total-badge');
+  if (totalBadge) totalBadge.textContent = `${filteredRows.length} Seekers`;
+
+  if (!filteredRows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:#64748b;">No job seekers found matching your search.</td></tr>';
+    document.getElementById('load-more-wrap').style.display = 'none';
+    return;
   }
 
-  function filterTable() {
-    const q = document.getElementById('search-input').value.toLowerCase();
-    renderTable(allRows.filter(s =>
+  const rowsToShow = filteredRows.slice(0, visibleCount);
+  let html = '';
+
+  rowsToShow.forEach((s, idx) => {
+    const safeWa = esc(s.wa_number);
+    const cleanWaId = s.wa_number.replace(/[^a-zA-Z0-9]/g, '_');
+    const isExp = expandedSeekers.has(s.wa_number);
+
+    html += `
+      <tr class="seek-main-row ${isExp ? 'is-expanded' : ''}" id="row-${cleanWaId}" onclick="toggleSeekerRow('${safeWa}', '${cleanWaId}')">
+        <td style="text-align:center;padding-right:0;">
+          <span class="seek-chevron" id="chevron-${cleanWaId}">▸</span>
+        </td>
+        <td>
+          <strong style="color:#0f172a;cursor:pointer;">${esc(s.name || '—')}</strong>
+          <div style="font-size:0.7rem;color:#94a3b8;">Click to view applied jobs</div>
+        </td>
+        <td style="font-family:monospace;font-size:.75rem;color:#334155;">${safeWa}</td>
+        <td style="font-size:0.8rem;">${esc(s.location || '—')}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.8rem;color:#475569;" title="${esc(s.skills)}">
+          ${esc(s.skills || '—')}
+        </td>
+        <td style="text-align:center;">
+          <strong style="font-size:0.85rem;color:${s.total_applications > 0 ? '#10b981' : '#64748b'};">${s.total_applications || 0}</strong>
+        </td>
+        <td style="font-size:.75rem;color:#64748b;white-space:nowrap;">${fmtDate(s.created_at)}</td>
+      </tr>
+      <tr class="seek-accordion-tr" id="acc-${cleanWaId}" style="display:${isExp ? 'table-row' : 'none'};">
+        <td colspan="7" style="padding:0;">
+          <div class="seek-accordion-panel" id="panel-${cleanWaId}">
+            ${isExp && applicationsCache[s.wa_number] ? renderApplicationsSubtable(s, applicationsCache[s.wa_number]) : '<div style="text-align:center;padding:12px;color:#64748b;">Loading applications…</div>'}
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+
+  // Load More Button Visibility and Label
+  const loadMoreWrap = document.getElementById('load-more-wrap');
+  const counterSpan = document.getElementById('load-more-counter');
+  if (visibleCount < filteredRows.length) {
+    loadMoreWrap.style.display = 'block';
+    if (counterSpan) {
+      counterSpan.textContent = `(Showing ${Math.min(visibleCount, filteredRows.length)} of ${filteredRows.length})`;
+    }
+  } else {
+    loadMoreWrap.style.display = 'none';
+  }
+}
+
+function loadMoreSeekers() {
+  visibleCount += PAGE_SIZE;
+  renderTable();
+}
+
+function filterTable() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  visibleCount = 8; // Reset to initial 8 on search
+
+  if (!q) {
+    filteredRows = [...allRows];
+  } else {
+    filteredRows = allRows.filter(s =>
       (s.name || '').toLowerCase().includes(q) ||
       (s.location || '').toLowerCase().includes(q) ||
       (s.skills || '').toLowerCase().includes(q) ||
       (s.wa_number || '').includes(q)
-    ));
+    );
+  }
+  renderTable();
+}
+
+/* ─── Expandable Seeker Accordion Row ─────────────────────────────────────── */
+async function toggleSeekerRow(wa, cleanWaId) {
+  const row = document.getElementById(`row-${cleanWaId}`);
+  const accRow = document.getElementById(`acc-${cleanWaId}`);
+  const panel = document.getElementById(`panel-${cleanWaId}`);
+
+  if (!accRow || !panel) return;
+
+  const isCurrentlyExpanded = expandedSeekers.has(wa);
+
+  if (isCurrentlyExpanded) {
+    // Collapse
+    expandedSeekers.delete(wa);
+    row.classList.remove('is-expanded');
+    accRow.style.display = 'none';
+  } else {
+    // Expand
+    expandedSeekers.add(wa);
+    row.classList.add('is-expanded');
+    accRow.style.display = 'table-row';
+
+    // Find seeker metadata
+    const seeker = allRows.find(s => s.wa_number === wa) || {};
+
+    if (applicationsCache[wa]) {
+      panel.innerHTML = renderApplicationsSubtable(seeker, applicationsCache[wa]);
+    } else {
+      panel.innerHTML = '<div style="text-align:center;padding:16px;color:#64748b;"><svg style="animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px;" width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#cbd5e1" stroke-width="4"/><path fill="#10b981" d="M4 12a8 8 0 018-8v8z"/></svg> Loading applications submitted by this seeker…</div>';
+      try {
+        const r = await adminFetch(`/admin/api/seekers/${encodeURIComponent(wa)}/applications`);
+        const d = await r.json();
+        applicationsCache[wa] = d.applications || [];
+        panel.innerHTML = renderApplicationsSubtable(seeker, applicationsCache[wa]);
+      } catch (err) {
+        console.error(err);
+        panel.innerHTML = '<div style="color:#ef4444;padding:12px;text-align:center;">Failed to load applications for this job seeker.</div>';
+      }
+    }
+  }
+}
+
+function renderApplicationsSubtable(seeker, applications) {
+  const seekerName = esc(seeker.name || 'This Candidate');
+  const count = applications.length;
+
+  if (count === 0) {
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:0.85rem;font-weight:700;color:#1e293b;">📄 Applications submitted by ${seekerName}</span>
+        <span class="badge badge-gray" style="font-size:0.75rem;">0 Applications</span>
+      </div>
+      <div style="padding:14px;background:#ffffff;border:1px dashed #cbd5e1;border-radius:6px;text-align:center;color:#64748b;font-size:0.82rem;">
+        No job applications have been submitted by this seeker yet.
+      </div>
+    `;
   }
 
-  async function drillDown(wa, name) {
-    document.getElementById('drill-wrap').style.display = 'block';
-    document.getElementById('drill-title').textContent = name + ' — Applications';
-    const tbody = document.getElementById('drill-tbody');
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;">Loading…</td></tr>';
-    try {
-      const r = await adminFetch(`/admin/api/seekers/${encodeURIComponent(wa)}/applications`);
-      const d = await r.json();
-      const sc = { applied: 'badge-blue', shortlisted: 'badge-green', rejected: 'badge-red', hired: 'badge-purple' };
-      tbody.innerHTML = d.applications.length ? d.applications.map(a =>
-        `<tr><td><strong>${esc(a.job_title)}</strong></td>
-       <td>${esc(a.company_name)}</td>
-       <td><span class="badge ${sc[a.status] || 'badge-gray'}">${esc(a.status)}</span></td>
-       <td style="font-size:.75rem;color:#64748b;">${fmtDate(a.applied_at)}</td></tr>`).join('')
-        : '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;">No applications yet</td></tr>';
-    } catch (e) { tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;padding:16px;">Error loading data.</td></tr>'; }
-    document.getElementById('drill-wrap').scrollIntoView({ behavior: 'smooth' });
-  }
+  const sc = {
+    applied: 'badge-blue',
+    shortlisted: 'badge-green',
+    rejected: 'badge-red',
+    hired: 'badge-purple'
+  };
 
-  function closeDrill() { document.getElementById('drill-wrap').style.display = 'none'; }
+  const rowsHtml = applications.map(a => {
+    const badgeCls = sc[a.status] || 'badge-gray';
+
+    return `
+      <tr>
+        <td style="font-family:monospace;font-weight:600;color:#475569;white-space:nowrap;">
+          ${esc(a.job_code || '—')}
+        </td>
+        <td>
+          <strong style="color:#0f172a;">${esc(a.job_title)}</strong>
+        </td>
+        <td style="color:#475569;font-size:0.8rem;">
+          ${esc(a.company_name)}
+        </td>
+        <td style="color:#64748b;font-size:0.78rem;">
+          ${esc(a.district_region || '—')}
+        </td>
+        <td>
+          <span class="badge ${badgeCls}" style="font-size:0.72rem;text-transform:capitalize;">${esc(a.status)}</span>
+        </td>
+        <td style="font-size:.75rem;color:#64748b;white-space:nowrap;">
+          ${fmtDate(a.applied_at)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <span style="font-size:0.85rem;font-weight:700;color:#1e293b;">
+        📄 Applications submitted by ${seekerName} (${count})
+      </span>
+      <span style="font-size:0.75rem;color:#64748b;">
+        Total Applications: <strong style="color:#10b981;">${count}</strong>
+      </span>
+    </div>
+    <table class="seek-subtable">
+      <thead>
+        <tr>
+          <th style="width:90px;">Job Code</th>
+          <th>Job Title</th>
+          <th>Company</th>
+          <th>District / Region</th>
+          <th style="width:100px;">Status</th>
+          <th style="width:110px;">Applied Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+  `;
+}
 </script>
 {% endblock %}
