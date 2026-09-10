@@ -1567,6 +1567,7 @@ async def api_dual_users_stats(
         db.query(
             Candidate.wa_number,
             Candidate.name,
+            func.max(Candidate.created_at).label("created_at"),
             func.count(CandidateApplication.id).label("app_count")
         )
         .outerjoin(CandidateApplication, Candidate.id == CandidateApplication.candidate_id)
@@ -1578,6 +1579,7 @@ async def api_dual_users_stats(
         db.query(
             Recruiter.wa_number,
             Recruiter.company_name,
+            func.max(Recruiter.created_at).label("rec_created_at"),
             func.count(JobVacancy.id).label("vac_count")
         )
         .outerjoin(JobVacancy, Recruiter.id == JobVacancy.recruiter_id)
@@ -1589,11 +1591,14 @@ async def api_dual_users_stats(
         db.query(
             cand_subq.c.wa_number,
             cand_subq.c.name,
+            cand_subq.c.created_at,
             cand_subq.c.app_count,
             rec_subq.c.company_name,
+            rec_subq.c.rec_created_at,
             rec_subq.c.vac_count
         )
         .join(rec_subq, cand_subq.c.wa_number == rec_subq.c.wa_number)
+        .order_by(cand_subq.c.created_at.desc())
         .all()
     )
     
@@ -1616,12 +1621,14 @@ async def api_dual_users_stats(
         else:
             buckets["Balanced"] += 1
             
+        join_date = r.created_at or r.rec_created_at
         table_data.append({
             "wa_number": r.wa_number,
             "candidate_name": r.name,
             "company_name": r.company_name,
             "vacancies_posted": vacs,
-            "applications_sent": apps
+            "applications_sent": apps,
+            "created_at": join_date.isoformat() if join_date else None
         })
         
     return {
