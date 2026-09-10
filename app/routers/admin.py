@@ -17,7 +17,8 @@ import hashlib
 import hmac
 import secrets
 import logging
-from datetime import datetime, timezone, timedelta
+from typing import Optional
+from datetime import datetime, timezone, timedelta, date
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -331,6 +332,19 @@ async def page_leads(
     )
 
 
+# ─── User Dynamics page ───────────────────────────────────────────────────────
+
+@router.get("/user-dynamics", response_class=HTMLResponse)
+async def page_user_dynamics(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/user_dynamics.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
 # ─── Dual Users page ──────────────────────────────────────────────────────────
 
 @router.get("/dual-users", response_class=HTMLResponse)
@@ -598,151 +612,281 @@ async def api_share_vacancy_to_channel(
 
 @router.get("/api/analytics")
 async def api_analytics(
+    period: str = "last_30_days",
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
     """
     Returns comprehensive platform analytics for the admin dashboard.
+    Supports time periods: last_30_days, this_month, prev_month, prev_month_2, this_week, prev_week, prev_week_2.
     """
-    # 👇 ADDED 'case' to this import
-    from sqlalchemy import func as sqlfunc, case
+    from sqlalchemy import func as sqlfunc
     from app.db.models import (
-        Candidate, CandidateApplication, JobVacancy, Recruiter
+        Candidate, CandidateApplication, JobVacancy, Recruiter, ConversationState
     )
-    from datetime import date, timedelta
 
     # ── Platform totals ──────────────────────────────────────────────────────
-    total_vacancies   = db.query(JobVacancy).count()
-    total_recruiters  = db.query(Recruiter).count()
-    total_candidates  = db.query(Candidate).count()
+    total_recruiters = db.query(Recruiter).count()
+    total_candidates = db.query(Candidate).count()
     total_applications = db.query(CandidateApplication).count()
 
-    pending_count  = db.query(JobVacancy).filter_by(status="pending").count()
-    approved_count = db.query(JobVacancy).filter_by(status="approved").count()
-    rejected_count = db.query(JobVacancy).filter_by(status="rejected").count()
+    # Unregistered users: bot conversations not registered as Candidate or Recruiter
+    seek_wa_q = db.query(Candidate.wa_number)
+    rec_wa_q = db.query(Recruiter.wa_number)
+    unregistered_users = db.query(ConversationState).filter(
+        ~ConversationState.wa_number.in_(seek_wa_q),
+        ~ConversationState.wa_number.in_(rec_wa_q)
+    ).count()
 
-    # ── Daily vacancy submissions – last 30 days ─────────────────────────────
+    # ── Vacancy status counts ────────────────────────────────────────────────
+    pending_count = db.query(JobVacancy).filter_by(status="pending").count()
+    approved_count = db.query(JobVacancy).filter(JobVacancy.status == "approved", JobVacancy.is_active == True).count()
+    stopped_count = db.query(JobVacancy).filter(JobVacancy.is_active == False).count()
+    total_vac_status = pending_count + approved_count + stopped_count
+
+    # ── Date calculation for selected period ─────────────────────────────────
     today = date.today()
-    period_start = today - timedelta(days=29)
 
-    vacancy_daily_raw = (
+    if period == "this_month":
+        start_date = date(today.year, today.month, 1)
+        if today.month == 12:
+            next_m = date(today.year + 1, 1, 1)
+        else:
+            next_m = date(today.year, today.month + 1, 1)
+        end_date = next_m - timedelta(days=1)
+        period_label = today.strftime("%B %Y")
+    elif period == "prev_month":
+        first_this_month = date(today.year, today.month, 1)
+        end_date = first_this_month - timedelta(days=1)
+        start_date = date(end_date.year, end_date.month, 1)
+        period_label = end_date.strftime("%B %Y")
+    elif period == "prev_month_2":
+        first_this_month = date(today.year, today.month, 1)
+        prev_m_end = first_this_month - timedelta(days=1)
+        prev_m_start = date(prev_m_end.year, prev_m_end.month, 1)
+        end_date = prev_m_start - timedelta(days=1)
+        start_date = date(end_date.year, end_date.month, 1)
+        period_label = end_date.strftime("%B %Y")
+    elif period == "this_week":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = start_date + timedelta(days=6)
+        period_label = f"This Week ({start_date.strftime('%b %d')} - {end_date.strftime('%b %d')})"
+    elif period == "prev_week":
+        this_mon = today - timedelta(days=today.weekday())
+        start_date = this_mon - timedelta(days=7)
+        end_date = start_date + timedelta(days=6)
+        period_label = f"Previous Week ({start_date.strftime('%b %d')} - {end_date.strftime('%b %d')})"
+    elif period == "prev_week_2":
+        this_mon = today - timedelta(days=today.weekday())
+        start_date = this_mon - timedelta(days=14)
+        end_date = start_date + timedelta(days=6)
+        period_label = f"Week Before Prev ({start_date.strftime('%b %d')} - {end_date.strftime('%b %d')})"
+    else:  # "last_30_days" (default: rolling active 30-day window)
+        period = "last_30_days"
+        start_date = today - timedelta(days=29)
+        end_date = today
+        period_label = f"Last 30 Days ({start_date.strftime('%b %d')} - {end_date.strftime('%b %d')})"
+
+    num_days = (end_date - start_date).days + 1
+    dates = [start_date + timedelta(days=i) for i in range(num_days)]
+    next_day = end_date + timedelta(days=1)
+
+    # 1. Daily vacancies
+    vac_daily_raw = (
         db.query(
             sqlfunc.date(JobVacancy.created_at).label("day"),
             sqlfunc.count(JobVacancy.id).label("cnt")
         )
-        .filter(JobVacancy.created_at >= period_start)
+        .filter(JobVacancy.created_at >= start_date, JobVacancy.created_at < next_day)
         .group_by(sqlfunc.date(JobVacancy.created_at))
         .all()
     )
-    vac_by_day = {str(row.day): row.cnt for row in vacancy_daily_raw}
-    vacancy_daily = [
-        {"date": str(period_start + timedelta(days=i)), "count": vac_by_day.get(str(period_start + timedelta(days=i)), 0)}
-        for i in range(30)
-    ]
+    vac_by_day = {str(row.day): row.cnt for row in vac_daily_raw}
+    vacancy_daily = [{"date": str(d), "day": d.day, "count": vac_by_day.get(str(d), 0)} for d in dates]
 
-    # ── Daily applications – last 30 days ────────────────────────────────────
+    # 2. Daily applications
     app_daily_raw = (
         db.query(
             sqlfunc.date(CandidateApplication.applied_at).label("day"),
             sqlfunc.count(CandidateApplication.id).label("cnt")
         )
-        .filter(CandidateApplication.applied_at >= period_start)
+        .filter(CandidateApplication.applied_at >= start_date, CandidateApplication.applied_at < next_day)
         .group_by(sqlfunc.date(CandidateApplication.applied_at))
         .all()
     )
     app_by_day = {str(row.day): row.cnt for row in app_daily_raw}
-    applications_daily = [
-        {"date": str(period_start + timedelta(days=i)), "count": app_by_day.get(str(period_start + timedelta(days=i)), 0)}
-        for i in range(30)
-    ]
+    applications_daily = [{"date": str(d), "day": d.day, "count": app_by_day.get(str(d), 0)} for d in dates]
 
-    # ── Vacancies per recruiter (top 15) ─────────────────────────────────────
-    # 👇 FIXED: Used 'case()' instead of 'sqlfunc.case()'
-    recruiter_vac_rows = (
-        db.query(
-            Recruiter.company_name.label("company_name"),
-            Recruiter.wa_number.label("wa_number"),
-            sqlfunc.count(JobVacancy.id).label("total"),
-            sqlfunc.sum(case((JobVacancy.status == "approved", 1), else_=0)).label("approved"),
-            sqlfunc.sum(case((JobVacancy.status == "pending", 1), else_=0)).label("pending"),
-            sqlfunc.sum(case((JobVacancy.status == "rejected", 1), else_=0)).label("rejected"),
-        )
-        .join(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
-        .group_by(Recruiter.id)
-        .order_by(sqlfunc.count(JobVacancy.id).desc())
-        .limit(15)
-        .all()
-    )
-    vacancies_per_recruiter = [
-        {
-            "recruiter": f"{r.company_name} ({r.wa_number})" if r.company_name else str(r.wa_number),
-            "total": r.total, 
-            "approved": int(r.approved or 0),
-            "pending": int(r.pending or 0), 
-            "rejected": int(r.rejected or 0),
-        }
-        for r in recruiter_vac_rows
-    ]
-
-    # ── Applications per vacancy (top 15 by apps) ────────────────────────────
-    top_jobs_rows = (
-        db.query(
-            JobVacancy.job_title.label("job_title"),
-            JobVacancy.job_code.label("job_code"),
-            JobVacancy.district_region.label("district_region"),
-            JobVacancy.status.label("status"),
-            sqlfunc.count(CandidateApplication.id).label("apps"),
-        )
-        .outerjoin(CandidateApplication, CandidateApplication.vacancy_id == JobVacancy.id)
-        .group_by(JobVacancy.id)
-        .order_by(sqlfunc.count(CandidateApplication.id).desc())
-        .limit(15)
-        .all()
-    )
-    top_jobs = [
-        {
-            "title": r.job_title,
-            "job_code": r.job_code,
-            "location": r.district_region,
-            "status": r.status if r.status else "",
-            "applications": r.apps,
-        }
-        for r in top_jobs_rows
-    ]
-
-    # ── Recruiter registration trend – last 30 days ──────────────────────────
+    # 3. Daily recruiters
     rec_daily_raw = (
         db.query(
             sqlfunc.date(Recruiter.created_at).label("day"),
             sqlfunc.count(Recruiter.id).label("cnt")
         )
-        .filter(Recruiter.created_at >= period_start)
+        .filter(Recruiter.created_at >= start_date, Recruiter.created_at < next_day)
         .group_by(sqlfunc.date(Recruiter.created_at))
         .all()
     )
     rec_by_day = {str(row.day): row.cnt for row in rec_daily_raw}
-    recruiters_daily = [
-        {"date": str(period_start + timedelta(days=i)), "count": rec_by_day.get(str(period_start + timedelta(days=i)), 0)}
-        for i in range(30)
-    ]
+    recruiters_daily = [{"date": str(d), "day": d.day, "count": rec_by_day.get(str(d), 0)} for d in dates]
+
+    # 4. Daily job seekers
+    seek_daily_raw = (
+        db.query(
+            sqlfunc.date(Candidate.created_at).label("day"),
+            sqlfunc.count(Candidate.id).label("cnt")
+        )
+        .filter(Candidate.created_at >= start_date, Candidate.created_at < next_day)
+        .group_by(sqlfunc.date(Candidate.created_at))
+        .all()
+    )
+    seek_by_day = {str(row.day): row.cnt for row in seek_daily_raw}
+    seekers_daily = [{"date": str(d), "day": d.day, "count": seek_by_day.get(str(d), 0)} for d in dates]
+
+    period_totals = {
+        "vacancies": sum(x["count"] for x in vacancy_daily),
+        "applications": sum(x["count"] for x in applications_daily),
+        "recruiters": sum(x["count"] for x in recruiters_daily),
+        "seekers": sum(x["count"] for x in seekers_daily),
+    }
 
     return {
         "totals": {
-            "vacancies": total_vacancies,
             "recruiters": total_recruiters,
             "candidates": total_candidates,
+            "unregistered": unregistered_users,
             "applications": total_applications,
         },
         "vacancy_status": {
             "pending": pending_count,
             "approved": approved_count,
-            "rejected": rejected_count,
+            "stopped": stopped_count,
+            "total": total_vac_status,
         },
+        "period": period,
+        "period_label": period_label,
+        "labels": [d.day for d in dates],
         "vacancy_daily": vacancy_daily,
         "applications_daily": applications_daily,
         "recruiters_daily": recruiters_daily,
-        "vacancies_per_recruiter": vacancies_per_recruiter,
-        "top_jobs_by_applications": top_jobs,
+        "seekers_daily": seekers_daily,
+        "period_totals": period_totals,
+    }
+
+
+# ─── Vacanciesys (Approved & Stopped Vacancies with LIFO, Filters & Apps) ──────
+
+@router.get("/api/vacanciesys")
+async def api_vacanciesys(
+    limit: int = 8,
+    offset: int = 0,
+    district: Optional[str] = None,
+    category: Optional[str] = None,
+    sort_by: str = "lifo",
+    min_apps: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Returns Approved and Stopped vacancies in LIFO (newest first) or filtered by application count.
+    Supports district, category, application thresholds, and pagination for 'Load More'.
+    """
+    from sqlalchemy import func as sqlfunc, or_
+    from app.db.models import JobVacancy, CandidateApplication
+
+    base_filter = or_(JobVacancy.status == "approved", JobVacancy.is_active == False)
+
+    # Subquery for application counts per vacancy
+    app_subq = (
+        db.query(
+            CandidateApplication.vacancy_id.label("vac_id"),
+            sqlfunc.count(CandidateApplication.id).label("apps_cnt"),
+        )
+        .group_by(CandidateApplication.vacancy_id)
+        .subquery()
+    )
+
+    query = (
+        db.query(
+            JobVacancy,
+            sqlfunc.coalesce(app_subq.c.apps_cnt, 0).label("apps_count"),
+        )
+        .outerjoin(app_subq, app_subq.c.vac_id == JobVacancy.id)
+        .filter(base_filter)
+    )
+
+    if district:
+        query = query.filter(JobVacancy.district_region == district)
+    if category:
+        query = query.filter(JobVacancy.job_category == category)
+    if min_apps is not None and min_apps > 0:
+        query = query.filter(sqlfunc.coalesce(app_subq.c.apps_cnt, 0) >= min_apps)
+
+    total_count = query.count()
+
+    if sort_by == "apps_desc":
+        query = query.order_by(sqlfunc.coalesce(app_subq.c.apps_cnt, 0).desc(), JobVacancy.created_at.desc())
+    elif sort_by == "apps_asc":
+        query = query.order_by(sqlfunc.coalesce(app_subq.c.apps_cnt, 0).asc(), JobVacancy.created_at.desc())
+    else:  # "lifo" - newest first
+        query = query.order_by(JobVacancy.created_at.desc())
+
+    rows = query.offset(offset).limit(limit).all()
+
+    # Distinct districts & categories for filter selectors
+    districts = [
+        r[0] for r in db.query(JobVacancy.district_region)
+        .filter(base_filter)
+        .distinct()
+        .order_by(JobVacancy.district_region)
+        .all()
+        if r[0]
+    ]
+    categories = [
+        r[0] for r in db.query(JobVacancy.job_category)
+        .filter(base_filter)
+        .distinct()
+        .order_by(JobVacancy.job_category)
+        .all()
+        if r[0]
+    ]
+
+    items = []
+    for v, apps in rows:
+        rec = v.recruiter
+        items.append({
+            "id": v.id,
+            "job_code": v.job_code,
+            "job_title": v.job_title,
+            "job_category": v.job_category,
+            "district_region": v.district_region,
+            "exact_location": v.exact_location,
+            "status": "stopped" if not v.is_active else v.status,
+            "is_active": v.is_active,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "approved_at": v.approved_at.isoformat() if v.approved_at else None,
+            "stopped_at": v.stopped_at.isoformat() if v.stopped_at else None,
+            "job_mode": v.job_mode,
+            "experience_required": v.experience_required,
+            "salary_range": v.salary_range,
+            "job_description": v.job_description or "",
+            "applications": int(apps or 0),
+            "recruiter": {
+                "id": rec.id if rec else None,
+                "company_name": rec.company_name if rec else "Unknown",
+                "wa_number": rec.wa_number if rec else "",
+                "business_type": rec.business_type if rec else "",
+                "location": rec.location if rec else "",
+                "business_contact": rec.business_contact if rec else "",
+            } if rec else None,
+        })
+
+    return {
+        "items": items,
+        "total": total_count,
+        "has_more": (offset + limit) < total_count,
+        "districts": districts,
+        "categories": categories,
     }
 
 

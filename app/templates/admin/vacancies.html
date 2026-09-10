@@ -1,4 +1,4 @@
-﻿{% extends "admin/base.html" %}
+{% extends "admin/base.html" %}
 {% block title %}Vacancies{% endblock %}
 {% block page_title %}Vacancies{% endblock %}
 {% block page_sub %}Review and manage all job postings{% endblock %}
@@ -432,7 +432,15 @@ function switchTab(tab, el) {
 // â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 document.addEventListener('DOMContentLoaded', () => {
-  loadVacancies('pending');
+  const urlParams = new URLSearchParams(window.location.search);
+  const reqTab = urlParams.get('tab') || 'pending';
+  const tabBtn = document.querySelector(`.tab[onclick*="'${reqTab}'"]`) || document.querySelector('.tab');
+  if (tabBtn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tabBtn.classList.add('active');
+  }
+  loadVacancies(reqTab);
+
   // Pre-fetch stopped count to show badge immediately
   adminFetch('/admin/api/vacancies/stopped').then(r => r.json()).then(d => {
     const badge = document.getElementById('stopped-badge');

@@ -1,148 +1,770 @@
 {% extends "admin/base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
-{% block page_sub %}Platform overview{% endblock %}
+{% block page_sub %}Platform overview & live activity{% endblock %}
+
+{% block head %}
+<style>
+  .clickable-stat {
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    user-select: none;
+  }
+
+  .clickable-stat:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+    border-color: #cbd5e1;
+  }
+
+  .stat-arrow {
+    font-size: .95rem;
+    color: #94a3b8;
+    transition: color .15s, transform .15s;
+  }
+
+  .clickable-stat:hover .stat-arrow {
+    color: var(--text);
+    transform: scale(1.15);
+  }
+
+  .status-link-btn {
+    padding: 12px 6px;
+    text-align: center;
+    cursor: pointer;
+    transition: background .15s;
+    user-select: none;
+  }
+
+  .status-link-btn:hover {
+    background: #f8fafc;
+  }
+
+  .var-toggle-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: .75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .15s ease;
+    user-select: none;
+  }
+
+  .var-toggle-pill:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+  }
+
+  .var-toggle-pill.inactive {
+    opacity: 0.45;
+    background: #f1f5f9;
+    border-style: dashed;
+  }
+
+  .var-dot-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .vsys-row {
+    cursor: pointer;
+    transition: background .15s;
+  }
+
+  .vsys-row:hover {
+    background: #f8fafc;
+  }
+
+  .vsys-chevron {
+    display: inline-block;
+    transition: transform .2s ease;
+    color: #94a3b8;
+    font-size: .75rem;
+  }
+
+  .vsys-row.expanded .vsys-chevron {
+    transform: rotate(180deg);
+    color: var(--accent);
+  }
+
+  .vsys-detail-panel {
+    display: none;
+  }
+
+  .vsys-detail-panel.open {
+    display: table-row;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="stat-grid">
-  <div class="stat-card accent">
-    <div class="val" id="s-vac">—</div>
-    <div class="lbl">Total Vacancies</div>
-  </div>
-  <div class="stat-card blue">
-    <div class="val" id="s-rec">—</div>
+<!-- Top 4 Stat Cards -->
+<div class="stat-grid" style="margin-bottom:24px;">
+  <!-- 1. Recruiters -->
+  <div class="stat-card clickable-stat blue" onclick="window.location.href='/admin/recruiters'" title="View Recruiters">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="val" id="s-rec">—</div>
+      <span class="stat-arrow">&#8599;</span>
+    </div>
     <div class="lbl">Recruiters</div>
   </div>
-  <div class="stat-card green">
-    <div class="val" id="s-can">—</div>
+
+  <!-- 2. Job Seekers -->
+  <div class="stat-card clickable-stat green" onclick="window.location.href='/admin/seekers'" title="View Job Seekers">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="val" id="s-can">—</div>
+      <span class="stat-arrow">&#8599;</span>
+    </div>
     <div class="lbl">Job Seekers</div>
   </div>
-  <div class="stat-card amber">
-    <div class="val" id="s-app">—</div>
+
+  <!-- 3. Unregistered Users -->
+  <div class="stat-card clickable-stat amber" onclick="window.location.href='/admin/user-dynamics'"
+    title="View User Dynamics">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="val" id="s-unreg">—</div>
+      <span class="stat-arrow">&#8599;</span>
+    </div>
+    <div class="lbl">Unregistered Users</div>
+  </div>
+
+  <!-- 4. Applications -->
+  <div class="stat-card clickable-stat accent" onclick="scrollToVacanciesys()" title="Scroll down to Vacanciesys">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="val" id="s-app">—</div>
+      <span class="stat-arrow">&#8595;</span>
+    </div>
     <div class="lbl">Applications</div>
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:280px 1fr;gap:16px;margin-bottom:20px;">
-  <div class="card">
-    <div class="card-header"><span class="card-title">Vacancy Status</span></div>
-    <div class="card-body" style="height:220px;position:relative;">
-      <canvas id="c-status"></canvas>
+<!-- Middle Row: Vacancy Status & Activity Trend -->
+<div style="display:grid;grid-template-columns:300px 1fr;gap:16px;margin-bottom:24px;">
+
+  <!-- Vacancy Status Card -->
+  <div class="card" style="display:flex;flex-direction:column;">
+    <div class="card-header">
+      <span class="card-title">Vacancy Status</span>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid #e2e8f0;">
-      <div style="padding:12px;text-align:center;border-right:1px solid #e2e8f0;">
-        <div style="font-size:1.3rem;font-weight:700;color:#f59e0b;" id="cnt-pending">—</div>
-        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Pending</div>
+    <div class="card-body"
+      style="height:230px;position:relative;display:flex;align-items:center;justify-content:center;">
+      <canvas id="c-status"></canvas>
+      <!-- Center total inside donut -->
+      <div
+        style="position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+        <div style="font-size:1.65rem;font-weight:700;line-height:1;color:var(--text);" id="cnt-donut-total">—</div>
+        <div
+          style="font-size:.62rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-top:4px;">
+          Total</div>
       </div>
-      <div style="padding:12px;text-align:center;border-right:1px solid #e2e8f0;">
-        <div style="font-size:1.3rem;font-weight:700;color:#22c55e;" id="cnt-approved">—</div>
-        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Approved</div>
+    </div>
+    <!-- 3 Section Links: Pending, Approved, Stopped -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid #e2e8f0;margin-top:auto;">
+      <div class="status-link-btn" onclick="window.location.href='/admin/vacancies?tab=pending'"
+        title="Click to view Pending Vacancies" style="border-right:1px solid #e2e8f0;">
+        <div style="font-size:1.25rem;font-weight:700;color:#f59e0b;" id="cnt-pending">—</div>
+        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">
+          Pending</div>
       </div>
-      <div style="padding:12px;text-align:center;">
-        <div style="font-size:1.3rem;font-weight:700;color:#ef4444;" id="cnt-rejected">—</div>
-        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Rejected</div>
+      <div class="status-link-btn" onclick="window.location.href='/admin/vacancies?tab=approved'"
+        title="Click to view Approved Vacancies" style="border-right:1px solid #e2e8f0;">
+        <div style="font-size:1.25rem;font-weight:700;color:#22c55e;" id="cnt-approved">—</div>
+        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">
+          Approved</div>
+      </div>
+      <div class="status-link-btn" onclick="window.location.href='/admin/vacancies?tab=stopped'"
+        title="Click to view Stopped Vacancies">
+        <div style="font-size:1.25rem;font-weight:700;color:#ef4444;" id="cnt-stopped">—</div>
+        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">
+          Stopped</div>
       </div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">30-Day Activity Trend</span></div>
-    <div class="card-body" style="height:260px;position:relative;">
+
+  <!-- Activity Trend Card -->
+  <div class="card" style="display:flex;flex-direction:column;">
+    <div class="card-header" style="flex-wrap:wrap;gap:12px;">
+      <div>
+        <span class="card-title">Activity Trend</span>
+        <span style="font-size:.75rem;color:#64748b;margin-left:8px;" id="trend-period-label"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <!-- Period Selector -->
+        <select id="trend-period-select" onchange="changeTrendPeriod(this.value)"
+          style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;font-family:inherit;outline:none;background:#fff;cursor:pointer;font-weight:500;">
+          <option value="last_30_days" selected>Last 30 Days (Rolling)</option>
+          <optgroup label="Monthly">
+            <option value="this_month">This Month</option>
+            <option value="prev_month">Previous Month</option>
+            <option value="prev_month_2">Month Before Previous</option>
+          </optgroup>
+          <optgroup label="Weekly">
+            <option value="this_week">This Week</option>
+            <option value="prev_week">Previous Week</option>
+            <option value="prev_week_2">Week Before Previous</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+
+    <!-- Multi-variable toggle badges with totals -->
+    <div style="padding:14px 20px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <button type="button" class="var-toggle-pill" id="pill-vacancies" onclick="toggleVariable('vacancies')"
+        title="Toggle Vacancies">
+        <span class="var-dot-indicator" style="background:#ef4444;"></span>
+        <span>Vacancies:</span>
+        <strong id="tot-vac" style="color:#ef4444;">—</strong>
+      </button>
+
+      <button type="button" class="var-toggle-pill" id="pill-applications" onclick="toggleVariable('applications')"
+        title="Toggle Applications">
+        <span class="var-dot-indicator" style="background:#3b82f6;"></span>
+        <span>Applications:</span>
+        <strong id="tot-app" style="color:#3b82f6;">—</strong>
+      </button>
+
+      <button type="button" class="var-toggle-pill" id="pill-recruiters" onclick="toggleVariable('recruiters')"
+        title="Toggle New Recruiters">
+        <span class="var-dot-indicator" style="background:#8b5cf6;"></span>
+        <span>New Recruiters:</span>
+        <strong id="tot-rec" style="color:#8b5cf6;">—</strong>
+      </button>
+
+      <button type="button" class="var-toggle-pill" id="pill-seekers" onclick="toggleVariable('seekers')"
+        title="Toggle New Job Seekers">
+        <span class="var-dot-indicator" style="background:#10b981;"></span>
+        <span>New Job Seekers:</span>
+        <strong id="tot-see" style="color:#10b981;">—</strong>
+      </button>
+    </div>
+
+    <!-- Chart Canvas -->
+    <div class="card-body" style="height:250px;position:relative;flex:1;">
       <canvas id="c-trend"></canvas>
     </div>
   </div>
+
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-  <div class="card">
-    <div class="card-header"><span class="card-title">Recruiter Registrations (30d)</span></div>
-    <div class="card-body" style="height:220px;position:relative;">
-      <canvas id="c-rec"></canvas>
+<!-- Bottom Module: Vacanciesys (Approved & Stopped Vacancies) -->
+<div class="card" id="vacanciesys" style="margin-bottom:30px;">
+  <div class="card-header" style="flex-wrap:wrap;gap:14px;">
+    <div>
+      <span class="card-title" style="font-size:1rem;font-weight:700;">Vacanciesys</span>
+      <span style="font-size:.75rem;color:#64748b;margin-left:8px;" id="vsys-total-label"></span>
+    </div>
+
+    <!-- Filter Options -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <select id="vsys-sort" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="lifo">Sort: LIFO (Newest First)</option>
+        <option value="apps_desc">Sort: Most Applications</option>
+        <option value="apps_asc">Sort: Least Applications</option>
+      </select>
+
+      <select id="vsys-min-apps" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="0">All Applications</option>
+        <option value="1">1+ Applications</option>
+        <option value="5">5+ Applications</option>
+        <option value="10">10+ Applications</option>
+      </select>
+
+      <select id="vsys-district" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="">All Districts</option>
+      </select>
+
+      <select id="vsys-category" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="">All Job Categories</option>
+      </select>
     </div>
   </div>
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Top Jobs by Applications</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Job Title</th><th>Code</th><th>Location</th><th>Status</th><th>Apps</th></tr></thead>
-        <tbody id="top-jobs-body">
-          <tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px;">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px;"></th>
+          <th>Job Title</th>
+          <th>Code</th>
+          <th>Location & Category</th>
+          <th>Status</th>
+          <th>Applications</th>
+          <th>Posted Date</th>
+        </tr>
+      </thead>
+      <tbody id="vsys-tbody">
+        <tr>
+          <td colspan="7" style="text-align:center;padding:32px;color:#64748b;">Loading Vacanciesys…</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Load More Button -->
+  <div style="padding:16px;text-align:center;border-top:1px solid var(--border);" id="vsys-load-more-wrap">
+    <button class="btn btn-ghost" id="vsys-load-more-btn" onclick="loadMoreVacanciesys()"
+      style="display:none;margin:0 auto;">
+      Load More Vacancies
+    </button>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const r = await adminFetch('/admin/api/analytics');
-    if (!r.ok) return;
-    const d = await r.json();
+  // State for trend chart
+  let trendChart = null;
+  let trendData = null;
+  let activeVariables = {
+    vacancies: true,
+    applications: true,
+    recruiters: true,
+    seekers: true
+  };
 
-    // Stat cards
-    document.getElementById('s-vac').textContent = fmtNum(d.totals.vacancies);
-    document.getElementById('s-rec').textContent = fmtNum(d.totals.recruiters);
-    document.getElementById('s-can').textContent = fmtNum(d.totals.candidates);
-    document.getElementById('s-app').textContent = fmtNum(d.totals.applications);
-    document.getElementById('cnt-pending').textContent  = fmtNum(d.vacancy_status.pending);
-    document.getElementById('cnt-approved').textContent = fmtNum(d.vacancy_status.approved);
-    document.getElementById('cnt-rejected').textContent = fmtNum(d.vacancy_status.rejected);
+  // State for Vacanciesys
+  let vsysOffset = 0;
+  const vsysLimit = 8;
+  let vsysItems = [];
+  let hasMoreVsys = false;
 
-    // Vacancy status donut
-    new Chart(document.getElementById('c-status'), {
+  document.addEventListener('DOMContentLoaded', async () => {
+    await Promise.all([
+      loadDashboardAnalytics('last_30_days'),
+      loadVacanciesys(true)
+    ]);
+  });
+
+  function scrollToVacanciesys() {
+    const el = document.getElementById('vacanciesys');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+
+  // ─── 1. Load Dashboard Analytics & Charts ─────────────────────────────────────
+
+  async function loadDashboardAnalytics(period) {
+    try {
+      const r = await adminFetch(`/admin/api/analytics?period=${encodeURIComponent(period || 'last_30_days')}`);
+      if (!r.ok) return;
+      const d = await r.json();
+      trendData = d;
+
+      // 1. Top Stat Cards
+      document.getElementById('s-rec').textContent = fmtNum(d.totals.recruiters);
+      document.getElementById('s-can').textContent = fmtNum(d.totals.candidates);
+      document.getElementById('s-unreg').textContent = fmtNum(d.totals.unregistered);
+      document.getElementById('s-app').textContent = fmtNum(d.totals.applications);
+
+      // 2. Vacancy Status
+      document.getElementById('cnt-pending').textContent = fmtNum(d.vacancy_status.pending);
+      document.getElementById('cnt-approved').textContent = fmtNum(d.vacancy_status.approved);
+      document.getElementById('cnt-stopped').textContent = fmtNum(d.vacancy_status.stopped);
+      document.getElementById('cnt-donut-total').textContent = fmtNum(d.vacancy_status.total);
+
+      renderStatusDonut(d.vacancy_status);
+
+      // 3. Activity Trend Totals & Chart
+      document.getElementById('trend-period-label').textContent = `(${d.period_label || ''})`;
+      document.getElementById('tot-vac').textContent = fmtNum(d.period_totals.vacancies);
+      document.getElementById('tot-app').textContent = fmtNum(d.period_totals.applications);
+      document.getElementById('tot-rec').textContent = fmtNum(d.period_totals.recruiters);
+      document.getElementById('tot-see').textContent = fmtNum(d.period_totals.seekers);
+
+      renderTrendChart();
+    } catch (e) {
+      console.error('Error loading analytics:', e);
+    }
+  }
+
+  function renderStatusDonut(statusObj) {
+    const ctx = document.getElementById('c-status');
+    if (!ctx) return;
+
+    const existing = Chart.getChart(ctx);
+    if (existing) existing.destroy();
+
+    new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Pending', 'Approved', 'Rejected'],
-        datasets: [{ data: [d.vacancy_status.pending, d.vacancy_status.approved, d.vacancy_status.rejected],
-          backgroundColor: ['#f59e0b','#22c55e','#ef4444'], borderWidth: 0 }]
+        labels: ['Pending', 'Approved', 'Stopped'],
+        datasets: [{
+          data: [statusObj.pending, statusObj.approved, statusObj.stopped],
+          backgroundColor: ['#f59e0b', '#22c55e', '#ef4444'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
       },
-      options: { responsive:true, maintainAspectRatio:false,
-        plugins: { legend: { position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { font: { size: 11 }, boxWidth: 12, padding: 12 }
+          }
+        },
+        onClick: (evt, elements) => {
+          if (elements && elements.length > 0) {
+            const index = elements[0].index;
+            const tabs = ['pending', 'approved', 'stopped'];
+            window.location.href = `/admin/vacancies?tab=${tabs[index]}`;
+          }
+        }
+      }
     });
+  }
 
-    // 30-day trend
-    const labels = d.vacancy_daily.map(x => x.date.slice(5));
-    new Chart(document.getElementById('c-trend'), {
-      type: 'line',
-      data: { labels, datasets: [
-        { label:'Vacancies', data:d.vacancy_daily.map(x=>x.count), borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.08)', tension:.3, fill:true, pointRadius:2 },
-        { label:'Applications', data:d.applications_daily.map(x=>x.count), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.08)', tension:.3, fill:true, pointRadius:2 }
-      ]},
-      options: { responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{ labels:{ font:{size:11}, boxWidth:12 } } },
-        scales:{ y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,.05)' } } } }
-    });
+  function renderTrendChart() {
+    if (!trendData) return;
+    const ctx = document.getElementById('c-trend');
+    if (!ctx) return;
 
-    // Recruiter trend
-    new Chart(document.getElementById('c-rec'), {
-      type: 'bar',
-      data: { labels: d.recruiters_daily.map(x=>x.date.slice(5)),
-        datasets: [{ label:'New Recruiters', data:d.recruiters_daily.map(x=>x.count), backgroundColor:'rgba(59,130,246,.7)', borderRadius:4 }] },
-      options: { responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,.05)' } } } }
-    });
-
-    // Top jobs table
-    const tbody = document.getElementById('top-jobs-body');
-    if (!d.top_jobs_by_applications.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px;">No data yet</td></tr>';
-    } else {
-      const statusColor = { approved:'green', rejected:'red', pending:'amber' };
-      tbody.innerHTML = d.top_jobs_by_applications.map(j =>
-        `<tr>
-          <td><strong>${esc(j.title)}</strong></td>
-          <td style="font-family:monospace;font-size:.72rem;color:#64748b;">${esc(j.job_code)}</td>
-          <td>${esc(j.location)}</td>
-          <td><span class="badge badge-${statusColor[j.status]||'gray'}">${j.status}</span></td>
-          <td><strong>${j.applications}</strong></td>
-        </tr>`
-      ).join('');
+    if (trendChart) {
+      trendChart.destroy();
+      trendChart = null;
     }
-  } catch(e) { console.error(e); }
-});
+
+    // Define 4 variable datasets
+    const allDatasets = [
+      {
+        id: 'vacancies',
+        label: 'Vacancies',
+        data: trendData.vacancy_daily.map(x => x.count),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3
+      },
+      {
+        id: 'applications',
+        label: 'Applications',
+        data: trendData.applications_daily.map(x => x.count),
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3
+      },
+      {
+        id: 'recruiters',
+        label: 'New Recruiters',
+        data: trendData.recruiters_daily.map(x => x.count),
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.08)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3
+      },
+      {
+        id: 'seekers',
+        label: 'New Job Seekers',
+        data: trendData.seekers_daily.map(x => x.count),
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3
+      }
+    ];
+
+    // Filter datasets based on activeVariables multi-select state
+    const visibleDatasets = allDatasets.filter(ds => activeVariables[ds.id]);
+
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: trendData.labels, // strictly integer days
+        datasets: visibleDatasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false }, // we use custom toggle badges at top
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                if (!items.length) return '';
+                const idx = items[0].dataIndex;
+                const dObj = trendData.vacancy_daily[idx];
+                return dObj ? fmtDate(dObj.date) : `Day ${items[0].label}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(0,0,0,.04)' },
+            ticks: {
+              precision: 0,
+              stepSize: 1,
+              color: '#64748b'
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(0,0,0,.05)' },
+            ticks: {
+              precision: 0,
+              stepSize: 1, // eliminates fractional decimals on Y-axis
+              color: '#64748b'
+            }
+          }
+        }
+      }
+    });
+
+    updateVariablePillStyles();
+  }
+
+  function toggleVariable(varKey) {
+    // Toggle the variable on/off
+    activeVariables[varKey] = !activeVariables[varKey];
+
+    // If user unchecks all variables, keep at least this one active
+    const anyActive = Object.values(activeVariables).some(Boolean);
+    if (!anyActive) {
+      activeVariables[varKey] = true;
+    }
+
+    renderTrendChart();
+  }
+
+  function updateVariablePillStyles() {
+    ['vacancies', 'applications', 'recruiters', 'seekers'].forEach(key => {
+      const pill = document.getElementById(`pill-${key}`);
+      if (!pill) return;
+      if (activeVariables[key]) {
+        pill.classList.remove('inactive');
+      } else {
+        pill.classList.add('inactive');
+      }
+    });
+  }
+
+  function changeTrendPeriod(periodVal) {
+    loadDashboardAnalytics(periodVal);
+  }
+
+
+  // ─── 2. Vacanciesys Module (LIFO, Pagination, Filters & Accordion) ───────────
+
+  async function loadVacanciesys(reset = false) {
+    if (reset) {
+      vsysOffset = 0;
+      vsysItems = [];
+      document.getElementById('vsys-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#64748b;">Loading Vacanciesys…</td></tr>';
+    }
+
+    const sortVal = document.getElementById('vsys-sort').value;
+    const minApps = document.getElementById('vsys-min-apps').value;
+    const district = document.getElementById('vsys-district').value;
+    const category = document.getElementById('vsys-category').value;
+
+    const params = new URLSearchParams({
+      limit: vsysLimit,
+      offset: vsysOffset,
+      sort_by: sortVal,
+      min_apps: minApps || '0'
+    });
+    if (district) params.append('district', district);
+    if (category) params.append('category', category);
+
+    try {
+      const r = await adminFetch(`/admin/api/vacanciesys?${params.toString()}`);
+      if (!r.ok) return;
+      const d = await r.json();
+
+      hasMoreVsys = d.has_more;
+      document.getElementById('vsys-total-label').textContent = `(${d.total} items)`;
+
+      // Populate dropdowns once if first load
+      populateFilterOptions('vsys-district', d.districts);
+      populateFilterOptions('vsys-category', d.categories);
+
+      if (reset) {
+        vsysItems = d.items;
+      } else {
+        vsysItems = vsysItems.concat(d.items);
+      }
+
+      renderVacanciesysTable();
+
+      // Show/hide load more button
+      const loadMoreBtn = document.getElementById('vsys-load-more-btn');
+      if (hasMoreVsys) {
+        loadMoreBtn.style.display = 'inline-flex';
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load More Vacancies';
+      } else {
+        loadMoreBtn.style.display = 'none';
+      }
+    } catch (e) {
+      console.error('Error loading Vacanciesys:', e);
+      document.getElementById('vsys-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#ef4444;">Failed to load vacancies</td></tr>';
+    }
+  }
+
+  function resetAndLoadVacanciesys() {
+    loadVacanciesys(true);
+  }
+
+  function loadMoreVacanciesys() {
+    const btn = document.getElementById('vsys-load-more-btn');
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    vsysOffset += vsysLimit;
+    loadVacanciesys(false);
+  }
+
+  function populateFilterOptions(selectId, optionsList) {
+    const sel = document.getElementById(selectId);
+    if (!sel || !optionsList || sel.children.length > 1) return;
+    const currentVal = sel.value;
+    optionsList.forEach(opt => {
+      const optEl = document.createElement('option');
+      optEl.value = opt;
+      optEl.textContent = opt;
+      sel.appendChild(optEl);
+    });
+    sel.value = currentVal;
+  }
+
+  function renderVacanciesysTable() {
+    const tbody = document.getElementById('vsys-tbody');
+    if (!vsysItems.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:36px;color:#64748b;">No Approved or Stopped vacancies found matching your filters.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = vsysItems.map(v => {
+      const isStopped = !v.is_active || v.status === 'stopped';
+      const statusBadge = isStopped
+        ? '<span class="badge badge-amber">&#9209; Stopped</span>'
+        : '<span class="badge badge-green">&#10003; Approved</span>';
+
+      const rec = v.recruiter || {};
+      const waClean = (rec.wa_number || '').replace(/[^0-9]/g, '');
+      const waLink = waClean ? `https://wa.me/${waClean}` : '#';
+
+      return `
+      <tr class="vsys-row" id="row-${v.id}" onclick="toggleVsysDetail(${v.id})">
+        <td style="text-align:center;">
+          <span class="vsys-chevron" id="chev-${v.id}">&#9660;</span>
+        </td>
+        <td>
+          <div style="font-weight:600;color:var(--text);">${esc(v.job_title)}</div>
+          <div style="font-size:.72rem;color:#64748b;">${esc(rec.company_name || 'Direct Employer')}</div>
+        </td>
+        <td style="font-family:monospace;font-size:.75rem;color:#64748b;">
+          ${esc(v.job_code)}
+        </td>
+        <td>
+          <div style="font-weight:500;">${esc(v.district_region)}</div>
+          <div style="font-size:.72rem;color:#64748b;">${esc(v.job_category)}</div>
+        </td>
+        <td>${statusBadge}</td>
+        <td>
+          <span class="badge badge-blue" style="font-size:.75rem;padding:3px 9px;">${fmtNum(v.applications)} apps</span>
+        </td>
+        <td style="font-size:.75rem;color:#64748b;">
+          ${fmtDate(v.created_at)}
+        </td>
+      </tr>
+
+      <!-- Accordion Detail Row -->
+      <tr class="vsys-detail-panel" id="detail-${v.id}">
+        <td colspan="7" style="background:#f8fafc;padding:18px 24px;border-bottom:1px solid var(--border);">
+          <div style="display:grid;grid-template-columns:290px 1fr;gap:20px;">
+            
+            <!-- Recruiter Card -->
+            <div style="background:#fff;padding:16px;border-radius:10px;border:1px solid var(--border);">
+              <div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">
+                Posted By Recruiter
+              </div>
+              <div style="font-size:.92rem;font-weight:700;color:var(--text);margin-bottom:3px;">
+                ${esc(rec.company_name || 'Unknown')}
+              </div>
+              <div style="font-size:.78rem;color:#64748b;margin-bottom:8px;">
+                ${esc(rec.business_type || 'Direct Recruiter')}
+              </div>
+              <div style="font-size:.8rem;color:var(--text);margin-bottom:6px;">
+                <strong>WhatsApp:</strong> <span style="font-family:monospace;">${esc(rec.wa_number || '—')}</span>
+              </div>
+              <div style="font-size:.78rem;color:#64748b;margin-bottom:14px;">
+                <strong>Location:</strong> ${esc(rec.location || v.district_region)}
+              </div>
+              ${waClean ? `
+                <a href="${waLink}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="color:#22c55e;border-color:#22c55e;width:100%;justify-content:center;">
+                  Chat on WhatsApp
+                </a>
+              ` : ''}
+            </div>
+
+            <!-- Vacancy Specs & Full Description -->
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Job Mode</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.job_mode || '—')}</div>
+                </div>
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Experience</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.experience_required || '—')}</div>
+                </div>
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Salary Range</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.salary_range || '—')}</div>
+                </div>
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Exact Location</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.exact_location || v.district_region)}</div>
+                </div>
+              </div>
+
+              <div style="background:#fff;padding:14px 16px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px;">
+                  Job Description
+                </div>
+                <div style="font-size:.82rem;line-height:1.6;color:#334155;white-space:pre-wrap;">${esc(v.job_description || 'No description provided.')}</div>
+              </div>
+            </div>
+
+          </div>
+        </td>
+      </tr>
+    `;
+    }).join('');
+  }
+
+  function toggleVsysDetail(vacId) {
+    const panel = document.getElementById(`detail-${vacId}`);
+    const row = document.getElementById(`row-${vacId}`);
+    if (!panel || !row) return;
+
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+      panel.classList.remove('open');
+      row.classList.remove('expanded');
+    } else {
+      panel.classList.add('open');
+      row.classList.add('expanded');
+    }
+  }
 </script>
 {% endblock %}
