@@ -1,0 +1,830 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Jobzon Insights - Admin{% endblock %}
+{% block page_title %}Jobzon Insights{% endblock %}
+{% block page_sub %}Outreach logs & CRM contact analytics{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="exportContactsCSV()" title="Download CSV report of contacts">
+  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px;">
+    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+  </svg>
+  Export CSV
+</button>
+<button class="btn btn-primary btn-sm" id="btn-refresh" onclick="loadJobzonData()">
+  <svg id="refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px;">
+    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+  </svg>
+  Refresh
+</button>
+{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  /* ── Tab Filter Pills ── */
+  .crm-tabs {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+  }
+  .crm-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: #f1f5f9;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .crm-tab-btn:hover {
+    background: #e2e8f0;
+    color: var(--text);
+  }
+  .crm-tab-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25);
+  }
+  .crm-tab-btn .tab-badge {
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-size: 0.65rem;
+    background: rgba(0, 0, 0, 0.08);
+  }
+  .crm-tab-btn.active .tab-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+  }
+
+  /* ── Channel & Type Badges ── */
+  .badge-channel-wa {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .badge-channel-call {
+    background: #e0e7ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .badge-type-seeker {
+    background: #f3e8ff;
+    color: #6b21a8;
+    border: 1px solid #e9d5ff;
+    font-weight: 600;
+  }
+  .badge-type-recruiter {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    font-weight: 600;
+  }
+
+  /* ── Quick Action Buttons in Table ── */
+  .btn-wa-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 6px;
+    color: #15803d;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    text-decoration: none;
+    transition: all 0.15s ease;
+  }
+  .btn-wa-action:hover {
+    background: #22c55e;
+    color: #fff;
+    border-color: #22c55e;
+  }
+
+  .btn-call-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 6px;
+    color: #1d4ed8;
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    text-decoration: none;
+    transition: all 0.15s ease;
+  }
+  .btn-call-action:hover {
+    background: #3b82f6;
+    color: #fff;
+    border-color: #3b82f6;
+  }
+
+  /* ── Non-overflowing Compact Stat Cards Grid ── */
+  .jobzon-stat-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 10px;
+    margin-bottom: 14px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  @media (max-width: 1200px) {
+    .jobzon-stat-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+  }
+  @media (max-width: 768px) {
+    .jobzon-stat-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  .jobzon-stat-grid .stat-card {
+    padding: 10px 12px;
+    gap: 3px;
+    border-radius: 10px;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .jobzon-stat-grid .stat-card .val {
+    font-size: 1.45rem;
+    line-height: 1.1;
+  }
+  .jobzon-stat-grid .stat-card .lbl {
+    font-size: 0.65rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .jobzon-stat-grid .stat-card .stat-sub-text {
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Compact Charts Grid (Symmetrical 3-card donut layout) ── */
+  .jobzon-charts-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px;
+    margin-bottom: 14px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  @media (max-width: 1100px) {
+    .jobzon-charts-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+  .jobzon-charts-grid > .card {
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 10px;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .jobzon-charts-grid > .card > .card-header {
+    padding: 8px 12px;
+  }
+  .jobzon-charts-grid > .card > .card-body {
+    flex: 1;
+    height: 155px !important;
+    padding: 6px 10px !important;
+    min-width: 0;
+  }
+
+  /* ── CRM Table Container Safety ── */
+  .table-card {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: 10px;
+  }
+  .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Stat Cards -->
+<div class="jobzon-stat-grid">
+  <div class="stat-card" style="border-left:4px solid var(--accent);">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="val" id="stat-total-contacts" style="color:var(--accent);">—</div>
+      <span class="badge badge-gray" style="font-size:0.62rem;padding:1px 5px;">WA + Calls</span>
+    </div>
+    <div class="lbl">Total Contacts</div>
+    <div class="stat-sub-text" id="stat-total-sub">
+      <span style="color:#16a34a;font-weight:600;" id="stat-sub-wa">💬 0 WA</span>
+      <span style="color:#cbd5e1;">•</span>
+      <span style="color:#2563eb;font-weight:600;" id="stat-sub-call">📞 0 Calls</span>
+    </div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #7c3aed;">
+    <div class="val" id="stat-seekers" style="color:#7c3aed;">—</div>
+    <div class="lbl">Seekers Contacted</div>
+    <div class="stat-sub-text" id="stat-seekers-pct">Direct phone calls</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #d97706;">
+    <div class="val" id="stat-recruiters" style="color:#d97706;">—</div>
+    <div class="lbl">Recruiters Contacted</div>
+    <div class="stat-sub-text" id="stat-recruiters-pct">Direct phone calls</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #16a34a;">
+    <div class="val" id="stat-wa-seeker" style="color:#16a34a;">—</div>
+    <div class="lbl">Seeker WhatsApp</div>
+    <div class="stat-sub-text" id="stat-wa-seeker-sub">WhatsApp outreach</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #0d9488;">
+    <div class="val" id="stat-wa-recruiter" style="color:#0d9488;">—</div>
+    <div class="lbl">Recruiter WhatsApp</div>
+    <div class="stat-sub-text" id="stat-wa-recruiter-sub">WhatsApp outreach</div>
+  </div>
+</div>
+
+<!-- Middle Visual Analytics Row: 3 Symmetrical Donut Charts -->
+<div class="jobzon-charts-grid">
+  
+  <!-- 1. Audience Donut (Seeker vs Recruiter) -->
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title" style="font-size:0.8rem;">Audience Breakdown</span>
+      <span class="badge badge-gray" style="font-size:0.65rem;">Seekers vs Recruiters</span>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <div style="position:relative;width:105px;height:105px;">
+        <canvas id="c-audience"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.15rem;font-weight:700;color:#0f172a;" id="audience-donut-total">—</div>
+          <div style="font-size:0.52rem;font-weight:700;color:#64748b;text-transform:uppercase;">Entities</div>
+        </div>
+      </div>
+      <div id="audience-legend" style="margin-top:6px;display:flex;gap:10px;font-size:0.72rem;">
+        <!-- Populated via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Channel Donut (WhatsApp vs Phone Call) -->
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title" style="font-size:0.8rem;">Channel Distribution</span>
+      <span class="badge badge-gray" style="font-size:0.65rem;">WhatsApp vs Calls</span>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <div style="position:relative;width:105px;height:105px;">
+        <canvas id="c-channel"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.15rem;font-weight:700;color:#0f172a;" id="channel-donut-total">—</div>
+          <div style="font-size:0.52rem;font-weight:700;color:#64748b;text-transform:uppercase;">Contacts</div>
+        </div>
+      </div>
+      <div id="channel-legend" style="margin-top:6px;display:flex;gap:10px;font-size:0.72rem;">
+        <!-- Populated via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Last 7 Days Activity Donut -->
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title" style="font-size:0.8rem;">Last 7 Days Outreach</span>
+      <span id="recent-badge" class="badge badge-blue" style="font-size:0.65rem;">0 Contacts</span>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <div style="position:relative;width:105px;height:105px;">
+        <canvas id="c-recent"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.15rem;font-weight:700;color:#0f172a;" id="recent-donut-total">—</div>
+          <div style="font-size:0.52rem;font-weight:700;color:#64748b;text-transform:uppercase;">7D Total</div>
+        </div>
+      </div>
+      <div id="recent-legend" style="margin-top:6px;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;font-size:0.72rem;">
+        <!-- Populated via JS -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- CRM Log Table Section -->
+<div class="card table-card">
+  <div class="card-header" style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="card-title" style="margin:0;font-size:0.85rem;">Contacted Log Directory</span>
+      <span id="table-count-badge" class="badge badge-blue" style="font-size:0.7rem;">0 Records</span>
+    </div>
+    <div class="search-bar" style="max-width:240px;padding:4px 10px;">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/>
+        <path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="Search name, phone..." oninput="handleSearchChange()">
+    </div>
+  </div>
+
+  <div class="card-body" style="padding:10px 16px;">
+    <!-- Filter Pills -->
+    <div class="crm-tabs">
+      <button class="crm-tab-btn active" data-filter="all" onclick="setFilter('all')">
+        All Outreaches <span class="tab-badge" id="badge-all">0</span>
+      </button>
+      <button class="crm-tab-btn" data-filter="seeker" onclick="setFilter('seeker')">
+        Job Seekers <span class="tab-badge" id="badge-seekers">0</span>
+      </button>
+      <button class="crm-tab-btn" data-filter="recruiter" onclick="setFilter('recruiter')">
+        Recruiters <span class="tab-badge" id="badge-recruiters">0</span>
+      </button>
+      <button class="crm-tab-btn" data-filter="wa" onclick="setFilter('wa')">
+        WhatsApp Chats <span class="tab-badge" id="badge-wa">0</span>
+      </button>
+      <button class="crm-tab-btn" data-filter="call" onclick="setFilter('call')">
+        Phone Calls <span class="tab-badge" id="badge-call">0</span>
+      </button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>Target & Name</th>
+            <th>Channel</th>
+            <th>Contact Number</th>
+            <th>District / Region</th>
+            <th>Industry / Category</th>
+            <th>Contacted Date & Time</th>
+            <th style="text-align:center;width:120px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="contacts-table-body">
+          <tr>
+            <td colspan="8" style="text-align:center;color:var(--muted);padding:30px 0;">Loading contact logs...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let rawData = null;
+  let currentFilter = 'all';
+  let searchTerm = '';
+  let audienceChart = null;
+  let channelChart = null;
+  let recentChart = null;
+
+  async function loadJobzonData() {
+    const icon = document.getElementById('refresh-icon');
+    if (icon) icon.style.animation = 'spin 0.8s linear infinite';
+
+    try {
+      const res = await adminFetch('/admin/api/jobzon-insights/data');
+      if (!res.ok) throw new Error('API error');
+      rawData = await res.json();
+      renderStats();
+      renderCharts();
+      renderTable();
+    } catch (err) {
+      console.error('Failed loading Jobzon Insights data:', err);
+      document.getElementById('contacts-table-body').innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align:center;color:#ef4444;padding:30px 0;">
+            Failed to load contact logs. Please ensure jobzon_contacts.json exists and refresh.
+          </td>
+        </tr>
+      `;
+    } finally {
+      if (icon) icon.style.animation = '';
+    }
+  }
+
+  function renderStats() {
+    if (!rawData || !rawData.stats) return;
+    const s = rawData.stats;
+    const total = s.total_contacts || 0;
+
+    document.getElementById('stat-total-contacts').textContent = total;
+    if (document.getElementById('stat-sub-wa')) {
+      document.getElementById('stat-sub-wa').textContent = `💬 ${s.wa_count || 0} WA`;
+    }
+    if (document.getElementById('stat-sub-call')) {
+      document.getElementById('stat-sub-call').textContent = `📞 ${s.call_count || 0} Calls`;
+    }
+    // Directly called / contacted count
+    document.getElementById('stat-seekers').textContent = s.call_seeker_count || 0;
+    document.getElementById('stat-recruiters').textContent = s.call_recruiter_count || 0;
+    // Directly messaged via WhatsApp count
+    document.getElementById('stat-wa-seeker').textContent = s.wa_seeker_count || 0;
+    document.getElementById('stat-wa-recruiter').textContent = s.wa_recruiter_count || 0;
+
+    const seekerCallPct = total > 0 ? Math.round(((s.call_seeker_count || 0) / total) * 100) : 0;
+    const recCallPct = total > 0 ? Math.round(((s.call_recruiter_count || 0) / total) * 100) : 0;
+    const seekerWaPct = total > 0 ? Math.round(((s.wa_seeker_count || 0) / total) * 100) : 0;
+    const recWaPct = total > 0 ? Math.round(((s.wa_recruiter_count || 0) / total) * 100) : 0;
+
+    document.getElementById('stat-seekers-pct').textContent = `Direct call (${seekerCallPct}%)`;
+    document.getElementById('stat-recruiters-pct').textContent = `Direct call (${recCallPct}%)`;
+    document.getElementById('stat-wa-seeker-sub').textContent = `WhatsApp (${seekerWaPct}%)`;
+    document.getElementById('stat-wa-recruiter-sub').textContent = `WhatsApp (${recWaPct}%)`;
+
+    // Filter Badges
+    document.getElementById('badge-all').textContent = total;
+    document.getElementById('badge-seekers').textContent = s.total_seekers || 0;
+    document.getElementById('badge-recruiters').textContent = s.total_recruiters || 0;
+    document.getElementById('badge-wa').textContent = s.wa_count || 0;
+    document.getElementById('badge-call').textContent = s.call_count || 0;
+  }
+
+  function renderCharts() {
+    if (!rawData || !rawData.stats) return;
+    const s = rawData.stats;
+
+    // 1. Audience Chart (Seekers vs Recruiters)
+    const seekers = s.total_seekers || 0;
+    const recruiters = s.total_recruiters || 0;
+    const audTotal = seekers + recruiters;
+    document.getElementById('audience-donut-total').textContent = audTotal;
+
+    const ctxAud = document.getElementById('c-audience').getContext('2d');
+    if (audienceChart) audienceChart.destroy();
+    audienceChart = new Chart(ctxAud, {
+      type: 'doughnut',
+      data: {
+        labels: ['Job Seekers', 'Recruiters'],
+        datasets: [{
+          data: audTotal === 0 ? [1] : [seekers, recruiters],
+          backgroundColor: audTotal === 0 ? ['#e2e8f0'] : ['#8b5cf6', '#f59e0b'],
+          borderWidth: 2,
+          borderColor: '#fff',
+          hoverOffset: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: audTotal > 0,
+            callbacks: {
+              label: (ctx) => ` ${ctx.label}: ${ctx.raw} (${Math.round((ctx.raw / (audTotal || 1)) * 100)}%)`
+            }
+          }
+        }
+      }
+    });
+
+    document.getElementById('audience-legend').innerHTML = `
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#8b5cf6;"></span>
+        <span>Seekers: <strong>${seekers}</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#f59e0b;"></span>
+        <span>Recruiters: <strong>${recruiters}</strong></span>
+      </div>
+    `;
+
+    // 2. Channel Chart (WhatsApp vs Calls)
+    const wa = s.wa_count || 0;
+    const call = s.call_count || 0;
+    const chTotal = wa + call;
+    document.getElementById('channel-donut-total').textContent = chTotal;
+
+    const ctxCh = document.getElementById('c-channel').getContext('2d');
+    if (channelChart) channelChart.destroy();
+    channelChart = new Chart(ctxCh, {
+      type: 'doughnut',
+      data: {
+        labels: ['WhatsApp', 'Phone Call'],
+        datasets: [{
+          data: chTotal === 0 ? [1] : [wa, call],
+          backgroundColor: chTotal === 0 ? ['#e2e8f0'] : ['#22c55e', '#3b82f6'],
+          borderWidth: 2,
+          borderColor: '#fff',
+          hoverOffset: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: chTotal > 0,
+            callbacks: {
+              label: (ctx) => ` ${ctx.label}: ${ctx.raw} (${Math.round((ctx.raw / (chTotal || 1)) * 100)}%)`
+            }
+          }
+        }
+      }
+    });
+
+    document.getElementById('channel-legend').innerHTML = `
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#22c55e;"></span>
+        <span>WhatsApp: <strong>${wa}</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#3b82f6;"></span>
+        <span>Call: <strong>${call}</strong></span>
+      </div>
+    `;
+
+    // 3. Last 7 Days Activity Donut (Seekers vs Recruiters in 7D)
+    const rec7Total = s.recent_7d_count || 0;
+    const rec7Seekers = s.recent_7d_seekers || 0;
+    const rec7Recruiters = s.recent_7d_recruiters || 0;
+    const rec7Wa = s.recent_7d_wa || 0;
+    const rec7Call = s.recent_7d_call || 0;
+
+    document.getElementById('recent-donut-total').textContent = rec7Total;
+    document.getElementById('recent-badge').textContent = `${rec7Total} Contact${rec7Total === 1 ? '' : 's'}`;
+
+    const ctxRec = document.getElementById('c-recent').getContext('2d');
+    if (recentChart) recentChart.destroy();
+    recentChart = new Chart(ctxRec, {
+      type: 'doughnut',
+      data: {
+        labels: ['Job Seekers (7D)', 'Recruiters (7D)'],
+        datasets: [{
+          data: rec7Total === 0 ? [1] : [rec7Seekers, rec7Recruiters],
+          backgroundColor: rec7Total === 0 ? ['#e2e8f0'] : ['#8b5cf6', '#f59e0b'],
+          borderWidth: 2,
+          borderColor: '#fff',
+          hoverOffset: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: rec7Total > 0,
+            callbacks: {
+              label: (ctx) => ` ${ctx.label}: ${ctx.raw} (${Math.round((ctx.raw / (rec7Total || 1)) * 100)}%)`
+            }
+          }
+        }
+      }
+    });
+
+    document.getElementById('recent-legend').innerHTML = `
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#8b5cf6;"></span>
+        <span>Seekers: <strong>${rec7Seekers}</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#f59e0b;"></span>
+        <span>Recruiters: <strong>${rec7Recruiters}</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:3px;color:var(--muted);font-size:0.68rem;">
+        (WA: ${rec7Wa}, Call: ${rec7Call})
+      </div>
+    `;
+  }
+
+  function setFilter(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.crm-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    renderTable();
+  }
+
+  function handleSearchChange() {
+    searchTerm = (document.getElementById('search-input').value || '').trim().toLowerCase();
+    renderTable();
+  }
+
+  function getFilteredItems() {
+    if (!rawData || !rawData.contacts) return [];
+    let list = rawData.contacts;
+
+    // Filter by tab
+    if (currentFilter === 'seeker') {
+      list = list.filter(item => item.target_type === 'seeker');
+    } else if (currentFilter === 'recruiter') {
+      list = list.filter(item => item.target_type === 'recruiter');
+    } else if (currentFilter === 'wa') {
+      list = list.filter(item => item.channel === 'wa');
+    } else if (currentFilter === 'call') {
+      list = list.filter(item => item.channel === 'call');
+    }
+
+    // Filter by search
+    if (searchTerm) {
+      list = list.filter(item => {
+        const name = (item.name || '').toLowerCase();
+        const phone = (item.phone || '').toLowerCase();
+        const wa = (item.wa_number || '').toLowerCase();
+        const dist = (item.district || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        return name.includes(searchTerm) || phone.includes(searchTerm) || wa.includes(searchTerm) || dist.includes(searchTerm) || cat.includes(searchTerm);
+      });
+    }
+
+    return list;
+  }
+
+  function renderTable() {
+    const items = getFilteredItems();
+    document.getElementById('table-count-badge').textContent = `${items.length} Records`;
+    const tbody = document.getElementById('contacts-table-body');
+
+    if (items.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align:center;color:var(--muted);padding:30px 0;">
+            No contact records match your current filter or search criteria.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = items.map((item, idx) => {
+      const isSeeker = item.target_type === 'seeker';
+      const isWA = item.channel === 'wa';
+      const cleanPhone = (item.wa_number || item.phone || '').replace(/[^0-9]/g, '');
+      const waLink = cleanPhone ? `https://wa.me/${cleanPhone}` : '#';
+      const callLink = cleanPhone ? `tel:${cleanPhone}` : '#';
+
+      return `
+        <tr>
+          <td style="color:var(--muted);font-size:0.75rem;">${idx + 1}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge ${isSeeker ? 'badge-type-seeker' : 'badge-type-recruiter'}" style="font-size:0.68rem;padding:2px 7px;">
+                ${isSeeker ? '👤 Candidate' : '🏢 Recruiter'}
+              </span>
+              <div>
+                <div style="font-weight:600;color:var(--text);font-size:0.82rem;">${escapeHtml(item.name || 'Unknown')}</div>
+                <div style="font-size:0.68rem;color:var(--muted);">ID: #${item.target_id}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge ${isWA ? 'badge-channel-wa' : 'badge-channel-call'}" style="font-size:0.7rem;padding:2px 7px;">
+              ${isWA ? '💬 WhatsApp' : '📞 Phone Call'}
+            </span>
+          </td>
+          <td>
+            <div style="font-size:0.8rem;font-weight:500;font-family:monospace;color:var(--text);">
+              ${escapeHtml(item.wa_number || item.phone || '—')}
+            </div>
+          </td>
+          <td>
+            <span class="badge badge-gray" style="font-size:0.72rem;">${escapeHtml(item.district || 'Unknown')}</span>
+          </td>
+          <td style="font-size:0.75rem;color:var(--muted);">
+            ${escapeHtml(item.category || 'N/A')}
+          </td>
+          <td>
+            <div style="font-size:0.75rem;font-weight:500;color:var(--text);">
+              ${formatTimestamp(item.contacted_at)}
+            </div>
+            <div style="font-size:0.65rem;color:var(--muted);">
+              ${formatRelativeTime(item.contacted_at)}
+            </div>
+          </td>
+          <td style="text-align:center;">
+            <div style="display:flex;gap:5px;justify-content:center;">
+              ${cleanPhone ? `
+                <a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-wa-action" title="Open WhatsApp chat">
+                  💬 WA
+                </a>
+                <a href="${callLink}" class="btn-call-action" title="Call directly">
+                  📞 Call
+                </a>
+              ` : `<span style="font-size:0.7rem;color:var(--muted);">No Phone</span>`}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function formatTimestamp(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
+        d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return isoStr;
+    }
+  }
+
+  function formatRelativeTime(isoStr) {
+    if (!isoStr) return '';
+    try {
+      const d = new Date(isoStr);
+      const diffMs = Date.now() - d.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 30) return `${diffDays}d ago`;
+      return '';
+    } catch {
+      return '';
+    }
+  }
+
+  function exportContactsCSV() {
+    const items = getFilteredItems();
+    if (items.length === 0) {
+      alert('No contact logs available to export.');
+      return;
+    }
+
+    const headers = ['Serial', 'Target Type', 'ID', 'Name / Company', 'Channel', 'Phone', 'WhatsApp Number', 'District', 'Category / Type', 'Contacted At'];
+    const rows = items.map((item, idx) => [
+      idx + 1,
+      item.target_type === 'seeker' ? 'Candidate' : 'Recruiter',
+      item.target_id,
+      `"${(item.name || '').replace(/"/g, '""')}"`,
+      item.channel === 'wa' ? 'WhatsApp' : 'Phone Call',
+      `"${item.phone || ''}"`,
+      `"${item.wa_number || ''}"`,
+      `"${item.district || ''}"`,
+      `"${(item.category || '').replace(/"/g, '""')}"`,
+      item.contacted_at || ''
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const nowStr = new Date().toISOString().slice(0, 10);
+    a.download = `jobzon_admin_contacts_${nowStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // Load immediately on page initialization
+  document.addEventListener('DOMContentLoaded', loadJobzonData);
+</script>
+{% endblock %}

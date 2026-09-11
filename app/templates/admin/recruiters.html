@@ -110,33 +110,47 @@
 </style>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-  <!-- Vacancies by District Module -->
+  <!-- Recruiters by Location Module (Donut Chart) -->
   <div class="card">
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
-      <span class="card-title">Vacancies by District</span>
-      <div class="chart-header-controls">
-        <span id="dist-page-indicator" class="chart-page-tag">Loading…</span>
-        <button id="btn-dist-prev" class="chart-nav-btn" onclick="navDistrictChart(-1)" title="Previous 7" disabled>◀</button>
-        <button id="btn-dist-next" class="chart-nav-btn" onclick="navDistrictChart(1)" title="Next 7 (Swipe)">▶</button>
-      </div>
+      <span class="card-title">Recruiters by Location</span>
+      <span id="loc-total-badge" class="badge badge-gray" style="font-size:0.75rem;">0 Total</span>
     </div>
-    <div class="card-body chart-canvas-wrap" id="wrap-district">
-      <canvas id="c-district"></canvas>
+    <div class="card-body" style="height:230px;padding:10px 16px;display:flex;align-items:center;gap:14px;">
+      <!-- Donut Canvas with Center Total -->
+      <div style="position:relative;width:170px;height:170px;flex-shrink:0;">
+        <canvas id="c-rec-location"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.45rem;font-weight:700;color:#0f172a;" id="loc-donut-total">—</div>
+          <div style="font-size:0.6rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+        </div>
+      </div>
+      <!-- Ranked Breakdown List with Numbers and Percentages -->
+      <div id="loc-legend-list" style="flex:1;height:100%;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px;">
+        <!-- Populated dynamically -->
+      </div>
     </div>
   </div>
 
-  <!-- Vacancies by Category Module -->
+  <!-- Recruiters by Business Type Module (Donut Chart) -->
   <div class="card">
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
-      <span class="card-title">Vacancies by Category</span>
-      <div class="chart-header-controls">
-        <span id="cat-page-indicator" class="chart-page-tag">Loading…</span>
-        <button id="btn-cat-prev" class="chart-nav-btn" onclick="navCategoryChart(-1)" title="Previous 7" disabled>◀</button>
-        <button id="btn-cat-next" class="chart-nav-btn" onclick="navCategoryChart(1)" title="Next 7 (Swipe)">▶</button>
-      </div>
+      <span class="card-title">Recruiters by Business Type</span>
+      <span id="btype-total-badge" class="badge badge-gray" style="font-size:0.75rem;">0 Total</span>
     </div>
-    <div class="card-body chart-canvas-wrap" id="wrap-category">
-      <canvas id="c-category"></canvas>
+    <div class="card-body" style="height:230px;padding:10px 16px;display:flex;align-items:center;gap:14px;">
+      <!-- Donut Canvas with Center Total -->
+      <div style="position:relative;width:170px;height:170px;flex-shrink:0;">
+        <canvas id="c-rec-btype"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.45rem;font-weight:700;color:#0f172a;" id="btype-donut-total">—</div>
+          <div style="font-size:0.6rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+        </div>
+      </div>
+      <!-- Ranked Breakdown List with Numbers and Percentages -->
+      <div id="btype-legend-list" style="flex:1;height:100%;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px;">
+        <!-- Populated dynamically -->
+      </div>
     </div>
   </div>
 </div>
@@ -195,17 +209,13 @@ const PAGE_SIZE = 8;
 const vacanciesCache = {};
 const expandedRecruiters = new Set();
 
-// District chart state
-let allDistricts = [];
-let districtPage = 0;
-let districtChart = null;
+// Location chart state
+let allLocations = [];
+let locationChart = null;
 
-// Category chart state
-let allCategories = [];
-let categoryPage = 0;
-let categoryChart = null;
-
-const ITEMS_PER_PAGE = 7;
+// Business Type chart state
+let allBusinessTypes = [];
+let btypeChart = null;
 
 const roleLabels = {
   founder: 'Founder / Owner',
@@ -220,17 +230,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const r = await adminFetch('/admin/api/recruiters/stats');
     const d = await r.json();
 
-    // 1. Setup District Data (Sorted Descending)
-    allDistricts = Object.entries(d.chart_data.districts || {})
+    // 1. Setup Location Data (Sorted Descending)
+    allLocations = Object.entries(d.chart_data.locations || {})
       .map(([label, count]) => ({ label, count: Number(count) }))
       .sort((a, b) => b.count - a.count);
-    initDistrictChart();
+    initLocationChart();
 
-    // 2. Setup Category Data (Sorted Descending, uses updated categories)
-    allCategories = Object.entries(d.chart_data.categories || {})
+    // 2. Setup Business Type Data (Sorted Descending)
+    allBusinessTypes = Object.entries(d.chart_data.business_types || {})
       .map(([label, count]) => ({ label, count: Number(count) }))
       .sort((a, b) => b.count - a.count);
-    initCategoryChart();
+    initBTypeChart();
 
     // 3. Setup Recruiters Table (Most recently joined first from backend)
     allRows = d.recruiters_table || [];
@@ -238,181 +248,260 @@ document.addEventListener('DOMContentLoaded', async () => {
     visibleCount = 8;
     renderTable();
 
-    // Setup touch swipe listeners for both charts
-    setupSwipeListener('wrap-district', navDistrictChart);
-    setupSwipeListener('wrap-category', navCategoryChart);
-
   } catch(e) {
     console.error('Error loading recruiters stats:', e);
   }
 });
 
-/* ─── District Chart Logic ─────────────────────────────────────────────────── */
-function initDistrictChart() {
-  const ctx = document.getElementById('c-district').getContext('2d');
-  const maxPage = Math.max(0, Math.ceil(allDistricts.length / ITEMS_PER_PAGE) - 1);
-  const startIdx = districtPage * ITEMS_PER_PAGE;
-  const pageSlice = allDistricts.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+/* ─── Recruiter Location Chart Logic (Donut with Center Total & Side Breakdown) ─── */
+const LOCATION_COLORS = [
+  '#3b82f6', // Blue
+  '#10b981', // Emerald
+  '#f59e0b', // Amber
+  '#06b6d4', // Cyan
+  '#8b5cf6', // Violet
+  '#ec4899', // Pink
+  '#14b8a6', // Teal
+  '#f97316', // Orange
+  '#6366f1', // Indigo
+  '#84cc16', // Lime
+  '#ef4444', // Red
+  '#a855f7'  // Purple
+];
 
-  updateDistrictNavUI(startIdx, pageSlice.length, allDistricts.length, maxPage);
+function initLocationChart() {
+  const ctx = document.getElementById('c-rec-location').getContext('2d');
+  const activeLocations = allLocations.filter(d => d.count > 0).sort((a, b) => b.count - a.count);
+  const totalRecruiters = activeLocations.reduce((sum, d) => sum + d.count, 0);
 
-  districtChart = new Chart(ctx, {
-    type: 'bar',
+  const totalEl = document.getElementById('loc-donut-total');
+  if (totalEl) totalEl.textContent = totalRecruiters;
+  const badgeEl = document.getElementById('loc-total-badge');
+  if (badgeEl) badgeEl.textContent = `${totalRecruiters} Total`;
+
+  const legendContainer = document.getElementById('loc-legend-list');
+  if (legendContainer) {
+    if (!activeLocations.length) {
+      legendContainer.innerHTML = '<div style="color:#64748b;font-size:0.8rem;text-align:center;margin:auto;">No location data yet</div>';
+    } else {
+      legendContainer.innerHTML = activeLocations.map((d, idx) => {
+        const color = LOCATION_COLORS[idx % LOCATION_COLORS.length];
+        const pct = totalRecruiters > 0 ? Math.round((d.count / totalRecruiters) * 100) : 0;
+        return `
+          <div class="loc-legend-row" id="loc-legend-${idx}" onmouseenter="highlightLocationDonutSlice(${idx})" onmouseleave="resetLocationDonutHighlight()" style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:6px;font-size:0.78rem;cursor:default;transition:background 0.15s ease, transform 0.15s ease;">
+            <div style="display:flex;align-items:center;gap:7px;overflow:hidden;min-width:0;">
+              <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+              <span style="color:#334155;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(d.label)}">${esc(d.label)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px;">
+              <strong style="color:#0f172a;font-size:0.82rem;">${d.count}</strong>
+              <span style="color:#64748b;font-size:0.72rem;font-weight:500;">(${pct}%)</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  if (locationChart) {
+    locationChart.destroy();
+    locationChart = null;
+  }
+
+  locationChart = new Chart(ctx, {
+    type: 'doughnut',
     data: {
-      labels: pageSlice.map(x => x.label),
+      labels: activeLocations.map(d => d.label),
       datasets: [{
-        label: 'Vacancies',
-        data: pageSlice.map(x => x.count),
-        backgroundColor: 'rgba(239, 68, 68, 0.75)',
-        hoverBackgroundColor: 'rgba(239, 68, 68, 0.95)',
-        borderRadius: 5
+        data: activeLocations.map(d => d.count),
+        backgroundColor: activeLocations.map((_, i) => LOCATION_COLORS[i % LOCATION_COLORS.length]),
+        borderWidth: 2,
+        borderColor: '#ffffff',
+        hoverOffset: 5
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      cutout: '72%',
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
             title: (items) => items[0].label,
-            label: (ctx) => ` ${ctx.raw} ${ctx.raw === 1 ? 'vacancy' : 'vacancies'}`
+            label: (ctx) => {
+              const count = ctx.raw;
+              const pct = totalRecruiters > 0 ? Math.round((count / totalRecruiters) * 100) : 0;
+              return ` ${count} ${count === 1 ? 'recruiter' : 'recruiters'} (${pct}%)`;
+            }
           }
         }
       },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            precision: 0,
-            stepSize: 1
-          },
-          grid: { color: 'rgba(0,0,0,0.05)' }
-        },
-        x: {
-          grid: { display: false },
-          ticks: {
-            font: { size: 11 },
-            callback: function(val) {
-              const label = this.getLabelForValue(val) || '';
-              return label.length > 12 ? label.slice(0, 11) + '…' : label;
-            }
-          }
+      onHover: (evt, elements) => {
+        if (elements && elements.length) {
+          highlightLocationLegendRow(elements[0].index);
+        } else {
+          resetLocationLegendHighlights();
         }
       }
     }
   });
 }
 
-function navDistrictChart(dir) {
-  const maxPage = Math.max(0, Math.ceil(allDistricts.length / ITEMS_PER_PAGE) - 1);
-  const newPage = districtPage + dir;
-  if (newPage < 0 || newPage > maxPage) return;
-  districtPage = newPage;
-
-  const startIdx = districtPage * ITEMS_PER_PAGE;
-  const pageSlice = allDistricts.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-
-  updateDistrictNavUI(startIdx, pageSlice.length, allDistricts.length, maxPage);
-
-  districtChart.data.labels = pageSlice.map(x => x.label);
-  districtChart.data.datasets[0].data = pageSlice.map(x => x.count);
-  districtChart.update();
+function highlightLocationDonutSlice(idx) {
+  if (!locationChart) return;
+  locationChart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+  locationChart.update();
+  highlightLocationLegendRow(idx);
 }
 
-function updateDistrictNavUI(startIdx, sliceLen, total, maxPage) {
-  const endIdx = sliceLen > 0 ? startIdx + sliceLen : 0;
-  const ind = document.getElementById('dist-page-indicator');
-  if (ind) ind.textContent = total > 0 ? `${startIdx + 1}–${endIdx} of ${total}` : '0 of 0';
-
-  const btnPrev = document.getElementById('btn-dist-prev');
-  const btnNext = document.getElementById('btn-dist-next');
-  if (btnPrev) btnPrev.disabled = districtPage <= 0;
-  if (btnNext) btnNext.disabled = districtPage >= maxPage;
+function resetLocationDonutHighlight() {
+  if (!locationChart) return;
+  locationChart.setActiveElements([]);
+  locationChart.update();
+  resetLocationLegendHighlights();
 }
 
-/* ─── Category Chart Logic ─────────────────────────────────────────────────── */
-function initCategoryChart() {
-  const ctx = document.getElementById('c-category').getContext('2d');
-  const maxPage = Math.max(0, Math.ceil(allCategories.length / ITEMS_PER_PAGE) - 1);
-  const startIdx = categoryPage * ITEMS_PER_PAGE;
-  const pageSlice = allCategories.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+function highlightLocationLegendRow(idx) {
+  const rows = document.querySelectorAll('.loc-legend-row');
+  rows.forEach((r, i) => {
+    if (i === idx) {
+      r.style.background = '#f1f5f9';
+      r.style.transform = 'translateX(2px)';
+    } else {
+      r.style.background = 'transparent';
+      r.style.transform = 'none';
+    }
+  });
+}
 
-  updateCategoryNavUI(startIdx, pageSlice.length, allCategories.length, maxPage);
+function resetLocationLegendHighlights() {
+  const rows = document.querySelectorAll('.loc-legend-row');
+  rows.forEach(r => {
+    r.style.background = 'transparent';
+    r.style.transform = 'none';
+  });
+}
 
-  categoryChart = new Chart(ctx, {
-    type: 'bar',
+/* ─── Business Type Chart Logic (Donut with Center Total & Side Breakdown) ────── */
+const BTYPE_COLORS = [
+  '#8b5cf6', // Violet
+  '#ec4899', // Pink
+  '#06b6d4', // Cyan
+  '#f59e0b', // Amber
+  '#10b981', // Emerald
+  '#3b82f6', // Blue
+  '#f97316', // Orange
+  '#14b8a6', // Teal
+  '#6366f1', // Indigo
+  '#84cc16', // Lime
+  '#ef4444', // Red
+  '#a855f7'  // Purple
+];
+
+function initBTypeChart() {
+  const ctx = document.getElementById('c-rec-btype').getContext('2d');
+  const activeBTypes = allBusinessTypes.filter(c => c.count > 0).sort((a, b) => b.count - a.count);
+  const totalBTypes = activeBTypes.reduce((sum, c) => sum + c.count, 0);
+
+  const totalEl = document.getElementById('btype-donut-total');
+  if (totalEl) totalEl.textContent = totalBTypes;
+  const badgeEl = document.getElementById('btype-total-badge');
+  if (badgeEl) badgeEl.textContent = `${totalBTypes} Total`;
+
+  const legendContainer = document.getElementById('btype-legend-list');
+  if (legendContainer) {
+    if (!activeBTypes.length) {
+      legendContainer.innerHTML = '<div style="color:#64748b;font-size:0.8rem;text-align:center;margin:auto;">No business types recorded yet</div>';
+    } else {
+      legendContainer.innerHTML = activeBTypes.map((c, idx) => {
+        const color = BTYPE_COLORS[idx % BTYPE_COLORS.length];
+        const pct = totalBTypes > 0 ? Math.round((c.count / totalBTypes) * 100) : 0;
+        return `
+          <div class="btype-legend-row" id="btype-legend-${idx}" onmouseenter="highlightBTypeDonutSlice(${idx})" onmouseleave="resetBTypeDonutHighlight()" style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:6px;font-size:0.78rem;cursor:default;transition:background 0.15s ease;">
+            <div style="display:flex;align-items:center;gap:7px;overflow:hidden;min-width:0;">
+              <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+              <span style="color:#334155;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(c.label)}">${esc(c.label)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px;">
+              <strong style="color:#0f172a;font-size:0.82rem;">${c.count}</strong>
+              <span style="color:#64748b;font-size:0.72rem;font-weight:500;">(${pct}%)</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  if (btypeChart) {
+    btypeChart.destroy();
+    btypeChart = null;
+  }
+
+  btypeChart = new Chart(ctx, {
+    type: 'doughnut',
     data: {
-      labels: pageSlice.map(x => x.label),
+      labels: activeBTypes.map(c => c.label),
       datasets: [{
-        label: 'Vacancies',
-        data: pageSlice.map(x => x.count),
-        backgroundColor: 'rgba(59, 130, 246, 0.75)',
-        hoverBackgroundColor: 'rgba(59, 130, 246, 0.95)',
-        borderRadius: 5
+        data: activeBTypes.map(c => c.count),
+        backgroundColor: activeBTypes.map((_, i) => BTYPE_COLORS[i % BTYPE_COLORS.length]),
+        borderWidth: 2,
+        borderColor: '#ffffff',
+        hoverOffset: 5
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      cutout: '72%',
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
             title: (items) => items[0].label,
-            label: (ctx) => ` ${ctx.raw} ${ctx.raw === 1 ? 'vacancy' : 'vacancies'}`
+            label: (ctx) => {
+              const count = ctx.raw;
+              const pct = totalBTypes > 0 ? Math.round((count / totalBTypes) * 100) : 0;
+              return ` ${count} ${count === 1 ? 'recruiter' : 'recruiters'} (${pct}%)`;
+            }
           }
         }
       },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            precision: 0,
-            stepSize: 1
-          },
-          grid: { color: 'rgba(0,0,0,0.05)' }
-        },
-        x: {
-          grid: { display: false },
-          ticks: {
-            font: { size: 10 },
-            callback: function(val) {
-              const label = this.getLabelForValue(val) || '';
-              return label.length > 13 ? label.slice(0, 12) + '…' : label;
-            }
-          }
+      onHover: (evt, elements) => {
+        if (elements && elements.length) {
+          highlightBTypeLegendRow(elements[0].index);
+        } else {
+          resetBTypeLegendHighlights();
         }
       }
     }
   });
 }
 
-function navCategoryChart(dir) {
-  const maxPage = Math.max(0, Math.ceil(allCategories.length / ITEMS_PER_PAGE) - 1);
-  const newPage = categoryPage + dir;
-  if (newPage < 0 || newPage > maxPage) return;
-  categoryPage = newPage;
-
-  const startIdx = categoryPage * ITEMS_PER_PAGE;
-  const pageSlice = allCategories.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-
-  updateCategoryNavUI(startIdx, pageSlice.length, allCategories.length, maxPage);
-
-  categoryChart.data.labels = pageSlice.map(x => x.label);
-  categoryChart.data.datasets[0].data = pageSlice.map(x => x.count);
-  categoryChart.update();
+function highlightBTypeDonutSlice(idx) {
+  if (!btypeChart) return;
+  btypeChart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+  btypeChart.update();
+  highlightBTypeLegendRow(idx);
 }
 
-function updateCategoryNavUI(startIdx, sliceLen, total, maxPage) {
-  const endIdx = sliceLen > 0 ? startIdx + sliceLen : 0;
-  const ind = document.getElementById('cat-page-indicator');
-  if (ind) ind.textContent = total > 0 ? `${startIdx + 1}–${endIdx} of ${total}` : '0 of 0';
+function resetBTypeDonutHighlight() {
+  if (!btypeChart) return;
+  btypeChart.setActiveElements([]);
+  btypeChart.update();
+  resetBTypeLegendHighlights();
+}
 
-  const btnPrev = document.getElementById('btn-cat-prev');
-  const btnNext = document.getElementById('btn-cat-next');
-  if (btnPrev) btnPrev.disabled = categoryPage <= 0;
-  if (btnNext) btnNext.disabled = categoryPage >= maxPage;
+function highlightBTypeLegendRow(idx) {
+  document.querySelectorAll('.btype-legend-row').forEach((el, i) => {
+    el.style.backgroundColor = (i === idx) ? '#f1f5f9' : 'transparent';
+  });
+}
+
+function resetBTypeLegendHighlights() {
+  document.querySelectorAll('.btype-legend-row').forEach(el => {
+    el.style.backgroundColor = 'transparent';
+  });
 }
 
 /* ─── Touch Swipe Gesture Support ─────────────────────────────────────────── */

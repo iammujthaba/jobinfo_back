@@ -1,0 +1,634 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Vacancy Insights - Admin{% endblock %}
+{% block topbar_title %}Vacancy Insights{% endblock %}
+{% block topbar_sub %}Job Market Distribution & Vacancies Performance{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .vsys-row {
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .vsys-row:hover {
+    background: #f8fafc;
+  }
+  .vsys-chevron {
+    display: inline-block;
+    transition: transform .2s ease;
+    color: #94a3b8;
+    font-size: .75rem;
+  }
+  .vsys-row.expanded .vsys-chevron {
+    transform: rotate(180deg);
+    color: var(--accent);
+  }
+  .vsys-detail-panel {
+    display: none;
+  }
+  .vsys-detail-panel.open {
+    display: table-row;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Top Row: Vacancies by District & Vacancies by Category Donut Charts -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+
+  <!-- Vacancies by District Module (Donut Chart) -->
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title">Vacancies by District</span>
+      <span id="dist-total-badge" class="badge badge-gray" style="font-size:0.75rem;">0 Total</span>
+    </div>
+    <div class="card-body" style="height:230px;padding:10px 16px;display:flex;align-items:center;gap:14px;">
+      <!-- Donut Canvas with Center Total -->
+      <div style="position:relative;width:170px;height:170px;flex-shrink:0;">
+        <canvas id="c-district"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.45rem;font-weight:700;color:#0f172a;" id="dist-donut-total">—</div>
+          <div style="font-size:0.6rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+        </div>
+      </div>
+      <!-- Ranked Breakdown List with Numbers and Percentages -->
+      <div id="dist-legend-list" style="flex:1;height:100%;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px;">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Vacancies by Category Module (Donut Chart) -->
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-title">Vacancies by Category</span>
+      <span id="cat-total-badge" class="badge badge-gray" style="font-size:0.75rem;">0 Total</span>
+    </div>
+    <div class="card-body" style="height:230px;padding:10px 16px;display:flex;align-items:center;gap:14px;">
+      <!-- Donut Canvas with Center Total -->
+      <div style="position:relative;width:170px;height:170px;flex-shrink:0;">
+        <canvas id="c-category"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;line-height:1.15;">
+          <div style="font-size:1.45rem;font-weight:700;color:#0f172a;" id="cat-donut-total">—</div>
+          <div style="font-size:0.6rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+        </div>
+      </div>
+      <!-- Ranked Breakdown List with Numbers and Percentages -->
+      <div id="cat-legend-list" style="flex:1;height:100%;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px;">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom Module: Vacanciesys (Approved & Stopped Vacancies Feed) -->
+<div class="card" id="vacanciesys" style="margin-bottom:30px;">
+  <div class="card-header" style="flex-wrap:wrap;gap:14px;">
+    <div>
+      <span class="card-title" style="font-size:1rem;font-weight:700;">Vacanciesys Feed</span>
+      <span style="font-size:.75rem;color:#64748b;margin-left:8px;" id="vsys-total-label"></span>
+    </div>
+
+    <!-- Filter Options -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <select id="vsys-sort" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="lifo">Sort: LIFO (Newest First)</option>
+        <option value="apps_desc">Sort: Most Applications</option>
+        <option value="apps_asc">Sort: Least Applications</option>
+      </select>
+
+      <select id="vsys-min-apps" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="0">All Applications</option>
+        <option value="1">1+ Applications</option>
+        <option value="5">5+ Applications</option>
+        <option value="10">10+ Applications</option>
+      </select>
+
+      <select id="vsys-district" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="">All Districts</option>
+      </select>
+
+      <select id="vsys-category" onchange="resetAndLoadVacanciesys()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
+        <option value="">All Job Categories</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px;"></th>
+          <th>Job Title</th>
+          <th>Code</th>
+          <th>Location & Category</th>
+          <th>Status</th>
+          <th>Applications</th>
+          <th>Posted Date</th>
+        </tr>
+      </thead>
+      <tbody id="vsys-tbody">
+        <tr>
+          <td colspan="7" style="text-align:center;padding:32px;color:#64748b;">Loading Vacanciesys…</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Load More Button -->
+  <div style="padding:16px;text-align:center;border-top:1px solid var(--border);" id="vsys-load-more-wrap">
+    <button class="btn btn-ghost" id="vsys-load-more-btn" onclick="loadMoreVacanciesys()"
+      style="display:none;margin:0 auto;">
+      Load More Vacancies
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let allDistricts = [];
+  let districtChart = null;
+
+  let allCategories = [];
+  let categoryChart = null;
+
+  // State for Vacanciesys
+  let vsysOffset = 0;
+  const vsysLimit = 8;
+  let vsysItems = [];
+  let hasMoreVsys = false;
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    await Promise.all([
+      loadVacancyStats(),
+      loadVacanciesys(true)
+    ]);
+  });
+
+  /* ─── 1. Load Vacancies Breakdown Stats & Initialize Donut Charts ─────────── */
+
+  async function loadVacancyStats() {
+    try {
+      const r = await adminFetch('/admin/api/vacancy-insights/stats');
+      const d = await r.json();
+
+      allDistricts = Object.entries(d.chart_data.districts || {})
+        .map(([label, count]) => ({ label, count: Number(count) }))
+        .sort((a, b) => b.count - a.count);
+      initDistrictChart();
+
+      allCategories = Object.entries(d.chart_data.categories || {})
+        .map(([label, count]) => ({ label, count: Number(count) }))
+        .sort((a, b) => b.count - a.count);
+      initCategoryChart();
+    } catch(e) {
+      console.error('Error loading vacancy stats:', e);
+    }
+  }
+
+  /* ─── District Chart Logic (Donut with Center Total & Side Breakdown) ─────── */
+  const DISTRICT_COLORS = [
+    '#ef4444', '#f97316', '#eab308', '#10b981', '#06b6d4',
+    '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#6366f1',
+    '#84cc16', '#a855f7'
+  ];
+
+  function initDistrictChart() {
+    const ctx = document.getElementById('c-district').getContext('2d');
+    const activeDistricts = allDistricts.filter(d => d.count > 0).sort((a, b) => b.count - a.count);
+    const totalDistrictVacancies = activeDistricts.reduce((sum, d) => sum + d.count, 0);
+
+    const totalEl = document.getElementById('dist-donut-total');
+    if (totalEl) totalEl.textContent = totalDistrictVacancies;
+    const badgeEl = document.getElementById('dist-total-badge');
+    if (badgeEl) badgeEl.textContent = `${totalDistrictVacancies} Total`;
+
+    const legendContainer = document.getElementById('dist-legend-list');
+    if (legendContainer) {
+      if (!activeDistricts.length) {
+        legendContainer.innerHTML = '<div style="color:#64748b;font-size:0.8rem;text-align:center;margin:auto;">No district data yet</div>';
+      } else {
+        legendContainer.innerHTML = activeDistricts.map((d, idx) => {
+          const color = DISTRICT_COLORS[idx % DISTRICT_COLORS.length];
+          const pct = totalDistrictVacancies > 0 ? Math.round((d.count / totalDistrictVacancies) * 100) : 0;
+          return `
+            <div class="dist-legend-row" id="dist-legend-${idx}" onmouseenter="highlightDistrictDonutSlice(${idx})" onmouseleave="resetDistrictDonutHighlight()" style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:6px;font-size:0.78rem;cursor:default;transition:background 0.15s ease, transform 0.15s ease;">
+              <div style="display:flex;align-items:center;gap:7px;overflow:hidden;min-width:0;">
+                <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+                <span style="color:#334155;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(d.label)}">${esc(d.label)}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px;">
+                <strong style="color:#0f172a;font-size:0.82rem;">${d.count}</strong>
+                <span style="color:#64748b;font-size:0.72rem;font-weight:500;">(${pct}%)</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    if (districtChart) {
+      districtChart.destroy();
+      districtChart = null;
+    }
+
+    districtChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: activeDistricts.map(d => d.label),
+        datasets: [{
+          data: activeDistricts.map(d => d.count),
+          backgroundColor: activeDistricts.map((_, i) => DISTRICT_COLORS[i % DISTRICT_COLORS.length]),
+          borderWidth: 2,
+          borderColor: '#ffffff',
+          hoverOffset: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (ctx) => {
+                const count = ctx.raw;
+                const pct = totalDistrictVacancies > 0 ? Math.round((count / totalDistrictVacancies) * 100) : 0;
+                return ` ${count} ${count === 1 ? 'vacancy' : 'vacancies'} (${pct}%)`;
+              }
+            }
+          }
+        },
+        onHover: (evt, elements) => {
+          if (elements && elements.length) {
+            highlightDistrictLegendRow(elements[0].index);
+          } else {
+            resetDistrictLegendHighlights();
+          }
+        }
+      }
+    });
+  }
+
+  function highlightDistrictDonutSlice(idx) {
+    if (!districtChart) return;
+    districtChart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+    districtChart.update();
+    highlightDistrictLegendRow(idx);
+  }
+
+  function resetDistrictDonutHighlight() {
+    if (!districtChart) return;
+    districtChart.setActiveElements([]);
+    districtChart.update();
+    resetDistrictLegendHighlights();
+  }
+
+  function highlightDistrictLegendRow(idx) {
+    const rows = document.querySelectorAll('.dist-legend-row');
+    rows.forEach((r, i) => {
+      if (i === idx) {
+        r.style.background = '#f1f5f9';
+        r.style.transform = 'translateX(2px)';
+      } else {
+        r.style.background = 'transparent';
+        r.style.transform = 'none';
+      }
+    });
+  }
+
+  function resetDistrictLegendHighlights() {
+    const rows = document.querySelectorAll('.dist-legend-row');
+    rows.forEach(r => {
+      r.style.background = 'transparent';
+      r.style.transform = 'none';
+    });
+  }
+
+  /* ─── Category Chart Logic (Donut with Center Total & Side Breakdown) ────── */
+  const DONUT_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
+    '#06b6d4', '#f97316', '#14b8a6', '#6366f1', '#84cc16',
+    '#a855f7', '#e11d48'
+  ];
+
+  function initCategoryChart() {
+    const ctx = document.getElementById('c-category').getContext('2d');
+    const activeCategories = allCategories.filter(c => c.count > 0).sort((a, b) => b.count - a.count);
+    const totalVacancies = activeCategories.reduce((sum, c) => sum + c.count, 0);
+
+    const totalEl = document.getElementById('cat-donut-total');
+    if (totalEl) totalEl.textContent = totalVacancies;
+    const badgeEl = document.getElementById('cat-total-badge');
+    if (badgeEl) badgeEl.textContent = `${totalVacancies} Total`;
+
+    const legendContainer = document.getElementById('cat-legend-list');
+    if (legendContainer) {
+      if (!activeCategories.length) {
+        legendContainer.innerHTML = '<div style="color:#64748b;font-size:0.8rem;text-align:center;margin:auto;">No vacancies categorized yet</div>';
+      } else {
+        legendContainer.innerHTML = activeCategories.map((c, idx) => {
+          const color = DONUT_COLORS[idx % DONUT_COLORS.length];
+          const pct = totalVacancies > 0 ? Math.round((c.count / totalVacancies) * 100) : 0;
+          return `
+            <div class="cat-legend-row" id="cat-legend-${idx}" onmouseenter="highlightDonutSlice(${idx})" onmouseleave="resetDonutHighlight()" style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:6px;font-size:0.78rem;cursor:default;transition:background 0.15s ease, transform 0.15s ease;">
+              <div style="display:flex;align-items:center;gap:7px;overflow:hidden;min-width:0;">
+                <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+                <span style="color:#334155;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(c.label)}">${esc(c.label)}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px;">
+                <strong style="color:#0f172a;font-size:0.82rem;">${c.count}</strong>
+                <span style="color:#64748b;font-size:0.72rem;font-weight:500;">(${pct}%)</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    if (categoryChart) {
+      categoryChart.destroy();
+      categoryChart = null;
+    }
+
+    categoryChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: activeCategories.map(c => c.label),
+        datasets: [{
+          data: activeCategories.map(c => c.count),
+          backgroundColor: activeCategories.map((_, i) => DONUT_COLORS[i % DONUT_COLORS.length]),
+          borderWidth: 2,
+          borderColor: '#ffffff',
+          hoverOffset: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (ctx) => {
+                const count = ctx.raw;
+                const pct = totalVacancies > 0 ? Math.round((count / totalVacancies) * 100) : 0;
+                return ` ${count} ${count === 1 ? 'vacancy' : 'vacancies'} (${pct}%)`;
+              }
+            }
+          }
+        },
+        onHover: (evt, elements) => {
+          if (elements && elements.length) {
+            highlightLegendRow(elements[0].index);
+          } else {
+            resetLegendHighlights();
+          }
+        }
+      }
+    });
+  }
+
+  function highlightDonutSlice(idx) {
+    if (!categoryChart) return;
+    categoryChart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+    categoryChart.update();
+    highlightLegendRow(idx);
+  }
+
+  function resetDonutHighlight() {
+    if (!categoryChart) return;
+    categoryChart.setActiveElements([]);
+    categoryChart.update();
+    resetLegendHighlights();
+  }
+
+  function highlightLegendRow(idx) {
+    const rows = document.querySelectorAll('.cat-legend-row');
+    rows.forEach((r, i) => {
+      if (i === idx) {
+        r.style.background = '#f1f5f9';
+        r.style.transform = 'translateX(2px)';
+      } else {
+        r.style.background = 'transparent';
+        r.style.transform = 'none';
+      }
+    });
+  }
+
+  function resetLegendHighlights() {
+    const rows = document.querySelectorAll('.cat-legend-row');
+    rows.forEach(r => {
+      r.style.background = 'transparent';
+      r.style.transform = 'none';
+    });
+  }
+
+  /* ─── 2. Vacanciesys Module Logic ─────────────────────────────────────────── */
+
+  async function loadVacanciesys(reset = false) {
+    if (reset) {
+      vsysOffset = 0;
+      vsysItems = [];
+      document.getElementById('vsys-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#64748b;">Loading Vacanciesys…</td></tr>';
+    }
+
+    const sortVal = document.getElementById('vsys-sort').value;
+    const minApps = document.getElementById('vsys-min-apps').value;
+    const district = document.getElementById('vsys-district').value;
+    const category = document.getElementById('vsys-category').value;
+
+    const params = new URLSearchParams({
+      limit: vsysLimit,
+      offset: vsysOffset,
+      sort_by: sortVal,
+      min_apps: minApps || '0'
+    });
+    if (district) params.append('district', district);
+    if (category) params.append('category', category);
+
+    try {
+      const r = await adminFetch(`/admin/api/vacanciesys?${params.toString()}`);
+      if (!r.ok) return;
+      const d = await r.json();
+
+      hasMoreVsys = d.has_more;
+      document.getElementById('vsys-total-label').textContent = `(${d.total} items)`;
+
+      populateFilterOptions('vsys-district', d.districts);
+      populateFilterOptions('vsys-category', d.categories);
+
+      if (reset) {
+        vsysItems = d.items || [];
+      } else {
+        vsysItems = vsysItems.concat(d.items || []);
+      }
+
+      renderVacanciesysTable();
+
+      const btn = document.getElementById('vsys-load-more-btn');
+      btn.style.display = hasMoreVsys ? 'inline-flex' : 'none';
+      btn.textContent = 'Load More Vacancies';
+    } catch (e) {
+      console.error('Error loading Vacanciesys:', e);
+      document.getElementById('vsys-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#ef4444;">Failed to load vacancies.</td></tr>';
+    }
+  }
+
+  function resetAndLoadVacanciesys() {
+    loadVacanciesys(true);
+  }
+
+  function loadMoreVacanciesys() {
+    const btn = document.getElementById('vsys-load-more-btn');
+    btn.textContent = 'Loading…';
+    vsysOffset += vsysLimit;
+    loadVacanciesys(false);
+  }
+
+  function populateFilterOptions(selectId, optionsList) {
+    const sel = document.getElementById(selectId);
+    if (!sel || !optionsList || sel.children.length > 1) return;
+    const currentVal = sel.value;
+    optionsList.forEach(opt => {
+      const optEl = document.createElement('option');
+      optEl.value = opt;
+      optEl.textContent = opt;
+      sel.appendChild(optEl);
+    });
+    sel.value = currentVal;
+  }
+
+  function renderVacanciesysTable() {
+    const tbody = document.getElementById('vsys-tbody');
+    if (!vsysItems.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:36px;color:#64748b;">No Approved or Stopped vacancies found matching your filters.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = vsysItems.map(v => {
+      const isStopped = !v.is_active || v.status === 'stopped';
+      const statusBadge = isStopped
+        ? '<span class="badge badge-amber">&#9209; Stopped</span>'
+        : '<span class="badge badge-green">&#10003; Approved</span>';
+
+      const rec = v.recruiter || {};
+      const waClean = (rec.wa_number || '').replace(/[^0-9]/g, '');
+      const waLink = waClean ? `https://wa.me/${waClean}` : '#';
+
+      return `
+      <tr class="vsys-row" id="row-${v.id}" onclick="toggleVsysDetail(${v.id})">
+        <td style="text-align:center;">
+          <span class="vsys-chevron" id="chev-${v.id}">&#9660;</span>
+        </td>
+        <td>
+          <div style="font-weight:600;color:var(--text);">${esc(v.job_title)}</div>
+          <div style="font-size:.72rem;color:#64748b;">${esc(rec.company_name || 'Direct Employer')}</div>
+        </td>
+        <td style="font-family:monospace;font-size:.75rem;color:#64748b;">
+          ${esc(v.job_code)}
+        </td>
+        <td>
+          <div style="font-weight:500;">${esc(v.district_region)}</div>
+          <div style="font-size:.72rem;color:#64748b;">${esc(v.job_category)}</div>
+        </td>
+        <td>${statusBadge}</td>
+        <td>
+          <span class="badge badge-blue" style="font-size:.75rem;padding:3px 9px;">${fmtNum(v.applications)} apps</span>
+        </td>
+        <td style="font-size:.75rem;color:#64748b;">
+          ${fmtDate(v.created_at)}
+        </td>
+      </tr>
+
+      <tr class="vsys-detail-panel" id="detail-${v.id}">
+        <td colspan="7" style="background:#f8fafc;padding:18px 24px;border-bottom:1px solid var(--border);">
+          <div style="display:grid;grid-template-columns:290px 1fr;gap:20px;">
+            
+            <!-- Recruiter Card -->
+            <div style="background:#fff;padding:16px;border-radius:10px;border:1px solid var(--border);">
+              <div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">
+                Posted By Recruiter
+              </div>
+              <div style="font-size:.92rem;font-weight:700;color:var(--text);margin-bottom:3px;">
+                ${esc(rec.company_name || 'Unknown')}
+              </div>
+              <div style="font-size:.78rem;color:#64748b;margin-bottom:8px;">
+                ${esc(rec.business_type || 'Direct Recruiter')}
+              </div>
+              <div style="font-size:.8rem;color:var(--text);margin-bottom:6px;">
+                <strong>WhatsApp:</strong> <span style="font-family:monospace;">${esc(rec.wa_number || '—')}</span>
+              </div>
+              <div style="font-size:.78rem;color:#64748b;margin-bottom:14px;">
+                <strong>Location:</strong> ${esc(rec.location || v.district_region)}
+              </div>
+              ${waClean ? `
+                <a href="${waLink}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="color:#22c55e;border-color:#22c55e;width:100%;justify-content:center;">
+                  Chat on WhatsApp
+                </a>
+              ` : ''}
+            </div>
+
+            <!-- Vacancy Specs & Full Description -->
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Job Mode</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.job_mode || '—')}</div>
+                </div>
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Experience</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.experience_required || '—')}</div>
+                </div>
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Salary Range</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.salary_range || '—')}</div>
+                </div>
+                <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:.64rem;font-weight:700;color:#64748b;text-transform:uppercase;">Exact Location</div>
+                  <div style="font-size:.82rem;font-weight:600;margin-top:2px;">${esc(v.exact_location || v.district_region)}</div>
+                </div>
+              </div>
+
+              <div style="background:#fff;padding:14px 16px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px;">
+                  Job Description
+                </div>
+                <div style="font-size:.82rem;line-height:1.6;color:#334155;white-space:pre-wrap;">${esc(v.job_description || 'No description provided.')}</div>
+              </div>
+            </div>
+
+          </div>
+        </td>
+      </tr>
+    `;
+    }).join('');
+  }
+
+  function toggleVsysDetail(vacId) {
+    const panel = document.getElementById(`detail-${vacId}`);
+    const row = document.getElementById(`row-${vacId}`);
+    if (!panel || !row) return;
+
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+      panel.classList.remove('open');
+      row.classList.remove('expanded');
+    } else {
+      panel.classList.add('open');
+      row.classList.add('expanded');
+    }
+  }
+</script>
+{% endblock %}

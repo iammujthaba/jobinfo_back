@@ -280,6 +280,19 @@ async def page_vacancies(
     )
 
 
+# ─── Vacancy Insights page ────────────────────────────────────────────────────
+
+@router.get("/vacancy-insights", response_class=HTMLResponse)
+async def page_vacancy_insights(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/vacancy_insights.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
 # ─── Recruiters page ──────────────────────────────────────────────────────────
 
 @router.get("/recruiters", response_class=HTMLResponse)
@@ -1063,6 +1076,58 @@ async def api_users_summary(
     }
 
 
+@router.get("/api/vacancy-insights/stats")
+async def api_vacancy_insights_stats(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns vacancies breakdown by district and category (excluding rejected) for Vacancy Insights."""
+    from sqlalchemy import func as sqlfunc
+    from app.db.models import JobVacancy
+    from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
+
+    # Chart Data: Vacancies by District
+    district_rows = (
+        db.query(JobVacancy.district_region, sqlfunc.count(JobVacancy.id).label("count"))
+        .filter(JobVacancy.status != "rejected")
+        .group_by(JobVacancy.district_region)
+        .all()
+    )
+    districts: dict[str, int] = {}
+    for r in district_rows:
+        raw_d = (r.district_region or "Other").strip()
+        d_name = "GCC" if raw_d.upper() == "GCC" else raw_d.title()
+        districts[d_name] = districts.get(d_name, 0) + r.count
+    
+    # Chart Data: Vacancies by Category
+    legacy_cat_map = {
+        "driving": "Driving, Logistics & Store Keeper",
+        "logistics": "Driving, Logistics & Store Keeper",
+        "it_professional": "IT & Digital Marketing",
+        "office_admin": "Office Admin & Data Entry",
+        "hospitality_service": "Hospitality & Food Service",
+    }
+    categories: dict[str, int] = {disp: 0 for disp in CATEGORY_DISPLAY_NAMES.values()}
+    
+    category_rows = (
+        db.query(JobVacancy.job_category, sqlfunc.count(JobVacancy.id).label("count"))
+        .filter(JobVacancy.status != "rejected")
+        .group_by(JobVacancy.job_category)
+        .all()
+    )
+    for r in category_rows:
+        raw_k = r.job_category or "other"
+        disp = CATEGORY_DISPLAY_NAMES.get(raw_k) or legacy_cat_map.get(raw_k) or raw_k.replace("_", " ").title()
+        categories[disp] = categories.get(disp, 0) + r.count
+
+    return {
+        "chart_data": {
+            "districts": districts,
+            "categories": categories
+        }
+    }
+
+
 @router.get("/api/recruiters/stats")
 async def api_recruiters_stats(
     db: Session = Depends(get_db),
@@ -1073,18 +1138,44 @@ async def api_recruiters_stats(
     from app.db.models import JobVacancy, Recruiter, CandidateApplication
     from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
 
-    # Chart Data: Vacancies by District
-    district_rows = db.query(
-        JobVacancy.district_region, sqlfunc.count(JobVacancy.id).label("count")
-    ).group_by(JobVacancy.district_region).all()
+    # Chart Data: Recruiters by Location
+    location_rows = (
+        db.query(Recruiter.location, sqlfunc.count(Recruiter.id).label("count"))
+        .group_by(Recruiter.location)
+        .all()
+    )
+    locations: dict[str, int] = {}
+    for r in location_rows:
+        raw_loc = (r.location or "Other").strip()
+        loc_name = "GCC" if raw_loc.upper() == "GCC" else raw_loc.title()
+        locations[loc_name] = locations.get(loc_name, 0) + r.count
+
+    # Chart Data: Recruiters by Business Type
+    btype_rows = (
+        db.query(Recruiter.business_type, sqlfunc.count(Recruiter.id).label("count"))
+        .group_by(Recruiter.business_type)
+        .all()
+    )
+    business_types: dict[str, int] = {}
+    for r in btype_rows:
+        raw_bt = (r.business_type or "Other").strip()
+        bt_name = raw_bt.replace("_", " ").title()
+        business_types[bt_name] = business_types.get(bt_name, 0) + r.count
+
+    # Chart Data: Vacancies by District (retained for backward compatibility)
+    district_rows = (
+        db.query(JobVacancy.district_region, sqlfunc.count(JobVacancy.id).label("count"))
+        .filter(JobVacancy.status != "rejected")
+        .group_by(JobVacancy.district_region)
+        .all()
+    )
     districts: dict[str, int] = {}
     for r in district_rows:
         raw_d = (r.district_region or "Other").strip()
         d_name = "GCC" if raw_d.upper() == "GCC" else raw_d.title()
         districts[d_name] = districts.get(d_name, 0) + r.count
     
-    # Chart Data: Vacancies by Category
-    # Initialize with all updated categories from seeker.py so every modern category is present
+    # Chart Data: Vacancies by Category (retained for backward compatibility)
     legacy_cat_map = {
         "driving": "Driving, Logistics & Store Keeper",
         "logistics": "Driving, Logistics & Store Keeper",
@@ -1094,9 +1185,12 @@ async def api_recruiters_stats(
     }
     categories: dict[str, int] = {disp: 0 for disp in CATEGORY_DISPLAY_NAMES.values()}
     
-    category_rows = db.query(
-        JobVacancy.job_category, sqlfunc.count(JobVacancy.id).label("count")
-    ).group_by(JobVacancy.job_category).all()
+    category_rows = (
+        db.query(JobVacancy.job_category, sqlfunc.count(JobVacancy.id).label("count"))
+        .filter(JobVacancy.status != "rejected")
+        .group_by(JobVacancy.job_category)
+        .all()
+    )
     for r in category_rows:
         raw_k = r.job_category or "other"
         disp = CATEGORY_DISPLAY_NAMES.get(raw_k) or legacy_cat_map.get(raw_k) or raw_k.replace("_", " ").title()
@@ -1157,6 +1251,8 @@ async def api_recruiters_stats(
         
     return {
         "chart_data": {
+            "locations": locations,
+            "business_types": business_types,
             "districts": districts,
             "categories": categories
         },
@@ -1797,3 +1893,212 @@ async def api_restart_vacancy(
     db.commit()
     logger.info("Admin restarted vacancy %s (id=%s)", vacancy.job_code, vacancy_id)
     return {"success": True, "vacancy_id": vacancy_id, "job_code": vacancy.job_code}
+
+
+# ─── Temporary Feature: JobZon Insights (Decoupled) ──────────────────────────
+# Note: This is an isolated, temporary module. If removing this tab in future,
+# simply delete this block, admin/jobzon_insights.html, and the nav link in base.html.
+
+@router.get("/jobzon-insights", response_class=HTMLResponse)
+async def page_jobzon_insights(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    return templates.TemplateResponse(
+        "admin/jobzon_insights.html", {"request": request, **_sidebar_ctx(db)}
+    )
+
+
+@router.get("/api/jobzon-insights/data")
+async def api_jobzon_insights_data(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Reads JobZon admin contact logs from jobzon_contacts.json,
+    enriches with Candidate and Recruiter details in a safe read-only manner,
+    and returns aggregated statistics and itemized contact log entries.
+    """
+    from pathlib import Path
+    import json
+    from app.db.models import Candidate, Recruiter
+    from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
+
+    contacts_file = Path(__file__).parent.parent / "data" / "jobzon_contacts.json"
+    contacts_raw = {}
+    if contacts_file.exists():
+        try:
+            contacts_raw = json.loads(contacts_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to read jobzon_contacts.json: %s", exc)
+            contacts_raw = {}
+
+    seeker_ids = set()
+    recruiter_ids = set()
+    parsed_entries = []
+
+    for key, ts_str in contacts_raw.items():
+        parts = key.split("_")
+        # formats: "wa_seeker_14", "call_seeker_14", "wa_recruiter_2", etc.
+        if len(parts) >= 3:
+            channel = parts[0].lower()  # 'wa' or 'call'
+            target_type = parts[1].lower()  # 'seeker' or 'recruiter'
+            try:
+                target_id = int(parts[2])
+            except ValueError:
+                continue
+
+            if target_type == "seeker":
+                seeker_ids.add(target_id)
+            elif target_type == "recruiter":
+                recruiter_ids.add(target_id)
+
+            parsed_entries.append({
+                "key": key,
+                "channel": channel,
+                "target_type": target_type,
+                "target_id": target_id,
+                "contacted_at": ts_str,
+            })
+
+    # Query Candidate info
+    seekers_map = {}
+    if seeker_ids:
+        try:
+            cands = db.query(Candidate).filter(Candidate.id.in_(seeker_ids)).all()
+            for c in cands:
+                cat_display = CATEGORY_DISPLAY_NAMES.get(c.category, (c.category or "").replace("_", " ").title())
+                seekers_map[c.id] = {
+                    "name": c.name or f"Job Seeker #{c.id}",
+                    "wa_number": c.wa_number or "",
+                    "phone": c.alt_phone or c.wa_number or "",
+                    "district": c.district or "Unknown",
+                    "category": cat_display,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+        except Exception as exc:
+            logger.warning("Error loading candidates for Jobzon Insights: %s", exc)
+
+    # Query Recruiter info
+    recruiters_map = {}
+    if recruiter_ids:
+        try:
+            recs = db.query(Recruiter).filter(Recruiter.id.in_(recruiter_ids)).all()
+            for r in recs:
+                recruiters_map[r.id] = {
+                    "name": r.company_name or f"Recruiter #{r.id}",
+                    "contact_person": getattr(r, "registrant_role", "") or "",
+                    "wa_number": r.wa_number or "",
+                    "phone": r.business_contact or r.wa_number or "",
+                    "district": r.location or "Unknown",
+                    "category": (r.business_type or "").replace("_", " ").title(),
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+        except Exception as exc:
+            logger.warning("Error loading recruiters for Jobzon Insights: %s", exc)
+
+    now = datetime.now(timezone.utc)
+    one_week_ago = now - timedelta(days=7)
+    recent_7d_count = 0
+    recent_7d_seekers = 0
+    recent_7d_recruiters = 0
+    recent_7d_wa = 0
+    recent_7d_call = 0
+
+    districts_count = {}
+    wa_count = 0
+    call_count = 0
+    wa_seeker_count = 0
+    wa_recruiter_count = 0
+    call_seeker_count = 0
+    call_recruiter_count = 0
+    items = []
+
+    for entry in parsed_entries:
+        key = entry["key"]
+        ch = entry["channel"]
+        tt = entry["target_type"]
+        tid = entry["target_id"]
+        ts_str = entry["contacted_at"]
+
+        if ch == "wa":
+            wa_count += 1
+            if tt == "seeker":
+                wa_seeker_count += 1
+            elif tt == "recruiter":
+                wa_recruiter_count += 1
+        elif ch == "call":
+            call_count += 1
+            if tt == "seeker":
+                call_seeker_count += 1
+            elif tt == "recruiter":
+                call_recruiter_count += 1
+
+        try:
+            dt_contacted = datetime.fromisoformat(ts_str)
+            if dt_contacted.tzinfo is None:
+                dt_contacted = dt_contacted.replace(tzinfo=timezone.utc)
+            if dt_contacted >= one_week_ago:
+                recent_7d_count += 1
+                if tt == "seeker":
+                    recent_7d_seekers += 1
+                elif tt == "recruiter":
+                    recent_7d_recruiters += 1
+                if ch == "wa":
+                    recent_7d_wa += 1
+                elif ch == "call":
+                    recent_7d_call += 1
+        except Exception:
+            pass
+
+        info = seekers_map.get(tid) if tt == "seeker" else recruiters_map.get(tid)
+        if not info:
+            info = {
+                "name": f"{'Job Seeker' if tt == 'seeker' else 'Recruiter'} #{tid}",
+                "wa_number": "",
+                "phone": "",
+                "district": "Unknown",
+                "category": "N/A",
+                "created_at": None,
+            }
+
+        dist = info.get("district") or "Unknown"
+        districts_count[dist] = districts_count.get(dist, 0) + 1
+
+        items.append({
+            "key": key,
+            "channel": ch,
+            "target_type": tt,
+            "target_id": tid,
+            "contacted_at": ts_str,
+            "name": info.get("name"),
+            "wa_number": info.get("wa_number"),
+            "phone": info.get("phone"),
+            "district": dist,
+            "category": info.get("category"),
+        })
+
+    items.sort(key=lambda x: x.get("contacted_at") or "", reverse=True)
+
+    return {
+        "stats": {
+            "total_contacts": len(parsed_entries),
+            "total_seekers": len(seeker_ids),
+            "total_recruiters": len(recruiter_ids),
+            "wa_count": wa_count,
+            "call_count": call_count,
+            "wa_seeker_count": wa_seeker_count,
+            "wa_recruiter_count": wa_recruiter_count,
+            "call_seeker_count": call_seeker_count,
+            "call_recruiter_count": call_recruiter_count,
+            "recent_7d_count": recent_7d_count,
+            "recent_7d_seekers": recent_7d_seekers,
+            "recent_7d_recruiters": recent_7d_recruiters,
+            "recent_7d_wa": recent_7d_wa,
+            "recent_7d_call": recent_7d_call,
+            "districts": districts_count,
+        },
+        "contacts": items,
+    }
+
