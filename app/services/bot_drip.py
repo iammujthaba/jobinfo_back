@@ -170,23 +170,20 @@ async def execute_bot_drip(db: Session, max_batch: int = 25) -> dict:
 async def bot_drip_background_worker():
     """
     Periodic background loop that automatically scans and drips abandoned leads.
-    Checks 'bot_drip_auto_enabled' setting before each cycle.
+    Runs continuously as a permanent core engine service every 30 minutes.
     """
     import asyncio
     logger.info("Bot Drip background worker started.")
     while True:
         try:
             from app.db.base import SessionLocal
-            from app.db.models import get_system_setting
 
             db = SessionLocal()
             try:
-                auto_enabled = get_system_setting(db, "bot_drip_auto_enabled", "true").lower() in ("true", "1", "yes")
-                if auto_enabled:
-                    logger.info("Auto Bot Drip scheduled cycle running...")
-                    result = await execute_bot_drip(db, max_batch=20)
-                    if result.get("sent_count", 0) > 0:
-                        logger.info("Auto Bot Drip successfully nudged %s leads.", result["sent_count"])
+                logger.info("Auto Bot Drip scheduled cycle running...")
+                result = await execute_bot_drip(db, max_batch=20)
+                if result.get("sent_count", 0) > 0:
+                    logger.info("Auto Bot Drip successfully nudged %s leads.", result["sent_count"])
             finally:
                 db.close()
         except asyncio.CancelledError:

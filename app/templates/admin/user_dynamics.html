@@ -151,13 +151,12 @@
       <div>
         <div style="font-weight:700;font-size:.92rem;color:#14532d;display:flex;align-items:center;gap:8px;">
           Automated WhatsApp Bot Drip Follow-up
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-left:4px;user-select:none;">
-            <input type="checkbox" id="toggle-auto-drip" onchange="toggleAutoDrip(this)" style="cursor:pointer;accent-color:#16a34a;width:15px;height:15px;">
-            <span id="label-auto-drip" class="badge" style="background:#dcfce7;color:#15803d;font-size:0.7rem;font-weight:700;">AUTO: ON (Every 30m)</span>
-          </label>
+          <span class="badge" style="background:#dcfce7;color:#15803d;font-size:0.7rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#16a34a;display:inline-block;"></span> Active & Running (Core Engine)
+          </span>
         </div>
         <div style="font-size:.75rem;color:#166534;margin-top:2px;">
-          Automatically nurtures abandoned visitors within Meta's 24-hour free session window to complete registration.
+          Background daemon automatically scans every 30m to nurture abandoned vacancy applicants within Meta's 24-hour free session window.
         </div>
       </div>
     </div>
@@ -250,7 +249,6 @@ async function refreshAllInsights() {
     loadMacroSummary(),
     loadFunnelPipeline(),
     loadDemandSupplyDiagnostics(),
-    loadBotDripConfig(),
     loadBotDripStats(),
     loadRecoveryCRM()
   ]);
@@ -535,58 +533,6 @@ async function saveCommunitySize() {
   }
 }
 
-async function loadBotDripConfig() {
-  try {
-    const r = await adminFetch('/admin/api/user-insights/bot-drip/config');
-    if (!r.ok) return;
-    const d = await r.json();
-    const cb = document.getElementById('toggle-auto-drip');
-    const lbl = document.getElementById('label-auto-drip');
-    if (cb) cb.checked = d.auto_enabled;
-    if (lbl) {
-      if (d.auto_enabled) {
-        lbl.textContent = 'AUTO: ON (Every 30m)';
-        lbl.style.background = '#dcfce7';
-        lbl.style.color = '#15803d';
-      } else {
-        lbl.textContent = 'AUTO: PAUSED';
-        lbl.style.background = '#f1f5f9';
-        lbl.style.color = '#64748b';
-      }
-    }
-  } catch (err) {
-    console.error('Error loading bot drip config:', err);
-  }
-}
-
-async function toggleAutoDrip(cb) {
-  const isEnabled = cb.checked;
-  const lbl = document.getElementById('label-auto-drip');
-  try {
-    const r = await adminFetch('/admin/api/user-insights/bot-drip/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auto_enabled: isEnabled })
-    });
-    if (!r.ok) throw new Error('Failed to update config');
-    if (lbl) {
-      if (isEnabled) {
-        lbl.textContent = 'AUTO: ON (Every 30m)';
-        lbl.style.background = '#dcfce7';
-        lbl.style.color = '#15803d';
-        toast('Auto-Drip Enabled: Background timer will run every 30m', 'ok');
-      } else {
-        lbl.textContent = 'AUTO: PAUSED';
-        lbl.style.background = '#f1f5f9';
-        lbl.style.color = '#64748b';
-        toast('Auto-Drip Paused: Only manual triggers will send', 'ok');
-      }
-    }
-  } catch (err) {
-    cb.checked = !isEnabled;
-    toast('Failed to update Auto-Drip setting', 'err');
-  }
-}
 
 async function loadBotDripStats() {
   try {

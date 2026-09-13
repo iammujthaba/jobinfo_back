@@ -723,6 +723,17 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             
         # Condition D: Unregistered / None
         else:
+            # Check if there is an in-progress application or pending vacancy context
+            ctx = state.context or {}
+            pending_job = ctx.get("pending_job_code") or ctx.get("job_code")
+            in_progress_state = state.state in ("seeker_registering", "seeker_no_cv", "seeker_upload_cv", "seeker_cv_mismatch")
+
+            if pending_job or in_progress_state:
+                # User has an active vacancy application pending.
+                # Do NOT derail them with a generic "Welcome back / Recruiter or Seeker" message.
+                # The 30-minute automated drip engine handles targeted recovery if they remain idle.
+                return
+
             text = (
                 "👋 *Welcome back to JobInfo!*\n\n"
                 "We noticed you haven't set up your profile yet. It only takes a minute to get started and unlock Kerala's best job network.\n\n"
