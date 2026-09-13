@@ -154,10 +154,12 @@ async def handle_registration_flow_completion(
     # Confirmation message with CTA button
     await wa_client.send_buttons(
         to=wa_number,
+        header_text="🎉 Profile Active!",
         body_text=registration_confirmation_body(recruiter.company_name, "recruiter"),
         buttons=[
             {"id": "btn_post_vacancy", "title": "Post Vacancy"}
-        ]
+        ],
+        footer_text="JobInfo Kerala • Free Recruiter Network",
     )
     _set_state(wa_number, "recruiter_idle", {}, db)
     return
