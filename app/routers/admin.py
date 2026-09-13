@@ -1076,6 +1076,263 @@ async def api_users_summary(
     }
 
 
+@router.get("/api/user-insights/community-size")
+async def api_get_community_size(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns the configured WhatsApp community & channel benchmark size."""
+    from app.db.models import get_system_setting
+    val = get_system_setting(db, "whatsapp_community_size", "800")
+    return {"community_size": int(val) if val.isdigit() else 800}
+
+
+@router.post("/api/user-insights/community-size")
+async def api_set_community_size(
+    payload: dict,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Updates the configured WhatsApp community benchmark size."""
+    from app.db.models import set_system_setting
+    size = payload.get("community_size")
+    if size is None or not str(size).isdigit() or int(size) <= 0:
+        raise HTTPException(status_code=400, detail="Invalid community size. Must be a positive integer.")
+
+    set_system_setting(db, "whatsapp_community_size", str(size), "Total WhatsApp Community & Channel members")
+    return {"success": True, "community_size": int(size)}
+
+
+@router.get("/api/user-insights/bot-drip/stats")
+async def api_bot_drip_stats(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns statistics on automated WhatsApp follow-up / bot drips."""
+    from app.services.bot_drip import get_bot_drip_stats
+    return get_bot_drip_stats(db)
+
+
+@router.post("/api/user-insights/bot-drip/trigger")
+async def api_bot_drip_trigger(
+    payload: dict = None,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Triggers an automated follow-up bot drip batch for abandoned leads."""
+    from app.services.bot_drip import execute_bot_drip
+    max_batch = 25
+    if payload and "max_batch" in payload:
+        try:
+            max_batch = int(payload["max_batch"])
+        except (ValueError, TypeError):
+            pass
+    result = await execute_bot_drip(db, max_batch=max_batch)
+    return result
+
+
+@router.get("/api/user-insights/bot-drip/config")
+async def api_bot_drip_get_config(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns whether automated periodic background drip is enabled."""
+    from app.db.models import get_system_setting
+    auto_enabled = get_system_setting(db, "bot_drip_auto_enabled", "true").lower() in ("true", "1", "yes")
+    return {"auto_enabled": auto_enabled, "interval_minutes": 30}
+
+
+@router.post("/api/user-insights/bot-drip/config")
+async def api_bot_drip_set_config(
+    payload: dict,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Enables or disables automated background drip cycles."""
+    from app.db.models import set_system_setting
+    auto_enabled = bool(payload.get("auto_enabled", False))
+    set_system_setting(db, "bot_drip_auto_enabled", "true" if auto_enabled else "false", "Automated background bot drip enabled")
+    return {"success": True, "auto_enabled": auto_enabled, "interval_minutes": 30}
+
+
+@router.get("/api/user-insights/funnel")
+async def api_user_insights_funnel(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Returns the end-to-end conversion funnel for Job Seekers and Community Visitors."""
+    from sqlalchemy import func as sqlfunc
+    from app.db.models import ConversationState, Candidate, CandidateApplication, get_system_setting
+
+    val = get_system_setting(db, "whatsapp_community_size", "800")
+    community_size = int(val) if val.isdigit() else 800
+
+    total_bot_visitors = db.query(ConversationState).count()
+    
+    # Seekers who initiated registration or attempted to apply
+    started_registration = db.query(ConversationState).filter(
+        ConversationState.state.in_([
+            "seeker_pre_register", "seeker_registering", "seeker_uploading_cv", "seeker_cv_mismatch", "seeker_no_cv"
+        ])
+    ).count()
+
+    total_candidates = db.query(Candidate).count()
+    total_registered = db.query(Candidate).filter(Candidate.registration_complete == True).count()
+    if total_registered == 0:
+        total_registered = total_candidates
+
+    # Total unique candidates who applied for at least 1 job
+    applied_candidates = db.query(CandidateApplication.candidate_id).distinct().count()
+
+    # Candidates with >= 2 applications
+    repeat_applicants = (
+        db.query(CandidateApplication.candidate_id)
+        .group_by(CandidateApplication.candidate_id)
+        .having(sqlfunc.count(CandidateApplication.id) >= 2)
+        .count()
+    )
+
+    total_applications = db.query(CandidateApplication).count()
+
+    # Ensure funnel stage hierarchy integrity
+    reg_initiated = max(total_registered + started_registration, total_registered)
+    visitors_count = max(total_bot_visitors, reg_initiated)
+
+    stages = [
+        {"stage": "WhatsApp Community Reach", "count": community_size, "dropoff": max(community_size - visitors_count, 0), "pct": 100},
+        {"stage": "Bot Visitors (Tapped Link)", "count": visitors_count, "dropoff": max(visitors_count - reg_initiated, 0), "pct": round(visitors_count / max(community_size, 1) * 100, 1)},
+        {"stage": "Registration Initiated", "count": reg_initiated, "dropoff": max(reg_initiated - total_registered, 0), "pct": round(reg_initiated / max(visitors_count, 1) * 100, 1)},
+        {"stage": "Registered Candidates", "count": total_registered, "dropoff": max(total_registered - applied_candidates, 0), "pct": round(total_registered / max(visitors_count, 1) * 100, 1)},
+        {"stage": "Active Job Applicants", "count": applied_candidates, "dropoff": max(applied_candidates - repeat_applicants, 0), "pct": round(applied_candidates / max(total_registered, 1) * 100, 1)},
+        {"stage": "Repeat Applicants (2+)", "count": repeat_applicants, "dropoff": 0, "pct": round(repeat_applicants / max(applied_candidates, 1) * 100, 1)},
+    ]
+
+    return {
+        "funnel_stages": stages,
+        "metrics": {
+            "community_size": community_size,
+            "total_visitors": total_bot_visitors,
+            "registered_seekers": total_registered,
+            "active_applicants": applied_candidates,
+            "total_applications": total_applications,
+            "conversion_rate": round(total_registered / max(total_bot_visitors, 1) * 100),
+            "applicant_conversion_rate": round(applied_candidates / max(total_registered, 1) * 100) if total_registered else 0,
+        }
+    }
+
+
+@router.get("/api/user-insights/demand-vs-supply")
+async def api_user_insights_demand_vs_supply(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Compares Seeker Demand (locations/categories searched & tapped) vs Recruiter Supply (active vacancies)."""
+    from sqlalchemy import func as sqlfunc
+    from app.db.models import JobVacancy, Candidate, ConversationState
+    from app.handlers.seeker import CATEGORY_DISPLAY_NAMES
+
+    # 1. District Supply (Active Vacancies)
+    vacancy_districts = (
+        db.query(JobVacancy.district_region, sqlfunc.count(JobVacancy.id).label("count"))
+        .filter(JobVacancy.status != "rejected")
+        .group_by(JobVacancy.district_region)
+        .all()
+    )
+    supply_by_district = {}
+    for r in vacancy_districts:
+        d = (r.district_region or "Other").strip().title()
+        if d.upper() == "GCC": d = "GCC"
+        supply_by_district[d] = supply_by_district.get(d, 0) + r.count
+
+    # 2. District Demand (Seeker Registrations & Abandoned Clicks)
+    seeker_districts = (
+        db.query(Candidate.district, sqlfunc.count(Candidate.id).label("count"))
+        .group_by(Candidate.district)
+        .all()
+    )
+    demand_by_district = {}
+    for r in seeker_districts:
+        d = (r.district or "Other").strip().title()
+        demand_by_district[d] = demand_by_district.get(d, 0) + r.count
+
+    # Also incorporate pending job codes from conversation states context
+    states_with_context = db.query(ConversationState.context).filter(ConversationState.context.isnot(None)).all()
+    job_codes_tapped = []
+    for s in states_with_context:
+        ctx = s[0] or {}
+        jc = ctx.get("pending_job_code") or ctx.get("job_code")
+        if jc:
+            job_codes_tapped.append(jc)
+    
+    tapped_vacancies = []
+    if job_codes_tapped:
+        tapped_vacancies = db.query(JobVacancy.district_region, JobVacancy.job_category).filter(JobVacancy.job_code.in_(job_codes_tapped)).all()
+        for tv in tapped_vacancies:
+            d = (tv.district_region or "Other").strip().title()
+            demand_by_district[d] = demand_by_district.get(d, 0) + 1
+
+    # 3. Category Supply vs Demand
+    vacancy_categories = (
+        db.query(JobVacancy.job_category, sqlfunc.count(JobVacancy.id).label("count"))
+        .filter(JobVacancy.status != "rejected")
+        .group_by(JobVacancy.job_category)
+        .all()
+    )
+    supply_by_category = {}
+    for r in vacancy_categories:
+        c_key = (r.job_category or "other").strip().lower()
+        disp = CATEGORY_DISPLAY_NAMES.get(c_key, c_key.replace("_", " ").title())
+        supply_by_category[disp] = supply_by_category.get(disp, 0) + r.count
+
+    seeker_categories = (
+        db.query(Candidate.category, sqlfunc.count(Candidate.id).label("count"))
+        .group_by(Candidate.category)
+        .all()
+    )
+    demand_by_category = {}
+    for r in seeker_categories:
+        c_key = (r.category or "other").strip().lower()
+        disp = CATEGORY_DISPLAY_NAMES.get(c_key, c_key.replace("_", " ").title())
+        demand_by_category[disp] = demand_by_category.get(disp, 0) + r.count
+
+    if tapped_vacancies:
+        for tv in tapped_vacancies:
+            c_key = (tv.job_category or "other").strip().lower()
+            disp = CATEGORY_DISPLAY_NAMES.get(c_key, c_key.replace("_", " ").title())
+            demand_by_category[disp] = demand_by_category.get(disp, 0) + 1
+
+    all_districts = sorted(list(set(list(supply_by_district.keys()) + list(demand_by_district.keys()))))
+    district_comparison = [
+        {
+            "district": d,
+            "seeker_demand": demand_by_district.get(d, 0),
+            "vacancies_supply": supply_by_district.get(d, 0),
+            "status": "Shortage" if demand_by_district.get(d, 0) > supply_by_district.get(d, 0) else "Balanced"
+        }
+        for d in all_districts if d and d != "Other"
+    ]
+    # Sort so that shortages (unmet demand) appear on the left of the chart first
+    district_comparison.sort(key=lambda x: (x["status"] == "Shortage", x["seeker_demand"] - x["vacancies_supply"]), reverse=True)
+
+    all_categories = sorted(list(set(list(supply_by_category.keys()) + list(demand_by_category.keys()))))
+    category_comparison = [
+        {
+            "category": c,
+            "seeker_demand": demand_by_category.get(c, 0),
+            "vacancies_supply": supply_by_category.get(c, 0),
+            "status": "High Demand" if demand_by_category.get(c, 0) > supply_by_category.get(c, 0) else "Normal"
+        }
+        for c in all_categories if c and c != "Other / General"
+    ]
+    # Sort so that highest demand / shortages appear on the left of the chart first
+    category_comparison.sort(key=lambda x: (x["status"] == "High Demand", x["seeker_demand"] - x["vacancies_supply"]), reverse=True)
+
+    return {
+        "district_comparison": district_comparison,
+        "category_comparison": category_comparison
+    }
+
+
 @router.get("/api/vacancy-insights/stats")
 async def api_vacancy_insights_stats(
     db: Session = Depends(get_db),
@@ -1579,13 +1836,15 @@ async def api_visitor_details(
     }
 
 @router.get("/api/unregistered/recovery-list")
+@router.get("/api/user-insights/abandoned-leads")
 async def api_unregistered_recovery_list(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    """Retrieves exclusively unregistered visitors bucketed by drop-off recency."""
+    """Retrieves exclusively unregistered visitors bucketed by drop-off recency with 1-click WhatsApp recovery URLs."""
+    import urllib.parse
     from datetime import datetime, timezone
-    from app.db.models import ConversationState, Candidate, Recruiter
+    from app.db.models import ConversationState, Candidate, Recruiter, JobVacancy
 
     cand_subq = db.query(Candidate.wa_number).subquery("c_sub")
     rec_subq = db.query(Recruiter.wa_number).subquery("r_sub")
@@ -1615,39 +1874,100 @@ async def api_unregistered_recovery_list(
         "7+ Days": 0
     }
 
+    # Preload vacancies map for quick lookup
+    vacancies_map = {v.job_code: v for v in db.query(JobVacancy).all()}
+
     leads = []
     for r in recent_unregistered:
         last_active = r.last_user_message_at or r.updated_at
+        days_ago = 0
         
         # Determine lead temperature bucket
         if last_active:
             if last_active.tzinfo is None:
                 last_active = last_active.replace(tzinfo=timezone.utc)
             delta = now - last_active
-            days = delta.days
+            days_ago = delta.days
             
-            if days < 1:
+            if days_ago < 1:
                 buckets["< 24 Hours"] += 1
-            elif 1 <= days <= 3:
+            elif 1 <= days_ago <= 3:
                 buckets["1-3 Days"] += 1
-            elif 3 < days <= 7:
+            elif 3 < days_ago <= 7:
                 buckets["3-7 Days"] += 1
             else:
                 buckets["7+ Days"] += 1
 
         ctx = r.context or {}
+        state_str = r.state or "idle"
+        p_code = ctx.get("pending_job_code") or ctx.get("job_code")
+        v_obj = vacancies_map.get(p_code) if p_code else None
+
+        if "recruiter" in state_str:
+            lead_type = "Recruiter Drop-off"
+            stage_label = "Abandoned Recruiter Setup"
+        elif "seeker" in state_str:
+            lead_type = "Job Seeker Drop-off"
+            stage_label = "Abandoned Seeker Form" if state_str == "seeker_registering" else "Clicked Apply, Did Not Register"
+        else:
+            lead_type = "General Visitor"
+            stage_label = "Messaged Bot, Stayed Idle"
+
+        clean_wa = (r.wa_number or "").replace("+", "").strip()
+
+        # Tailored recovery message for WhatsApp outreach
+        if v_obj:
+            job_title = v_obj.job_title.strip()
+            loc_str = f" in {v_obj.district_region.title()}" if v_obj.district_region else ""
+            rec_msg = (
+                f"Hi! 👋 We noticed you started applying for *{job_title}*{loc_str} on JobInfo.\n\n"
+                f"Good news: You can now complete your application in under 30 seconds without a CV!\n\n"
+                f"Tap here to apply immediately:\n"
+                f"👉 https://jobinfo.pro/api/apply/{p_code}\n\n"
+                f"Need any assistance? Reply directly to this message! 🤝"
+            )
+        elif "recruiter" in state_str:
+            rec_msg = (
+                "Hi! 👋 We noticed you started creating your recruiter account on JobInfo.\n\n"
+                "Do you need any assistance posting your vacancy? You can post unlimited jobs for free:\n"
+                "👉 https://jobinfo.pro/recruiter.html\n\n"
+                "Or reply here and our team will gladly assist you! 🤝"
+            )
+        else:
+            rec_msg = (
+                "Hi! 👋 Welcome to JobInfo Kerala.\n\n"
+                "Looking for verified job openings in your district? You can set up your profile in 30 seconds:\n"
+                "👉 https://jobinfo.pro\n\n"
+                "Or reply 'Jobs' to explore roles near you! ✨"
+            )
+
+        recovery_url = f"https://wa.me/{clean_wa}?text={urllib.parse.quote(rec_msg)}"
+
         leads.append({
             "wa_number": r.wa_number,
-            "state": r.state if r.state else "idle",
+            "clean_wa": clean_wa,
+            "state": state_str,
+            "lead_type": lead_type,
+            "stage_label": stage_label,
+            "job_code": p_code or "—",
+            "job_title": v_obj.job_title.strip() if v_obj else "—",
+            "district": v_obj.district_region.title() if (v_obj and v_obj.district_region) else "—",
+            "days_ago": days_ago,
             "last_active": last_active.isoformat() if last_active else None,
-            "is_messaged": bool(ctx.get("help_messaged_at"))
+            "is_messaged": bool(ctx.get("help_messaged_at")),
+            "is_dripped": bool(ctx.get("drip_sent_at")),
+            "drip_sent_at": ctx.get("drip_sent_at"),
+            "recovery_link": recovery_url,
+            "recovery_msg_preview": rec_msg[:90] + "..."
         })
 
     return {
         "chart_data": {
             "temperature": buckets
         },
-        "table_data": leads
+        "leads": leads,
+        "table_data": leads,
+        "total_unregistered": len(leads)
     }
 
 @router.patch("/api/users/{wa_number}/help_status")
@@ -1661,9 +1981,14 @@ async def api_update_help_status(
     from datetime import datetime, timezone
     from app.db.models import ConversationState
 
-    state_obj = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    clean_wa = wa_number.replace("+", "").strip()
+    state_obj = db.query(ConversationState).filter(
+        (ConversationState.wa_number == wa_number) |
+        (ConversationState.wa_number == clean_wa) |
+        (ConversationState.wa_number == f"+{clean_wa}")
+    ).first()
     if not state_obj:
-        state_obj = db.query(ConversationState).filter(ConversationState.wa_number.like(f"%{wa_number.replace('+','')} ")).first()
+        state_obj = db.query(ConversationState).filter(ConversationState.wa_number.like(f"%{clean_wa}%")).first()
     if not state_obj:
         raise HTTPException(status_code=404, detail="Visitor state not found")
 

@@ -2,6 +2,7 @@
 FastAPI application entry point.
 Mounts all routers, adds CORS, and initialises the database on startup.
 """
+import asyncio
 import logging
 import os # NEW: required for file path handling
 from contextlib import asynccontextmanager
@@ -25,10 +26,18 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: initialise DB and seed plans."""
+    """Startup: initialise DB, seed plans, and launch background workers."""
     init_db()
     seed()
+    from app.services.bot_drip import bot_drip_background_worker
+    drip_task = asyncio.create_task(bot_drip_background_worker())
     yield
+    drip_task.cancel()
+    try:
+        await drip_task
+    except asyncio.CancelledError:
+        pass
+
 
 
 app = FastAPI(

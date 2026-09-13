@@ -188,7 +188,8 @@
               {
                 "type": "DocumentPicker",
                 "name": "cv_file",
-                "label": "Upload CV",
+                "label": "Upload CV (Optional)",
+                "description": "PDF (max 1MB). You can skip this if you don't have a CV.",
                 "max-uploaded-documents": 1,
                 "max-file-size-kb": 1024
               }

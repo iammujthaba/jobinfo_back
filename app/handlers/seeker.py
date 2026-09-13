@@ -101,22 +101,23 @@ async def _send_cv_required_message(
     job_code: str,
 ) -> None:
     """
-    Sent when vacancy.cv_required is True but the seeker has no CV.
-    Prompts them to upload a CV before they can complete the application.
+    Sent when vacancy.cv_required is True and seeker hasn't attached a CV yet.
+    Allows uploading a CV or applying directly with profile so users are never blocked.
     """
     await wa_client.send_buttons(
         to=wa_number,
-        header_text="📄 CV Required for This Role",
+        header_text="📄 CV Recommended for This Role",
         body_text=(
-            f"The recruiter requires a CV for the *{vacancy.job_title.strip()}* role.\n\n"
-            "Please upload your CV to complete your application. "
-            "It only takes a moment and dramatically boosts your chances! 🚀"
+            f"The recruiter for *{vacancy.job_title.strip()}* prefers applicants with a CV.\n\n"
+            "💡 *Pro Tip:* Attaching a CV boosts your shortlisting chances by 3x!\n\n"
+            "Would you like to upload a CV now, or apply directly with your profile details?"
         ),
         buttons=[
-            {"id": f"UPLOAD_NEW_CV_{job_code}", "title": "📤 Upload New CV"},
-            {"id": f"MANAGE_CV_{job_code}", "title": "📁 Choose Existing"},
+            {"id": f"UPLOAD_NEW_CV_{job_code}", "title": "📤 Upload CV (Best)"},
+            {"id": f"APPLY_NO_CV_{job_code}", "title": "⚡ Apply Without CV"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🔍 Explore Other Jobs"},
         ],
-        footer_text="Upload once — apply to multiple roles with the same CV",
+        footer_text="You can always add a CV later from your profile",
     )
 
 
@@ -145,26 +146,47 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
 
     if not candidate or not candidate.registration_complete:
-        # Unregistered – show register / gethelp buttons
+        # Unregistered – directly launch registration flow with job pre-loaded (removes 2-step barrier)
         salary = _label(SALARY_LABELS, vacancy.salary_range)
-        await wa_client.send_buttons(
-            to=wa_number,
-            body_text=(
-                "*🚀Apply for this position via WhatsApp!*\n\n"
-                f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-                f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
-                f"💰 Salary: {salary}\n"
-                f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
-                "To apply, you need to setup your profile. It's quick and free!\n\n"
-                "Tap *Register Now* to complete application or *Get Help* if you need assistance."
-            ),
-            buttons=[
-                {"id": f"btn_register_{job_code}", "title": "Register Now"},
-                {"id": "help_support", "title": "Help/Support"},
-            ],
-        )
-        # Save job_code in state so we know what to apply for after registration
-        _set_state(wa_number, "seeker_pre_register", {"pending_job_code": job_code}, db)
+        try:
+            await wa_client.send_flow(
+                to=wa_number,
+                flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+                flow_cta="Apply Now (Quick Setup)",
+                header_text=f"Apply: {vacancy.job_title.strip()[:60]}",
+                body_text=(
+                    f"🚀 *Applying for: {vacancy.job_title.strip()}*\n\n"
+                    f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                    f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
+                    f"💰 Salary: {salary}\n\n"
+                    "One quick step! Tap below to set up your profile and submit your application. Takes under 30 seconds (CV is optional) ✨"
+                ),
+                flow_action_payload={
+                    "screen": "SEEKER_REGISTRATION",
+                    "data": {
+                        "pending_job_code": job_code
+                    }
+                },
+            )
+            _set_state(wa_number, "seeker_registering", {"pending_job_code": job_code}, db)
+        except Exception as e:
+            logger.warning("Direct flow send failed for %s, falling back to buttons: %s", wa_number, e)
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=(
+                    "*🚀Apply for this position via WhatsApp!*\n\n"
+                    f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+                    f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                    f"💰 Salary: {salary}\n"
+                    f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
+                    "Tap *Register Now* to set up your profile and complete application instantly (CV optional)."
+                ),
+                buttons=[
+                    {"id": f"btn_register_{job_code}", "title": "Register Now"},
+                    {"id": "help_support", "title": "Help/Support"},
+                ],
+            )
+            _set_state(wa_number, "seeker_pre_register", {"pending_job_code": job_code}, db)
     else:
         await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
 
@@ -540,30 +562,36 @@ async def handle_registration_flow_completion(
         candidate.registration_complete = True
         db.commit()
         name = candidate.name.split()[0] if candidate.name else "there"
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="Welcome to JobInfo! 🎉",
-            body_text=(
-                f"🎉 *Congratulations, {name}!* Your professional profile is officially live!\n\n"
-                "You're now part of Kerala's fastest-growing job network. "
-                "We'll match you with opportunities tailored to your skills and preferences.\n\n"
-                "What would you like to do next? 👇"
-            ),
-            buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
-            ],
-            footer_text="Powered by JobInfo.pro",
-        )
-        # If they were in the middle of applying, resume
+
+        # If they were in the middle of applying for a specific vacancy, prioritize completing it
         state = _get_or_create_state(wa_number, db)
         pending_code = (state.context or {}).get("pending_job_code") or flow_data.get(
             "pending_job_code"
         )
-        if pending_code:
-            vacancy = db.query(JobVacancy).filter_by(job_code=pending_code).first()
-            if vacancy:
-                await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
+        vacancy = db.query(JobVacancy).filter_by(job_code=pending_code).first() if pending_code else None
+
+        if vacancy:
+            await wa_client.send_text(
+                to=wa_number,
+                body=f"🎉 *Welcome, {name}!* Your profile has been set up successfully.\nNow finalizing your application for *{vacancy.job_title.strip()}*..."
+            )
+            await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
+        else:
+            await wa_client.send_buttons(
+                to=wa_number,
+                header_text="Welcome to JobInfo! 🎉",
+                body_text=(
+                    f"🎉 *Congratulations, {name}!* Your professional profile is officially live!\n\n"
+                    "You're now part of Kerala's fastest-growing job network. "
+                    "We'll match you with opportunities tailored to your skills and preferences.\n\n"
+                    "What would you like to do next? 👇"
+                ),
+                buttons=[
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                    {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
+                ],
+                footer_text="Powered by JobInfo.pro",
+            )
 
 
 async def _send_plan_selection(wa_number: str, db: Session) -> None:
@@ -705,32 +733,30 @@ async def handle_confirm_apply_button(
 ) -> None:
     """
     User chose 'Apply Anyway' / 'Submit Application' from the CV prompt.
-    Runs the CV-required check again before creating the application record
-    (guards the case where the recruiter requires a CV and the seeker
-    deliberately taps 'Apply Without CV').
+    Proceeds to submit application directly with their existing profile.
     """
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     if not vacancy:
         await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
         return
 
-    # ── CV-required gate ───────────────────────────────────────────────────
-    if vacancy.cv_required:
-        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
-        if candidate:
-            resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
-            has_cv = resume_count > 0 or bool(candidate.cv_path)
-            if not has_cv:
-                await _send_cv_required_message(wa_number, vacancy, job_code)
-                return
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        await start(wa_number, job_code, db)
+        return
 
-    await handle_apply_now_button(wa_number, vacancy.id, db)
+    resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+    has_cv = resume_count > 0 or bool(candidate.cv_path)
+    if has_cv:
+        await handle_apply_now_button(wa_number, vacancy.id, db)
+    else:
+        await handle_apply_no_cv(wa_number, job_code, db)
 
 
 async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None:
     """
     User explicitly chose to apply without a CV.
-    If the recruiter has made a CV mandatory, block and prompt upload.
+    Submits application with candidate's registered profile details so users are never blocked.
     """
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
@@ -758,11 +784,6 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
 
     if not _has_active_plan(candidate):
         await wa_client.send_text(to=wa_number, body=plan_renewal_body(candidate))
-        return
-
-    # ── CV-required gate ───────────────────────────────────────────────────
-    if vacancy.cv_required:
-        await _send_cv_required_message(wa_number, vacancy, job_code)
         return
 
     existing = (

@@ -239,6 +239,16 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
         candidate_handler_renew(wa_number, db)
         return
 
+    # ── Text reply fallback for seekers awaiting apply confirmation ──────────
+    from app.db.models import ConversationState
+    user_state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    if user_state and user_state.state in ("seeker_no_cv", "seeker_cv_mismatch"):
+        ctx = user_state.context or {}
+        p_code = ctx.get("job_code")
+        if p_code and normalized in ("apply", "apply now", "yes", "ok", "confirm", "proceed", "apply anyway", "apply without cv"):
+            await seeker_handler.handle_apply_no_cv(wa_number, p_code, db)
+            return
+
     # Default: personalized routing
     await global_handler.route_unrecognized_message(wa_number, db)
 

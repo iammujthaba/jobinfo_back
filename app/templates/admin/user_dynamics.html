@@ -1,91 +1,235 @@
 {% extends "admin/base.html" %}
-{% block title %}User Dynamics{% endblock %}
-{% block page_title %}User Dynamics{% endblock %}
-{% block page_sub %}Analyze unregistered users, bot drop-offs, and engagement dynamics{% endblock %}
+{% block title %}User Insights - Admin{% endblock %}
+{% block page_title %}User Insights{% endblock %}
+{% block page_sub %}Diagnostic & Recovery Cockpit across 800+ Community Members, Bot Visitors & Registered Candidates{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .funnel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+  }
+  .funnel-step-card {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .funnel-step-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+  .crm-filter-btn {
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: .78rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .crm-filter-btn.active {
+    background: var(--text);
+    color: #fff;
+    border-color: var(--text);
+  }
+  .badge-seeker {
+    background: #eff6ff;
+    color: #2563eb;
+  }
+  .badge-recruiter {
+    background: #faf5ff;
+    color: #9333ea;
+  }
+  .badge-visitor {
+    background: #f1f5f9;
+    color: #475569;
+  }
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+<button onclick="refreshAllInsights()" class="btn btn-sm btn-ghost" style="display:inline-flex;align-items:center;gap:6px;">
+  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+  Refresh Cockpit
+</button>
+{% endblock %}
 
 {% block content %}
 <!-- Macro Stats Grid -->
-<div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
-  <div class="stat-card" style="border-left:4px solid #f59e0b;">
-    <div class="val" id="ud-unregistered" style="color:#f59e0b;">—</div>
-    <div class="lbl">Unregistered Users</div>
+<div class="stat-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+  <div class="stat-card" style="border-left:4px solid #22c55e;">
+    <div class="val" id="ud-seekers" style="color:#22c55e;">—</div>
+    <div class="lbl">🙋 Job Seekers</div>
   </div>
   <div class="stat-card" style="border-left:4px solid #3b82f6;">
-    <div class="val" id="ud-bot-visitors" style="color:#3b82f6;">—</div>
-    <div class="lbl">Total Bot Visitors</div>
+    <div class="val" id="ud-recruiters" style="color:#3b82f6;">—</div>
+    <div class="lbl">👔 Recruiters</div>
   </div>
-  <div class="stat-card" style="border-left:4px solid #22c55e;">
-    <div class="val" id="ud-registered" style="color:#22c55e;">—</div>
-    <div class="lbl">Total Registered</div>
+  <div class="stat-card" style="border-left:4px solid #f59e0b;">
+    <div class="val" id="ud-unregistered" style="color:#f59e0b;">—</div>
+    <div class="lbl">👻 Unregistered Leads</div>
   </div>
   <div class="stat-card" style="border-left:4px solid #8b5cf6;">
-    <div class="val" id="ud-conversion" style="color:#8b5cf6;">—</div>
-    <div class="lbl">Overall Conversion Rate</div>
+    <div class="val" id="ud-bot-visitors" style="color:#8b5cf6;">—</div>
+    <div class="lbl">🤖 Bot Visitors</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #059669;">
+    <div class="val" id="ud-conversion" style="color:#059669;">—</div>
+    <div class="lbl">🎯 Overall Conversion</div>
   </div>
 </div>
 
-<!-- Charts Grid -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Drop-off Funnel (Unregistered Bot States)</span>
-    </div>
-    <div class="card-body" style="height:240px;position:relative;">
-      <canvas id="c-funnel"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Lead Recency (Temperature)</span>
-    </div>
-    <div class="card-body" style="height:240px;position:relative;">
-      <canvas id="c-temp"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- Unregistered Leads CRM Table -->
-<div class="card">
-  <div class="card-header" style="flex-wrap:wrap;gap:12px;">
+<!-- 1. Conversion Funnel Pipeline -->
+<div class="card" style="margin-bottom:20px;padding:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
     <div>
-      <span class="card-title">Unregistered Leads & Outreach</span>
-      <span style="font-size:.75rem;color:#64748b;margin-left:8px;" id="leads-count-label"></span>
+      <span class="card-title" style="font-size:.95rem;font-weight:700;">Conversion Funnel & Drop-off Diagnostics</span>
+      <span style="font-size:.78rem;color:#64748b;margin-left:8px;">
+        WhatsApp Community Benchmark: <strong id="val-community-size" style="color:var(--text);font-weight:700;">800</strong> members
+        <button onclick="editCommunitySize()" class="btn btn-xs" style="padding:2px 8px;margin-left:6px;font-size:0.72rem;background:#f1f5f9;border:1px solid #cbd5e1;cursor:pointer;border-radius:4px;display:inline-flex;align-items:center;gap:3px;">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          Edit Size
+        </button>
+      </span>
+    </div>
+    <span id="ud-funnel-summary-badge" class="badge" style="background:#ecfdf5;color:#059669;font-weight:700;font-size:.75rem;padding:4px 10px;border-radius:20px;">
+      Conversion: Calculating…
+    </span>
+  </div>
+  <div class="funnel-grid" id="funnel-grid">
+    <div style="grid-column:1/-1;text-align:center;padding:24px;color:#64748b;">Loading funnel pipeline…</div>
+  </div>
+</div>
+
+<!-- 2. Diagnostic Demand vs Supply Mismatch (The Super Admin's Core Job) -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+  <!-- District Match Matrix -->
+  <div class="card">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <span class="card-title">📍 District Demand vs Vacancy Supply</span>
+        <div style="font-size:.72rem;color:#64748b;margin-top:2px;">Candidates Searching vs Active Vacancies</div>
+      </div>
+      <span class="badge badge-blue">District Match</span>
+    </div>
+    <div class="card-body" style="height:250px;position:relative;">
+      <canvas id="c-demand-district"></canvas>
+    </div>
+  </div>
+
+  <!-- Category Match Matrix -->
+  <div class="card">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <span class="card-title">📋 Job Category Demand vs Supply</span>
+        <div style="font-size:.72rem;color:#64748b;margin-top:2px;">Most Tapped Categories vs Available Roles</div>
+      </div>
+      <span class="badge badge-amber">Category Demand</span>
+    </div>
+    <div class="card-body" style="height:250px;position:relative;">
+      <canvas id="c-demand-category"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Bot Drip Engine Widget -->
+<div class="card" style="margin-bottom:20px;padding:16px 20px;background:linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);border:1px solid #bbf7d0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:38px;height:38px;border-radius:10px;background:#22c55e;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.15rem;box-shadow:0 2px 6px rgba(34,197,94,0.3);">
+        🤖
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:.92rem;color:#14532d;display:flex;align-items:center;gap:8px;">
+          Automated WhatsApp Bot Drip Follow-up
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-left:4px;user-select:none;">
+            <input type="checkbox" id="toggle-auto-drip" onchange="toggleAutoDrip(this)" style="cursor:pointer;accent-color:#16a34a;width:15px;height:15px;">
+            <span id="label-auto-drip" class="badge" style="background:#dcfce7;color:#15803d;font-size:0.7rem;font-weight:700;">AUTO: ON (Every 30m)</span>
+          </label>
+        </div>
+        <div style="font-size:.75rem;color:#166534;margin-top:2px;">
+          Automatically nurtures abandoned visitors within Meta's 24-hour free session window to complete registration.
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;gap:14px;font-size:.78rem;">
+        <div><span style="color:#64748b;">Nudges Sent:</span> <strong id="drip-total-sent" style="color:#15803d;font-size:.9rem;">0</strong></div>
+        <div><span style="color:#64748b;">Golden Window (&lt;24h):</span> <strong id="drip-golden-ready" style="color:#2563eb;font-size:.9rem;">0</strong> ready</div>
+      </div>
+      <button id="btn-trigger-drip" onclick="triggerBotDrip()" class="btn btn-sm btn-success" style="background:#16a34a;border:none;color:#fff;font-weight:600;font-size:.8rem;padding:6px 14px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 5px rgba(22,163,74,0.25);cursor:pointer;">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Run Bot Drip Now
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 3. Abandoned Leads Recovery CRM Cockpit -->
+<div class="card">
+  <div class="card-header" style="flex-wrap:wrap;gap:12px;display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <span class="card-title" style="display:flex;align-items:center;gap:8px;">
+        <svg width="16" height="16" fill="#22c55e" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.655.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.591-6.592 6.591z"/></svg>
+        Abandoned Leads Recovery CRM (<span id="count-all-header">…</span>)
+      </span>
+      <span style="font-size:.75rem;color:#64748b;margin-top:2px;display:block;" id="leads-count-label">Direct WhatsApp recovery outreach for visitors who dropped off</span>
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-      <select id="bucket-filter" onchange="filterLeads()" style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
-        <option value="">All Recency Buckets</option>
-        <option value="< 24 Hours">&lt; 24 Hours</option>
-        <option value="1-3 Days">1-3 Days</option>
-        <option value="3-7 Days">3-7 Days</option>
-        <option value="7+ Days">7+ Days</option>
-      </select>
-      <select id="status-filter" onchange="filterLeads()" style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;background:#fff;cursor:pointer;">
-        <option value="">All Outreach Status</option>
-        <option value="unmessaged">Pending Outreach</option>
-        <option value="messaged">Messaged</option>
-      </select>
-      <div class="search-bar" style="width:220px;">
+      <div style="display:flex;gap:4px;">
+        <button class="crm-filter-btn active" onclick="setLeadFilter('all', this)">All (<span id="count-all">0</span>)</button>
+        <button class="crm-filter-btn" onclick="setLeadFilter('seeker', this)">Seekers (<span id="count-seekers">0</span>)</button>
+        <button class="crm-filter-btn" onclick="setLeadFilter('recruiter', this)">Recruiters (<span id="count-recruiters">0</span>)</button>
+        <button class="crm-filter-btn" onclick="setLeadFilter('idle', this)">Idle (<span id="count-idle">0</span>)</button>
+      </div>
+      <div class="search-bar" style="width:200px;">
         <svg width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="search-input" placeholder="Search WhatsApp…" oninput="filterLeads()">
+        <input type="text" id="search-input" placeholder="Search Number or Job…" oninput="filterLeads()">
       </div>
     </div>
   </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
+  <div class="table-wrap" style="max-height:480px;overflow-y:auto;">
+    <table style="width:100%;">
+      <thead style="position:sticky;top:0;background:#f8fafc;z-index:2;">
         <tr>
           <th>WhatsApp Number</th>
-          <th>Bot State</th>
+          <th>Persona / Type</th>
+          <th>Interested Job</th>
+          <th>Drop-off Stage</th>
           <th>Last Active</th>
-          <th>Temperature</th>
           <th>Outreach Status</th>
-          <th>Action</th>
+          <th style="text-align:right;">1-Click Recovery</th>
         </tr>
       </thead>
       <tbody id="leads-tbody">
-        <tr><td colspan="6" style="text-align:center;padding:32px;color:#64748b;">Loading user dynamics data…</td></tr>
+        <tr><td colspan="7" style="text-align:center;padding:32px;color:#64748b;">Loading abandoned leads CRM…</td></tr>
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Community Benchmark Modal -->
+<div class="modal-overlay" id="modal-community-size" onclick="if(event.target===this)closeCommunitySizeModal()">
+  <div class="modal" style="max-width:420px;">
+    <h3>Edit Community Benchmark</h3>
+    <div class="modal-sub">Update the total member count of your WhatsApp Community and Channel to recalculate the funnel conversion metrics.</div>
+    <div style="margin-top:16px;">
+      <label for="input-community-size" style="font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:6px;display:block;">Total Community & Channel Members</label>
+      <input type="number" id="input-community-size" min="1" step="10" placeholder="e.g. 1000" onkeydown="if(event.key==='Enter')saveCommunitySize()" style="width:100%;box-sizing:border-box;">
+    </div>
+    <div class="modal-actions" style="margin-top:20px;display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn btn-ghost" onclick="closeCommunitySizeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCommunitySize()">Save Benchmark</button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -93,10 +237,24 @@
 {% block scripts %}
 <script>
 let allLeads = [];
+let currentFilter = 'all';
+let chartDemandDistrict = null;
+let chartDemandCategory = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([loadMacroSummary(), loadRecoveryList(), loadFunnel()]);
+  await refreshAllInsights();
 });
+
+async function refreshAllInsights() {
+  await Promise.allSettled([
+    loadMacroSummary(),
+    loadFunnelPipeline(),
+    loadDemandSupplyDiagnostics(),
+    loadBotDripConfig(),
+    loadBotDripStats(),
+    loadRecoveryCRM()
+  ]);
+}
 
 async function loadMacroSummary() {
   try {
@@ -104,139 +262,392 @@ async function loadMacroSummary() {
     if (!r.ok) return;
     const d = await r.json();
 
+    document.getElementById('ud-seekers').textContent = fmtNum(d.job_seekers);
+    document.getElementById('ud-recruiters').textContent = fmtNum(d.recruiters);
     document.getElementById('ud-unregistered').textContent = fmtNum(d.unregistered);
     document.getElementById('ud-bot-visitors').textContent = fmtNum(d.bot_visitors);
-    const reg = (d.job_seekers || 0) + (d.recruiters || 0) - (d.dual_users || 0);
-    document.getElementById('ud-registered').textContent = fmtNum(reg);
     document.getElementById('ud-conversion').textContent = (d.conversion_rate || 0) + '%';
   } catch (e) {
-    console.error(e);
+    console.error("Macro summary error:", e);
   }
 }
 
-async function loadFunnel() {
+async function loadFunnelPipeline() {
   try {
-    const r = await adminFetch('/admin/api/visitors/stats');
+    const r = await adminFetch('/admin/api/user-insights/funnel');
     if (!r.ok) return;
     const d = await r.json();
 
-    const fn = d.chart_data ? d.chart_data.funnel : {};
-    const fnKeys = Object.keys(fn).sort((a, b) => fn[b] - fn[a]);
-    new Chart(document.getElementById('c-funnel'), {
-      type: 'bar',
-      data: {
-        labels: fnKeys,
-        datasets: [{
-          data: fnKeys.map(k => fn[k]),
-          backgroundColor: 'rgba(139, 92, 246, 0.75)',
-          borderRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        indexAxis: 'y',
-        scales: { x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.05)' } } }
-      }
-    });
+    const badge = document.getElementById('ud-funnel-summary-badge');
+    if (badge && d.metrics) {
+      badge.textContent = `Conversion Rate: ${d.metrics.conversion_rate}% (${d.metrics.registered_seekers} / ${d.metrics.total_visitors} Visitors)`;
+    }
+
+    const commSizeEl = document.getElementById('val-community-size');
+    if (commSizeEl && d.metrics && d.metrics.community_size) {
+      commSizeEl.textContent = Number(d.metrics.community_size).toLocaleString('en-IN');
+    }
+
+    const grid = document.getElementById('funnel-grid');
+    if (!grid || !d.funnel_stages) return;
+
+    grid.innerHTML = d.funnel_stages.map((stage, idx) => {
+      const dropHtml = stage.dropoff > 0
+        ? `<span style="color:#ef4444;font-weight:600;background:#fef2f2;padding:2px 6px;border-radius:4px;">-${stage.dropoff.toLocaleString()} drop</span>`
+        : `<span style="color:#10b981;font-weight:600;">100% active</span>`;
+
+      return `
+        <div class="funnel-step-card">
+          <div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">
+            Step ${idx + 1}: ${esc(stage.stage)}
+          </div>
+          <div style="font-size:1.45rem;font-weight:800;color:var(--text);line-height:1.2;">
+            ${stage.count.toLocaleString()}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:.74rem;border-top:1px solid #eef2f6;padding-top:6px;">
+            <span style="color:var(--accent);font-weight:700;">${stage.pct}% retain</span>
+            ${dropHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+
   } catch (e) {
-    console.error(e);
+    console.error("Funnel pipeline error:", e);
+    const grid = document.getElementById('funnel-grid');
+    if (grid) grid.innerHTML = '<div style="color:#ef4444;padding:16px;grid-column:1/-1;">Failed to load funnel pipeline</div>';
   }
 }
 
-async function loadRecoveryList() {
+async function loadDemandSupplyDiagnostics() {
   try {
-    const r = await adminFetch('/admin/api/unregistered/recovery-list');
+    const r = await adminFetch('/admin/api/user-insights/demand-vs-supply');
     if (!r.ok) return;
     const d = await r.json();
 
-    // Chart Temperature
-    const bucketData = d.chart_data ? d.chart_data.temperature : {};
-    const temps = Object.keys(bucketData);
-    const colors = ['#ef4444', '#f59e0b', '#3b82f6', '#94a3b8'];
-    new Chart(document.getElementById('c-temp'), {
-      type: 'bar',
-      data: {
-        labels: temps,
-        datasets: [{
-          data: temps.map(k => bucketData[k]),
-          backgroundColor: colors,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} leads` } }
-        },
-        scales: { y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.05)' } } }
-      }
-    });
+    // 1. District Chart
+    const dLabels = (d.district_comparison || []).map(x => x.district);
+    const dDemand = (d.district_comparison || []).map(x => x.seeker_demand);
+    const dSupply = (d.district_comparison || []).map(x => x.vacancies_supply);
 
-    allLeads = d.table_data || [];
+    const ctxD = document.getElementById('c-demand-district');
+    if (ctxD) {
+      if (chartDemandDistrict) chartDemandDistrict.destroy();
+      chartDemandDistrict = new Chart(ctxD, {
+        type: 'bar',
+        data: {
+          labels: dLabels,
+          datasets: [
+            { label: 'Seeker Demand (Searches/Clicks)', data: dDemand, backgroundColor: '#3b82f6', borderRadius: 4 },
+            { label: 'Vacancies Supply (Job Posts)', data: dSupply, backgroundColor: '#10b981', borderRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                afterBody: items => {
+                  const item = d.district_comparison[items[0].dataIndex];
+                  return item && item.status === 'Shortage' ? '⚠️ Shortage: Seeker demand exceeds posted jobs!' : '';
+                }
+              }
+            }
+          },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.05)' } } }
+        }
+      });
+    }
+
+    // 2. Category Chart
+    const cLabels = (d.category_comparison || []).slice(0, 8).map(x => x.category);
+    const cDemand = (d.category_comparison || []).slice(0, 8).map(x => x.seeker_demand);
+    const cSupply = (d.category_comparison || []).slice(0, 8).map(x => x.vacancies_supply);
+
+    const ctxC = document.getElementById('c-demand-category');
+    if (ctxC) {
+      if (chartDemandCategory) chartDemandCategory.destroy();
+      chartDemandCategory = new Chart(ctxC, {
+        type: 'bar',
+        data: {
+          labels: cLabels,
+          datasets: [
+            { label: 'Seeker Interest', data: cDemand, backgroundColor: '#f59e0b', borderRadius: 4 },
+            { label: 'Vacancies Available', data: cSupply, backgroundColor: '#8b5cf6', borderRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,.05)' } } }
+        }
+      });
+    }
+
+  } catch (e) {
+    console.error("Demand vs supply error:", e);
+  }
+}
+
+async function loadRecoveryCRM() {
+  try {
+    const r = await adminFetch('/admin/api/user-insights/abandoned-leads');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    allLeads = d.leads || d.table_data || [];
+
+    const headerCount = document.getElementById('count-all-header');
+    if (headerCount) headerCount.textContent = allLeads.length;
+    document.getElementById('count-all').textContent = allLeads.length;
+    document.getElementById('count-seekers').textContent = allLeads.filter(l => l.lead_type === 'Job Seeker Drop-off').length;
+    document.getElementById('count-recruiters').textContent = allLeads.filter(l => l.lead_type === 'Recruiter Drop-off').length;
+    document.getElementById('count-idle').textContent = allLeads.filter(l => l.lead_type === 'General Visitor').length;
+
     filterLeads();
   } catch (e) {
-    console.error(e);
-    document.getElementById('leads-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:24px;">Failed to load data</td></tr>';
+    console.error("Recovery CRM error:", e);
+    document.getElementById('leads-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:24px;">Failed to load leads</td></tr>';
   }
+}
+
+function setLeadFilter(type, btn) {
+  currentFilter = type;
+  document.querySelectorAll('.crm-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  filterLeads();
 }
 
 function filterLeads() {
-  const bucket = document.getElementById('bucket-filter').value;
-  const status = document.getElementById('status-filter').value;
-  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  let list = allLeads;
+  if (currentFilter === 'seeker') list = list.filter(l => l.lead_type === 'Job Seeker Drop-off');
+  else if (currentFilter === 'recruiter') list = list.filter(l => l.lead_type === 'Recruiter Drop-off');
+  else if (currentFilter === 'idle') list = list.filter(l => l.lead_type === 'General Visitor');
 
-  const filtered = allLeads.filter(item => {
-    if (bucket && item.temperature !== bucket) return false;
-    if (status === 'messaged' && !item.is_messaged) return false;
-    if (status === 'unmessaged' && item.is_messaged) return false;
-    if (q && !(item.wa_number || '').toLowerCase().includes(q)) return false;
-    return true;
-  });
+  const q = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
+  if (q) {
+    list = list.filter(l =>
+      (l.wa_number && l.wa_number.toLowerCase().includes(q)) ||
+      (l.clean_wa && l.clean_wa.toLowerCase().includes(q)) ||
+      (l.job_title && l.job_title.toLowerCase().includes(q)) ||
+      (l.district && l.district.toLowerCase().includes(q)) ||
+      (l.job_code && l.job_code.toLowerCase().includes(q))
+    );
+  }
 
-  renderLeadsTable(filtered);
+  renderLeadsTable(list);
 }
 
 function renderLeadsTable(rows) {
   const tbody = document.getElementById('leads-tbody');
-  document.getElementById('leads-count-label').textContent = `(${rows.length} records)`;
+  document.getElementById('leads-count-label').textContent = `Showing ${rows.length} of ${allLeads.length} total abandoned visitors`;
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#64748b;padding:32px;">No unregistered leads match your filter</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:32px;">No unregistered leads match your filter</td></tr>';
     return;
   }
 
-  const tempBadge = {
-    '< 24 Hours': 'badge-red',
-    '1-3 Days': 'badge-amber',
-    '3-7 Days': 'badge-blue',
-    '7+ Days': 'badge-gray'
-  };
-
   tbody.innerHTML = rows.map(l => {
-    const waClean = (l.wa_number || '').replace(/[^0-9]/g, '');
-    const waLink = waClean ? `https://wa.me/${waClean}` : '#';
+    let personaBadge = '<span class="badge badge-visitor">Visitor</span>';
+    if (l.lead_type === 'Job Seeker Drop-off') personaBadge = '<span class="badge badge-seeker">🙋 Seeker</span>';
+    else if (l.lead_type === 'Recruiter Drop-off') personaBadge = '<span class="badge badge-recruiter">👔 Recruiter</span>';
+
+    let jobHtml = '<span style="color:#94a3b8;font-style:italic;font-size:.78rem;">General Interaction</span>';
+    if (l.job_title && l.job_title !== '—') {
+      jobHtml = `
+        <div style="font-weight:600;color:var(--text);font-size:.82rem;">${esc(l.job_title)}</div>
+        <div style="font-size:.72rem;color:#64748b;"><code>${esc(l.job_code)}</code> · ${esc(l.district)}</div>
+      `;
+    }
+
+    const timeStr = l.days_ago === 0 ? '<span style="color:#10b981;font-weight:600;">Today</span>' : `${l.days_ago}d ago`;
+
+    const recoveryLink = l.recovery_link || `https://wa.me/${l.clean_wa}`;
+
+    const dripBadge = l.is_dripped
+      ? `<span class="badge" style="background:#dcfce7;color:#15803d;font-size:.68rem;font-weight:700;margin-right:6px;" title="Automated WhatsApp nudge delivered">⚡ Dripped</span>`
+      : '';
+
     return `
       <tr>
-        <td style="font-family:monospace;font-weight:600;">${esc(l.wa_number)}</td>
-        <td><span class="badge badge-gray">${esc(l.state || 'idle')}</span></td>
-        <td style="font-size:.75rem;color:#64748b;">${fmtDate(l.last_active)}</td>
-        <td><span class="badge ${tempBadge[l.temperature] || 'badge-gray'}">${esc(l.temperature)}</span></td>
+        <td style="font-family:monospace;font-weight:600;font-size:.82rem;">+${esc(l.clean_wa)}</td>
+        <td>${personaBadge}</td>
+        <td>${jobHtml}</td>
         <td>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:.78rem;">
+          <span class="badge badge-gray" style="font-size:.74rem;">${esc(l.stage_label || l.state)}</span>
+          ${dripBadge}
+        </td>
+        <td style="font-size:.75rem;color:#64748b;">${timeStr}</td>
+        <td>
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:.76rem;">
             <input type="checkbox" ${l.is_messaged ? 'checked' : ''} onchange="toggleLeadMessaged('${esc(l.wa_number)}', this)" style="width:auto;cursor:pointer;">
-            <span style="color:${l.is_messaged ? '#22c55e' : '#64748b'};font-weight:${l.is_messaged ? '600' : '400'};">${l.is_messaged ? 'Messaged' : 'Not Messaged'}</span>
+            <span style="color:${l.is_messaged ? '#22c55e' : '#64748b'};font-weight:${l.is_messaged ? '600' : '400'};">${l.is_messaged ? '✅ Sent' : 'Pending'}</span>
           </label>
         </td>
-        <td>
-          ${waClean ? `<a href="${waLink}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="color:#22c55e;border-color:#22c55e;">Chat on WA</a>` : '—'}
+        <td style="text-align:right;white-space:nowrap;">
+          <a href="${recoveryLink}" target="_blank" rel="noopener" onclick="markLeadSent('${esc(l.wa_number)}')" class="btn btn-sm" style="background:#25d366;color:#fff;font-weight:600;border:none;border-radius:6px;padding:4px 10px;display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.655.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.591-6.592 6.591z"/></svg>
+            Reach Out
+          </a>
         </td>
       </tr>
     `;
   }).join('');
+}
+
+function editCommunitySize() {
+  const currText = document.getElementById('val-community-size')?.textContent?.replace(/,/g, '').trim() || '800';
+  const inp = document.getElementById('input-community-size');
+  if (inp) inp.value = currText;
+  const modal = document.getElementById('modal-community-size');
+  if (modal) modal.classList.add('open');
+  setTimeout(() => inp?.focus(), 50);
+}
+
+function closeCommunitySizeModal() {
+  const modal = document.getElementById('modal-community-size');
+  if (modal) modal.classList.remove('open');
+}
+
+async function saveCommunitySize() {
+  const inp = document.getElementById('input-community-size');
+  const newSize = parseInt(inp ? inp.value : '', 10);
+  if (isNaN(newSize) || newSize <= 0) {
+    toast('Please enter a valid positive number', 'err');
+    return;
+  }
+  try {
+    const r = await adminFetch('/admin/api/user-insights/community-size', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ community_size: newSize })
+    });
+    if (!r.ok) throw new Error('Failed to update community size');
+    closeCommunitySizeModal();
+    toast(`Community benchmark updated to ${newSize.toLocaleString('en-IN')}!`, 'ok');
+    await loadFunnelPipeline();
+  } catch (err) {
+    console.error('Update community size error:', err);
+    toast('Error updating community size', 'err');
+  }
+}
+
+async function loadBotDripConfig() {
+  try {
+    const r = await adminFetch('/admin/api/user-insights/bot-drip/config');
+    if (!r.ok) return;
+    const d = await r.json();
+    const cb = document.getElementById('toggle-auto-drip');
+    const lbl = document.getElementById('label-auto-drip');
+    if (cb) cb.checked = d.auto_enabled;
+    if (lbl) {
+      if (d.auto_enabled) {
+        lbl.textContent = 'AUTO: ON (Every 30m)';
+        lbl.style.background = '#dcfce7';
+        lbl.style.color = '#15803d';
+      } else {
+        lbl.textContent = 'AUTO: PAUSED';
+        lbl.style.background = '#f1f5f9';
+        lbl.style.color = '#64748b';
+      }
+    }
+  } catch (err) {
+    console.error('Error loading bot drip config:', err);
+  }
+}
+
+async function toggleAutoDrip(cb) {
+  const isEnabled = cb.checked;
+  const lbl = document.getElementById('label-auto-drip');
+  try {
+    const r = await adminFetch('/admin/api/user-insights/bot-drip/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_enabled: isEnabled })
+    });
+    if (!r.ok) throw new Error('Failed to update config');
+    if (lbl) {
+      if (isEnabled) {
+        lbl.textContent = 'AUTO: ON (Every 30m)';
+        lbl.style.background = '#dcfce7';
+        lbl.style.color = '#15803d';
+        toast('Auto-Drip Enabled: Background timer will run every 30m', 'ok');
+      } else {
+        lbl.textContent = 'AUTO: PAUSED';
+        lbl.style.background = '#f1f5f9';
+        lbl.style.color = '#64748b';
+        toast('Auto-Drip Paused: Only manual triggers will send', 'ok');
+      }
+    }
+  } catch (err) {
+    cb.checked = !isEnabled;
+    toast('Failed to update Auto-Drip setting', 'err');
+  }
+}
+
+async function loadBotDripStats() {
+  try {
+    const r = await adminFetch('/admin/api/user-insights/bot-drip/stats');
+    if (!r.ok) return;
+    const d = await r.json();
+    const elSent = document.getElementById('drip-total-sent');
+    const elReady = document.getElementById('drip-golden-ready');
+    if (elSent) elSent.textContent = d.total_drips_sent || 0;
+    if (elReady) elReady.textContent = d.golden_window_leads || 0;
+  } catch (err) {
+    console.error('Bot drip stats error:', err);
+  }
+}
+
+async function triggerBotDrip() {
+  const btn = document.getElementById('btn-trigger-drip');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = 'Sending Nudges…';
+  }
+  try {
+    const r = await adminFetch('/admin/api/user-insights/bot-drip/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_batch: 25 })
+    });
+    const d = await r.json();
+    if (r.ok && d.success) {
+      toast(`Bot drip sent to ${d.sent_count} leads!`, 'ok');
+      await Promise.allSettled([loadBotDripStats(), loadRecoveryCRM()]);
+    } else {
+      toast('No eligible leads to nudge right now', 'ok');
+    }
+  } catch (err) {
+    console.error('Trigger bot drip error:', err);
+    toast('Error executing bot drip', 'err');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Run Bot Drip Now
+      `;
+    }
+  }
+}
+
+async function markLeadSent(wa) {
+  try {
+    await adminFetch(`/admin/api/users/${encodeURIComponent(wa)}/help_status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_messaged: true })
+    });
+    const item = allLeads.find(x => x.wa_number === wa);
+    if (item) item.is_messaged = true;
+    filterLeads();
+  } catch (e) {
+    console.error("Error marking sent:", e);
+  }
 }
 
 async function toggleLeadMessaged(wa, cb) {

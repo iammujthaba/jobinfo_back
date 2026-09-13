@@ -276,3 +276,35 @@ class AdminNotificationQueue(Base):
     vacancy_id = Column(Integer, ForeignKey("job_vacancies.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(50), unique=True, nullable=False, index=True)
+    value = Column(String(255), nullable=False)
+    description = Column(String(255), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+def get_system_setting(db, key: str, default: str = "") -> str:
+    """Retrieve a system setting by key, or return default."""
+    row = db.query(SystemSetting).filter_by(key=key).first()
+    return row.value if row and row.value is not None else default
+
+
+def set_system_setting(db, key: str, value: str, description: str | None = None) -> SystemSetting:
+    """Create or update a system setting."""
+    row = db.query(SystemSetting).filter_by(key=key).first()
+    if not row:
+        row = SystemSetting(key=key, value=str(value), description=description)
+        db.add(row)
+    else:
+        row.value = str(value)
+        if description:
+            row.description = description
+    db.commit()
+    db.refresh(row)
+    return row
+
+
