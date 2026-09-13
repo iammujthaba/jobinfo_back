@@ -641,9 +641,9 @@ def candidate_handler_renew(wa_number: str, db: Session) -> None:
     asyncio.create_task(_send_plan_selection(wa_number, db))
 
 
-async def send_delayed_session_menu(wa_number: str) -> None:
+async def send_delayed_session_menu(wa_number: str, bypass_sleep: bool = False) -> None:
     """
-    Waits 5 minutes, validates debounce,
+    Waits 5 minutes (unless bypass_sleep=True for QA testing), validates debounce,
     spins up an independent DB session, and dispatches the correct 'Session Closing'
     button menu based on their profile combinations.
     """
@@ -653,7 +653,8 @@ async def send_delayed_session_menu(wa_number: str) -> None:
     from app.db.models import ConversationState, Recruiter, Candidate
     from app.whatsapp.client import wa_client
 
-    await asyncio.sleep(300)
+    if not bypass_sleep:
+        await asyncio.sleep(300)
     
     db = SessionLocal()
     try:
@@ -665,7 +666,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         if last_msg.tzinfo is None:
             last_msg = last_msg.replace(tzinfo=timezone.utc)
             
-        if (datetime.now(timezone.utc) - last_msg).total_seconds() < 300:
+        if not bypass_sleep and (datetime.now(timezone.utc) - last_msg).total_seconds() < 300:
             # User sent another message during the 5min wait, debounce.
             return
             

@@ -148,7 +148,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     if not candidate or not candidate.registration_complete:
         # Unregistered – directly launch registration flow with job pre-loaded (removes 2-step barrier)
         salary = _label(SALARY_LABELS, vacancy.salary_range)
-        cv_note = "Takes under 30 seconds (CV required by recruiter) 📄" if vacancy.cv_required else "Takes under 30 seconds (CV is optional) ✨"
+        cv_status = "Required" if vacancy.cv_required else "Optional"
         try:
             await wa_client.send_flow(
                 to=wa_number,
@@ -158,8 +158,9 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
                     f"*Applying for: {vacancy.job_title.strip()}*\n\n"
                     f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
                     f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
-                    f"💰 Salary: {salary}\n\n"
-                    f"One quick step! Tap below to set up your profile and submit your application. {cv_note}"
+                    f"💰 Salary: {salary}\n"
+                    f"📄 CV: {cv_status}\n\n"
+                    "One quick step! Tap below to set up your profile and submit your application (takes under 30 seconds) ✨"
                 ),
                 flow_action_payload={
                     "screen": "SEEKER_REGISTRATION",
@@ -171,16 +172,16 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             _set_state(wa_number, "seeker_registering", {"pending_job_code": job_code}, db)
         except Exception as e:
             logger.warning("Direct flow send failed for %s, falling back to buttons: %s", wa_number, e)
-            fallback_cv_note = "CV required" if vacancy.cv_required else "CV optional"
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=(
                     "*🚀Apply for this position via WhatsApp!*\n\n"
                     f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
                     f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                    f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
                     f"💰 Salary: {salary}\n"
-                    f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
-                    f"Tap *Register Now* to set up your profile and complete application instantly ({fallback_cv_note})."
+                    f"📄 CV: {cv_status}\n\n"
+                    "Tap *Register Now* to set up your profile and complete application instantly (takes under 30 seconds) ✨"
                 ),
                 buttons=[
                     {"id": f"btn_register_{job_code}", "title": "Register Now"},

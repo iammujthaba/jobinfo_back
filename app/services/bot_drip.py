@@ -13,7 +13,11 @@ logger = logging.getLogger(__name__)
 
 def _get_unregistered_leads_query(db: Session):
     """Base query for unregistered visitors who interacted with the bot."""
-    cand_subq = db.query(Candidate.wa_number).subquery("c_sub")
+    cand_subq = (
+        db.query(Candidate.wa_number)
+        .filter(Candidate.registration_complete.is_(True))
+        .subquery("c_sub")
+    )
     rec_subq = db.query(Recruiter.wa_number).subquery("r_sub")
 
     return (
@@ -61,17 +65,18 @@ def get_bot_drip_stats(db: Session) -> dict:
     }
 
 
-async def execute_bot_drip(db: Session, max_batch: int = 25) -> dict:
+async def execute_bot_drip(db: Session, max_batch: int = 20, target_wa: str = None) -> dict:
     """
     Executes automated follow-up messages for eligible abandoned leads.
     Prioritizes leads inside Meta's 24-hour session window (< 24h) for free interactive delivery.
+    If target_wa is given, runs specifically for that WhatsApp user.
     """
     now = datetime.now(timezone.utc)
-    all_unregistered = (
-        _get_unregistered_leads_query(db)
-        .order_by(ConversationState.updated_at.desc())
-        .all()
-    )
+    query = _get_unregistered_leads_query(db)
+    if target_wa:
+        query = query.filter(ConversationState.wa_number == target_wa)
+
+    all_unregistered = query.order_by(ConversationState.updated_at.desc()).all()
 
     vacancies_map = {v.job_code: v for v in db.query(JobVacancy).all()}
     sent_leads = []

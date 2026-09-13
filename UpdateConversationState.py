@@ -123,10 +123,10 @@ def run_time_skip():
         print("\nWhat this simulates:")
         if choice == "1":
             print("  • User idle for 5+ minutes.")
-            print("  • Test `send_delayed_session_menu` (welcome back vs suppression if pending context).")
+            print("  • Evaluates `send_delayed_session_menu` (welcome back vs suppression if pending context).")
         elif choice == "2":
             print("  • User idle for 30+ minutes.")
-            print("  • Test `execute_bot_drip` or let the background daemon trigger m_bot_drip.")
+            print("  • Triggers `execute_bot_drip` (m_bot_drip abandoned lead recovery message).")
         elif choice == "3":
             print("  • User idle for >24 hours.")
             print("  • Free interactive 24-hour Meta session window is now closed.")
@@ -136,6 +136,56 @@ def run_time_skip():
         elif choice == "5":
             print("  • Fresh active interaction right now.")
         print("=" * 65)
+
+        # 5. Immediate trigger execution
+        if choice in ("1", "2"):
+            action_name = "5-minute inactivity evaluator" if choice == "1" else "30-minute automated bot drip (m_bot_drip)"
+            exec_now = input(f"\n🚀 Would you like to immediately execute the {action_name} now? [Y/n]: ").strip().lower()
+            if exec_now != "n":
+                import asyncio
+                if choice == "1":
+                    from app.handlers.dispatcher import send_delayed_session_menu
+                    current_ctx = dict(state.context or {})
+                    pending_job = current_ctx.get("pending_job_code") or current_ctx.get("job_code")
+                    in_progress = state.state in ("seeker_registering", "seeker_no_cv", "seeker_upload_cv", "seeker_cv_mismatch")
+
+                    print("\n" + "─" * 65)
+                    print("🔍 Running 5-Minute Inactivity Evaluator...")
+                    if pending_job or in_progress:
+                        print(f"🛡️ [Evaluator Decision - m_5m_inactivity_check]")
+                        print(f"  • Candidate State: {state.state}")
+                        print(f"  • Pending Vacancy Context: {pending_job}")
+                        print("  • Decision: Generic 'Welcome back' menu is SUPPRESSED to protect candidate focus.")
+                        print("  • Result: No message sent to WhatsApp (as designed by the suppression rule).")
+                        print("  • Next trigger: At 30 minutes, m_bot_drip will fire if candidate remains idle.")
+                    else:
+                        print("📨 Candidate has no pending application. Sending Welcome Back menu...")
+                        asyncio.run(send_delayed_session_menu(wa_number, bypass_sleep=True))
+                        print("✅ Sent 'Welcome back to JobInfo!' menu to WhatsApp.")
+                    print("─" * 65)
+
+                elif choice == "2":
+                    from app.services.bot_drip import execute_bot_drip
+                    print("\n" + "─" * 65)
+                    print("🚀 Executing Automated WhatsApp Bot Drip Follow-up...")
+                    res = asyncio.run(execute_bot_drip(session, max_batch=1, target_wa=wa_number))
+                    if res.get("sent_count", 0) > 0:
+                        item = res["sent_leads"][0]
+                        print(f"✅ Bot drip successfully SENT to {item['wa_number']}!")
+                        print(f"  • Job Code: {item.get('job_code')}")
+                        print("  • Message: 'Hi! 👋 We noticed you started applying for...'")
+                        print("  • Buttons: [⚡ Complete Now] [🔍 Browse Other Jobs]")
+                        print("📱 Please check WhatsApp now!")
+                    else:
+                        print("⚠️ Bot drip did not send. Diagnostics:")
+                        if res.get("skipped_leads"):
+                            for sk in res["skipped_leads"]:
+                                print(f"  • Error: {sk.get('error')}")
+                        else:
+                            idle = (datetime.now(timezone.utc) - new_time).total_seconds()
+                            print(f"  • Idle seconds: {idle:.0f}s (requires >= 1800s / 30m)")
+                            print(f"  • Context drip_sent_at: {state.context.get('drip_sent_at') if state.context else None}")
+                    print("─" * 65)
 
     except Exception as e:
         print(f"\n❌ Error updating ConversationState: {e}")
