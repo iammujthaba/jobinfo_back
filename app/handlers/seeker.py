@@ -61,6 +61,65 @@ CATEGORY_DISPLAY_NAMES: dict[str, str] = {
 
 WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
 
+DISTRICT_ALIAS_MAP: dict[str, str] = {
+    "trivandrum": "Thiruvananthapuram",
+    "tvm": "Thiruvananthapuram",
+    "thiruvananthapuram": "Thiruvananthapuram",
+    "kochi": "Ernakulam",
+    "ernakulam": "Ernakulam",
+    "kozhikode": "Kozhikode",
+    "calicut": "Kozhikode",
+    "kollam": "Kollam",
+    "thrissur": "Thrissur",
+    "malappuram": "Malappuram",
+    "kottayam": "Kottayam",
+    "palakkad": "Palakkad",
+    "alappuzha": "Alappuzha",
+    "kannur": "Kannur",
+    "kasaragod": "Kasaragod",
+    "idukki": "Idukki",
+    "wayanad": "Wayanad",
+    "pathanamthitta": "Pathanamthitta",
+    "gcc": "Other",
+    "gulf": "Other",
+}
+
+FLOW_VALID_DISTRICTS: set[str] = {
+    "Thiruvananthapuram", "Kollam", "Pathanamthitta", "Alappuzha",
+    "Kottayam", "Idukki", "Ernakulam", "Thrissur", "Palakkad",
+    "Malappuram", "Kozhikode", "Wayanad", "Kannur", "Kasaragod", "Other"
+}
+
+CATEGORY_ALIAS_MAP: dict[str, str] = {
+    "office_admin": "office_data_entry",
+}
+
+FLOW_VALID_CATEGORIES: set[str] = set(CATEGORY_DISPLAY_NAMES.keys())
+
+
+def normalize_district_for_flow(raw: str | None) -> str | None:
+    """Normalize a DB district_region value to a valid Flow dropdown ID."""
+    if not raw:
+        return None
+    mapped = DISTRICT_ALIAS_MAP.get(raw.strip().lower())
+    if mapped:
+        return mapped
+    titled = raw.strip().title()
+    if titled in FLOW_VALID_DISTRICTS:
+        return titled
+    return None
+
+
+def normalize_category_for_flow(raw: str | None) -> str | None:
+    """Normalize a DB job_category value to a valid Flow dropdown ID."""
+    if not raw:
+        return None
+    cleaned = raw.strip().lower()
+    mapped = CATEGORY_ALIAS_MAP.get(cleaned, cleaned)
+    if mapped in FLOW_VALID_CATEGORIES:
+        return mapped
+    return None
+
 
 def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
     state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
@@ -124,8 +183,8 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     """
     Entry point: called when a user taps an apply link (e.g. Apply JC:1002).
     """
-    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     from app.services.ad_lifecycle import ensure_ad_active
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     if not vacancy or not ensure_ad_active(vacancy, db):
         await wa_client.send_buttons(
             to=wa_number,
@@ -145,28 +204,43 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
 
     if not candidate or not candidate.registration_complete:
-        # Unregistered – show register / gethelp buttons
+        # Fix 0: Direct Flow Launch on Job Apply
         salary = _label(SALARY_LABELS, vacancy.salary_range)
-        await wa_client.send_buttons(
+        prefill_district = normalize_district_for_flow(vacancy.district_region)
+        prefill_category = normalize_category_for_flow(vacancy.job_category)
+
+        flow_data = {
+            "pending_job_code": job_code,
+        }
+        if prefill_district:
+            flow_data["prefill_district"] = prefill_district
+        if prefill_category:
+            flow_data["prefill_category"] = prefill_category
+
+        company_name = vacancy.recruiter.company_name if vacancy.recruiter else "—"
+        location_str = f"{vacancy.exact_location or '—'}, {vacancy.district_region or '—'}"
+
+        await wa_client.send_flow(
             to=wa_number,
+            flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+            flow_cta="Apply Now",
+            header_text="🚀 Apply via WhatsApp",
             body_text=(
-                "*🚀Apply for this position via WhatsApp!*\n\n"
                 f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-                f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
+                f"🏢 Company: {company_name}\n"
                 f"💰 Salary: {salary}\n"
-                f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
-                "To apply, you need to setup your profile. It's quick and free!\n\n"
-                "Tap *Register Now* to complete application or *Get Help* if you need assistance."
+                f"📍 Location: {location_str}\n\n"
+                "Complete your 1-minute profile below to submit your application directly to the recruiter 👇"
             ),
-            buttons=[
-                {"id": f"btn_register_{job_code}", "title": "Register Now"},
-                {"id": "help_support", "title": "Help/Support"},
-            ],
+            flow_action_payload={
+                "screen": "SEEKER_REGISTRATION",
+                "data": flow_data,
+            },
         )
-        # Save job_code in state so we know what to apply for after registration
-        _set_state(wa_number, "seeker_pre_register", {"pending_job_code": job_code}, db)
+        _set_state(wa_number, "seeker_registering", {"pending_job_code": job_code}, db)
     else:
         await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
+
 
 
 async def _show_job_apply_prompt(
@@ -225,31 +299,57 @@ async def _show_job_apply_prompt(
 
     if not has_cv:
         salary = _label(SALARY_LABELS, vacancy.salary_range)
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="🌟 Boost Your Hire Chance!",
-            body_text=(
-                f"You're applying for:\n"
-                f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-                f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
-                f"💰 Salary: {salary}\n"
-                f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
-                f"💡 *Pro Tip:* Uploading a CV dramatically increases recruiter response rates and puts you at the top of the applicant list!\n\n"
-                f"Would you like to attach a CV or proceed directly?"
-            ),
-            buttons=[
-                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📄 Upload CV (Best)"},
-                {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Without CV"},
-            ],
-            footer_text="Profiles with CVs get 5x more interview callbacks!",
-        )
-        _set_state(
-            wa_number,
-            "seeker_no_cv",
-            {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
-            db,
-        )
-        return
+        company = vacancy.recruiter.company_name if vacancy.recruiter else "the employer"
+
+        if not vacancy.cv_required:
+            # CV Optional: offer Upload CV or 1-tap Apply Directly
+            await wa_client.send_buttons(
+                to=wa_number,
+                header_text="🌟 Boost Your Hire Chance!",
+                body_text=(
+                    f"You're applying for:\n"
+                    f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
+                    f"🏢 Company: {company}\n"
+                    f"💰 Salary: {salary}\n"
+                    f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
+                    f"💡 *Pro Tip:* Uploading a CV increases recruiter response rates!\n\n"
+                    f"Would you like to attach a CV or apply directly with your profile?"
+                ),
+                buttons=[
+                    {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📄 Upload CV (Best)"},
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Directly"},
+                ],
+                footer_text="Profiles with CVs get more interview callbacks!",
+            )
+            _set_state(
+                wa_number,
+                "seeker_no_cv",
+                {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+                db,
+            )
+            return
+        else:
+            # CV Mandatory: honest upfront prompt, no false erroring button
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=(
+                    f"You're applying for *{vacancy.job_title.strip()}* at {company} ({vacancy.job_code}).\n\n"
+                    "📄 The employer requested a CV for this position to review your qualifications.\n\n"
+                    "Please upload your CV below to complete your application 👇"
+                ),
+                buttons=[
+                    {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload CV"},
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+                ],
+            )
+            _set_state(
+                wa_number,
+                "seeker_uploading_cv",
+                {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+                db,
+            )
+            return
+
 
     # ── Branch 2: Has CV(s) + Category Mismatch ───────────────────────────
     default_resume = (
@@ -640,7 +740,7 @@ async def handle_plan_selection(
 
 
 async def handle_apply_now_button(
-    wa_number: str, vacancy_id: int, db: Session
+    wa_number: str, vacancy_id: int, db: Session, bypass_cv_gate: bool = False
 ) -> None:
     """Save the job application and send confirmation."""
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
@@ -672,7 +772,7 @@ async def handle_apply_now_button(
         return
 
     # ── CV-required gate ───────────────────────────────────────────────────
-    if vacancy.cv_required:
+    if vacancy.cv_required and not bypass_cv_gate:
         resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
         has_cv = resume_count > 0 or bool(candidate.cv_path)
         if not has_cv:
@@ -1588,4 +1688,442 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
             ],
             footer_text=f"Job Code: {job.job_code}",
         )
+
+
+# ─── Plan A: Bot Friction Elimination Helpers ─────────────────────────────────
+
+async def handle_resume_recent(wa_number: str, vacancy: JobVacancy) -> None:
+    """Sub-case A: Recent flow dropout (<=14d) with an active vacancy."""
+    salary = _label(SALARY_LABELS, vacancy.salary_range)
+    company_name = vacancy.recruiter.company_name if vacancy.recruiter else "—"
+    location_str = f"{vacancy.exact_location or '—'}, {vacancy.district_region or '—'}"
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            "👋 *Welcome back!*\n\n"
+            "Your application is almost ready to send:\n\n"
+            f"📋 *Role:* {vacancy.job_title.strip()}\n"
+            f"🏢 *Company:* {company_name}\n"
+            f"📍 *Location:* {location_str}\n"
+            f"💰 *Salary:* {salary}\n"
+            f"🔖 *Job Code:* {vacancy.job_code}\n\n"
+            "⚡ *You're just 1 quick step away!*\n"
+            "Finish your profile in under a minute to submit your application directly to the hiring team 👇"
+        ),
+        buttons=[
+            {"id": f"btn_resume_apply_{vacancy.job_code}", "title": "🚀 Complete & Apply"},
+            {"id": "btn_explore_website", "title": "🌐 Explore Jobs"},
+            {"id": "btn_not_interested_unreg", "title": "❌ Not Interested"},
+        ],
+    )
+
+
+async def handle_resume_closed(wa_number: str) -> None:
+    """Sub-case B: Recent flow dropout (<=14d) but vacancy is closed or missing."""
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            "👋 *Welcome back!*\n\n"
+            "The position you were interested in has been filled, "
+            "but fresh openings are posted every week! 🎯\n\n"
+            "Complete your free profile in under a minute and "
+            "we'll match you with new roles automatically."
+        ),
+        buttons=[
+            {"id": "btn_create_profile", "title": "Complete Profile"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "Browse Jobs"},
+        ],
+    )
+
+
+async def handle_resume_generic(wa_number: str, pending_job_code: str | None = None) -> None:
+    """Master Template: Stale (>14d) or no pending job code."""
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            "👋 *Hi! Great to hear from you.*\n\n"
+            "JobInfo connects you to new openings every week. "
+            "Complete your free profile in under a minute — "
+            "and we'll match you to the right roles instantly! 🎯"
+        ),
+        buttons=[
+            {"id": "btn_create_profile", "title": "Complete Profile"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "Browse Jobs"},
+        ],
+    )
+
+
+async def handle_registered_quick_apply(wa_number: str, candidate: Candidate, vacancy: JobVacancy) -> None:
+    """
+    Registered Seeker Guard (Fix 1):
+    Registered candidate who messaged bot while having a recent active pending job code.
+    Shows 1-Tap Quick Apply Card with [⚡ Apply Instantly] (17 chars).
+    """
+    salary = _label(SALARY_LABELS, vacancy.salary_range)
+    company_name = vacancy.recruiter.company_name if vacancy.recruiter else "—"
+    location_str = f"{vacancy.exact_location or '—'}, {vacancy.district_region or '—'}"
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"👋 *Welcome back, {candidate.name}!* \n\n"
+            "You were applying for:\n"
+            f"📋 *Role:* {vacancy.job_title.strip()} ({vacancy.job_code})\n"
+            f"🏢 *Company:* {company_name}\n"
+            f"📍 *Location:* {location_str} • 💰 {salary}\n"
+            f"🔖 *Job Code:* {vacancy.job_code}\n\n"
+            "Your profile is already set up. Tap below to submit your application instantly 👇"
+        ),
+        buttons=[
+            {"id": f"btn_apply_instantly_{vacancy.job_code}", "title": "⚡ Apply Instantly"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+            {"id": "btn_not_interested_reg", "title": "❌ Not Interested"},
+        ],
+    )
+
+
+async def handle_not_interested_registered(wa_number: str, db: Session) -> None:
+    """Registered seeker clicked [❌ Not Interested]. Clears pending job and gives continuation."""
+    _set_state(wa_number, "idle", {}, db)
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            "Understood, no problem at all! 👍\n\n"
+            "We've cleared that position from your profile.\n\n"
+            "How would you like to proceed?"
+        ),
+        buttons=[
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+            {"id": "btn_explore_website", "title": "🌐 More on Website"},
+            {"id": "ACTION_MY_APPLICATIONS", "title": "📑 My Applications"},
+        ],
+    )
+
+
+async def handle_not_interested_unregistered(wa_number: str, db: Session) -> None:
+    """Unregistered seeker clicked [❌ Not Interested]. Clears state and gives helpful menu."""
+    _set_state(wa_number, "idle", {}, db)
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            "Understood, no problem at all! 👍\n\n"
+            "We've cleared that position. We have new vacancies posted every week across Kerala!\n\n"
+            "How can we help you today?"
+        ),
+        buttons=[
+            {"id": "btn_explore_website", "title": "🌐 Explore Jobs"},
+            {"id": "btn_create_profile", "title": "📝 Create Profile"},
+            {"id": "help_support", "title": "💬 Get Help"},
+        ],
+    )
+
+
+def get_seeker_recommended_vacancies(candidate: Candidate, db: Session) -> list[JobVacancy]:
+    """Adaptive 1+2 blended matching: Tier 1 local match + Tier 2 broader Kerala match."""
+    from sqlalchemy import func, or_
+
+    tier1_jobs = db.query(JobVacancy).filter(
+        JobVacancy.is_active == True,
+        JobVacancy.status == "approved",
+        JobVacancy.job_category == candidate.category,
+        func.lower(JobVacancy.district_region) == candidate.district.lower() if candidate.district else True
+    ).order_by(JobVacancy.created_at.desc()).limit(2).all()
+
+    recommended = list(tier1_jobs)
+
+    if len(recommended) < 2:
+        needed = 2 - len(recommended)
+        exclude_ids = [j.id for j in recommended]
+        tier2_query = db.query(JobVacancy).filter(
+            JobVacancy.is_active == True,
+            JobVacancy.status == "approved",
+            JobVacancy.id.notin_(exclude_ids) if exclude_ids else True,
+        )
+        filters = []
+        if candidate.category:
+            filters.append(JobVacancy.job_category == candidate.category)
+        if candidate.district:
+            filters.append(func.lower(JobVacancy.district_region) == candidate.district.lower())
+
+        if filters:
+            tier2_query = tier2_query.filter(or_(*filters))
+
+        tier2_jobs = tier2_query.order_by(JobVacancy.created_at.desc()).limit(needed).all()
+        recommended.extend(tier2_jobs)
+
+    return recommended
+
+
+async def send_seeker_nudge_with_jobs(wa_number: str, candidate: Candidate, db: Session) -> None:
+    """Nudge inactive seekers with 1 or 2 blended matching jobs."""
+    jobs = get_seeker_recommended_vacancies(candidate, db)
+    if not jobs:
+        await send_seeker_empty_nudge(wa_number, candidate)
+        return
+
+    name = candidate.name.split()[0] if candidate.name else "there"
+    job_lines = []
+    buttons = []
+
+    for i, j in enumerate(jobs):
+        num_emoji = "1️⃣" if i == 0 else "2️⃣"
+        dist = j.district_region.strip().title() if j.district_region else "Kerala"
+        job_lines.append(f"{num_emoji} 🏷️ {j.job_title.strip()} — {dist} ({j.job_code})")
+        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"})
+
+    buttons.append({"id": "btn_explore_website", "title": "🌐 More on Website"})
+
+    body = (
+        f"👋 Welcome back, {name}!\n\n"
+        "Here are top openings matching your profile:\n\n"
+        + "\n".join(job_lines)
+        + "\n\nTap a job below for salary & full details, or explore our full job board online 👇"
+    )
+
+    footer = "Showing top 2 picks • 50+ more roles on website" if len(jobs) >= 2 else "Showing top pick • 50+ more roles on website"
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=body,
+        buttons=buttons,
+        footer_text=footer,
+    )
+
+
+async def send_seeker_empty_nudge(wa_number: str, candidate: Candidate) -> None:
+    """When 0 matching jobs exist anywhere in Kerala."""
+    name = candidate.name.split()[0] if candidate.name else "there"
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"👋 Welcome back, {name}!\n\n"
+            "We don't have open positions in your specific field today, but fresh vacancies are added daily! 🎯\n\n"
+            "You can search all live Kerala openings on our web portal or get instant alerts on WhatsApp:"
+        ),
+        buttons=[
+            {"id": "btn_explore_website", "title": "🌐 Browse Portal"},
+            {"id": "btn_whatsapp_channel", "title": "📢 Join Channel"},
+            {"id": "btn_my_profile", "title": "👤 My Profile"},
+        ],
+    )
+
+
+async def send_applied_seeker_dashboard(wa_number: str, candidate: Candidate, db: Session) -> None:
+    """Personalized Career Dashboard for seekers who have already submitted applications."""
+    name = candidate.name.split()[0] if candidate.name else "there"
+    apps = (
+        db.query(CandidateApplication)
+        .filter_by(candidate_id=candidate.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .all()
+    )
+    app_count = len(apps)
+    latest_info = "—"
+    if apps:
+        latest = apps[0]
+        vac = db.query(JobVacancy).filter_by(id=latest.vacancy_id).first()
+        status_val = str(getattr(latest.status, 'value', latest.status)).title()
+        role_name = vac.job_title.strip() if vac else "Position"
+        jc = f"({vac.job_code})" if vac and vac.job_code else ""
+        latest_info = f"{role_name} {jc} — {status_val} ⏳"
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"👋 Welcome back, {name}!\n\n"
+            "📊 *Your Career Dashboard:*\n"
+            f"• Total Applications: {app_count} submitted\n"
+            f"• Latest: {latest_info}\n\n"
+            "Looking for new opportunities? Discover fresh openings or manage your profile below:"
+        ),
+        buttons=[
+            {"id": "ACTION_MY_APPLICATIONS", "title": "📑 My Applications"},
+            {"id": "btn_fresh_openings", "title": "🎯 Fresh Openings"},
+            {"id": "btn_explore_website", "title": "🌐 More on Website"},
+        ],
+    )
+
+
+async def handle_explore_website_cta(wa_number: str) -> None:
+    """Opens jobinfo.pro/jobs.html in WhatsApp's in-app browser via send_cta_url."""
+    await wa_client.send_cta_url(
+        to=wa_number,
+        header_text="🌐 Live Jobs Across Kerala",
+        body_text=(
+            "*Explore 100+ Live Jobs Across Kerala*\n\n"
+            "Visit our fast, mobile-friendly job portal to:\n"
+            "• Filter vacancies by District, Role & Salary\n"
+            "• Discover direct walk-in interviews\n"
+            "• Apply to multiple positions in seconds"
+        ),
+        button_text="Open Job Portal ↗",
+        url="https://jobinfo.pro/jobs.html",
+    )
+
+
+async def handle_fresh_openings(wa_number: str, candidate: Candidate, db: Session) -> None:
+    """Finds matching jobs that candidate hasn't applied to yet."""
+    from sqlalchemy import func, or_
+    applied_vacancy_ids = [
+        a.vacancy_id for a in db.query(CandidateApplication.vacancy_id)
+        .filter_by(candidate_id=candidate.id).all()
+    ]
+    fresh_query = db.query(JobVacancy).filter(
+        JobVacancy.is_active == True,
+        JobVacancy.status == "approved",
+        JobVacancy.id.notin_(applied_vacancy_ids) if applied_vacancy_ids else True,
+    )
+    filters = []
+    if candidate.category:
+        filters.append(JobVacancy.job_category == candidate.category)
+    if candidate.district:
+        filters.append(func.lower(JobVacancy.district_region) == candidate.district.lower())
+
+    if filters:
+        fresh_query = fresh_query.filter(or_(*filters))
+
+    fresh_jobs = fresh_query.order_by(JobVacancy.created_at.desc()).limit(2).all()
+
+    if not fresh_jobs:
+        await send_seeker_empty_nudge(wa_number, candidate)
+        return
+
+    name = candidate.name.split()[0] if candidate.name else "there"
+    job_lines = []
+    buttons = []
+    for i, j in enumerate(fresh_jobs):
+        num_emoji = "1️⃣" if i == 0 else "2️⃣"
+        dist = j.district_region.strip().title() if j.district_region else "Kerala"
+        job_lines.append(f"{num_emoji} 🏷️ {j.job_title.strip()} — {dist} ({j.job_code})")
+        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"})
+
+    buttons.append({"id": "btn_explore_website", "title": "🌐 More on Website"})
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"🎯 *Fresh Openings For You, {name}:*\n\n"
+            + "\n".join(job_lines)
+            + "\n\nTap a job below for details, or explore our full web board 👇"
+        ),
+        buttons=buttons,
+        footer_text="Showing top 2 picks • 50+ more roles on website" if len(fresh_jobs) >= 2 else "Showing top pick • 50+ more roles on website",
+    )
+
+
+async def handle_my_profile_button(wa_number: str, candidate: Candidate) -> None:
+    """Shows current profile information with option to edit."""
+    cat_name = CATEGORY_DISPLAY_NAMES.get(candidate.category, candidate.category or "—")
+    dist_name = candidate.district or "—"
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"👤 *Your Profile Details:*\n\n"
+            f"• *Name:* {candidate.name or '—'}\n"
+            f"• *District:* {dist_name}\n"
+            f"• *Preferred Job:* {cat_name}\n"
+            f"• *Location:* {candidate.exact_location or '—'}\n\n"
+            "Want to update your district or preferred job area? Tap below 👇"
+        ),
+        buttons=[
+            {"id": "btn_create_profile", "title": "Update Profile"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
+            {"id": "btn_explore_website", "title": "🌐 More on Website"},
+        ],
+    )
+
+
+async def handle_view_job_card(wa_number: str, job_code: str, db: Session) -> None:
+    """Sends rich job detail card when seeker taps [📋 View JC:X]."""
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+    if not vacancy:
+        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if candidate:
+        await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
+    else:
+        await start(wa_number, job_code, db)
+
+
+async def send_cv_rescue_card(
+    wa_number: str,
+    candidate: Candidate,
+    context: dict,
+    db: Session,
+) -> None:
+    """
+    Delivered after 10 minutes of inactivity when stuck in seeker_uploading_cv / seeker_no_cv.
+    Offers 1-tap submission without CV so recruiters still receive the candidate's profile.
+    """
+    job_code = context.get("job_code") if context else None
+    vacancy = None
+    if job_code:
+        vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+    elif context and context.get("vacancy_id"):
+        vacancy = db.query(JobVacancy).filter_by(id=context["vacancy_id"]).first()
+
+    if not vacancy:
+        return
+
+    company = vacancy.recruiter.company_name if vacancy.recruiter else "the employer"
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"👋 Still interested in the *{vacancy.job_title.strip()}* role at {company}? ({vacancy.job_code})\n\n"
+            "Don't have a PDF resume on your phone right now? No problem! 📄\n\n"
+            "You can submit your application with your JobInfo profile details today so the employer receives your application immediately.\n\n"
+            "_(Note: The employer may contact you directly for any additional details)._"
+        ),
+        buttons=[
+            {"id": f"btn_apply_rescue_{vacancy.job_code}", "title": "⚡ Apply Without CV"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+        ],
+    )
+
+
+async def handle_apply_rescue_button(wa_number: str, job_code: str, db: Session) -> None:
+    """
+    User tapped [⚡ Apply Without CV] on the 10-minute CV rescue card.
+    Bypasses cv_required check and creates the application with profile data.
+    """
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not vacancy or not candidate:
+        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+
+    # Direct submission with bypass_cv_gate=True
+    await handle_apply_now_button(wa_number, vacancy.id, db, bypass_cv_gate=True)
+
+
+async def handle_apply_instantly_button(wa_number: str, job_code: str, db: Session) -> None:
+    """
+    Registered candidate tapped [⚡ Apply Instantly] on the Quick Apply Card.
+    Submits application directly.
+    """
+    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not vacancy or not candidate:
+        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+        return
+
+    await handle_apply_now_button(wa_number, vacancy.id, db, bypass_cv_gate=True)
+
+
+async def handle_create_general_profile(wa_number: str) -> None:
+    """Launches general registration flow without a pending job code."""
+    await wa_client.send_flow(
+        to=wa_number,
+        flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+        flow_cta="Register Now",
+        header_text="🚀 Join JobInfo Kerala",
+        body_text=(
+            "Set up your free candidate profile in under a minute to get matched with fresh job openings across Kerala! ✨"
+        ),
+        flow_action_payload={
+            "screen": "SEEKER_REGISTRATION",
+            "data": {},
+        },
+    )
+
 

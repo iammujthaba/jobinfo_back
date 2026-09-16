@@ -239,8 +239,86 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
         candidate_handler_renew(wa_number, db)
         return
 
+    # ── Plan A: Seeker Interceptors & Smart Routing ─────────────────────────
+    from app.db.models import ConversationState, Candidate, JobVacancy, CandidateApplication, Recruiter
+    from datetime import datetime, timezone
+
+    conv_state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    is_registered = candidate and candidate.registration_complete
+
+    ctx = (conv_state.context or {}) if conv_state else {}
+    pending_job_code = ctx.get("pending_job_code")
+
+    # 1. Registered Seeker Guard (Fix 1)
+    if is_registered:
+        last_active = conv_state.last_user_message_at if conv_state else None
+        if last_active and last_active.tzinfo is None:
+            last_active = last_active.replace(tzinfo=timezone.utc)
+        days_since = (datetime.now(timezone.utc) - last_active).days if last_active else 999
+
+        if pending_job_code and days_since <= 14:
+            vacancy = db.query(JobVacancy).filter_by(job_code=pending_job_code).first()
+            from app.services.ad_lifecycle import ensure_ad_active
+            if vacancy and ensure_ad_active(vacancy, db):
+                # Check if already applied
+                has_applied_this = db.query(CandidateApplication).filter_by(
+                    candidate_id=candidate.id, vacancy_id=vacancy.id
+                ).first() is not None
+                if not has_applied_this:
+                    # Case 1: 1-Tap Quick Apply Card
+                    await seeker_handler.handle_registered_quick_apply(wa_number, candidate, vacancy)
+                    return
+                else:
+                    # Case 2: Already applied -> silently clear pending code and route to Dashboard
+                    if conv_state:
+                        conv_state.context = {}
+                        db.commit()
+            else:
+                # Case 3: Vacancy closed or stale -> silently clear pending code
+                if conv_state:
+                    conv_state.context = {}
+                    db.commit()
+
+        # Route to Fix 3: Smart Seeker Hub / Career Dashboard
+        is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first() is not None
+        if not is_recruiter:
+            has_applied = db.query(CandidateApplication).filter_by(candidate_id=candidate.id).first() is not None
+            if not has_applied:
+                await seeker_handler.send_seeker_nudge_with_jobs(wa_number, candidate, db)
+                return
+            else:
+                await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
+                return
+
+    # 2. Unregistered Seeker Flow Dropout Interceptor (Fix 1)
+    if conv_state and conv_state.state == "seeker_registering":
+        last_active = conv_state.last_user_message_at
+        if last_active and last_active.tzinfo is None:
+            last_active = last_active.replace(tzinfo=timezone.utc)
+        days_since = (datetime.now(timezone.utc) - last_active).days if last_active else 999
+
+        is_recent = days_since <= 14
+
+        if is_recent and pending_job_code:
+            vacancy = db.query(JobVacancy).filter_by(job_code=pending_job_code).first()
+            from app.services.ad_lifecycle import ensure_ad_active
+            if vacancy and ensure_ad_active(vacancy, db):
+                # Sub-case A: recent + active job
+                await seeker_handler.handle_resume_recent(wa_number, vacancy)
+                return
+            else:
+                # Sub-case B: recent + closed/missing job
+                await seeker_handler.handle_resume_closed(wa_number)
+                return
+        else:
+            # Master Template: stale (>14 days) OR no job code
+            await seeker_handler.handle_resume_generic(wa_number, pending_job_code)
+            return
+
     # Default: personalized routing
     await global_handler.route_unrecognized_message(wa_number, db)
+
 
 
 def _generate_magic_url(wa_number: str, role: str, path: str, db: Session) -> str:
@@ -479,9 +557,53 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         return
 
     # "UPLOAD_NEW_CV_JC:1002" — upload a new CV (button variant)
-    if button_id.startswith("UPLOAD_NEW_CV_"):
-        job_code = button_id.removeprefix("UPLOAD_NEW_CV_")
-        await seeker_handler.handle_upload_new_cv(wa_number, job_code, db)
+    # ── Plan A Button Handlers ──────────────────────────────────────────────
+    if button_id.startswith("btn_resume_apply_"):
+        job_code = button_id.removeprefix("btn_resume_apply_")
+        await seeker_handler.start(wa_number, job_code, db)
+        return
+
+    if button_id in ("btn_explore_website", "btn_explore_jobs"):
+        await seeker_handler.handle_explore_website_cta(wa_number)
+        return
+
+    if button_id == "btn_not_interested_unreg":
+        await seeker_handler.handle_not_interested_unregistered(wa_number, db)
+        return
+
+    if button_id == "btn_not_interested_reg":
+        await seeker_handler.handle_not_interested_registered(wa_number, db)
+        return
+
+    if button_id.startswith("btn_apply_instantly_"):
+        job_code = button_id.removeprefix("btn_apply_instantly_")
+        await seeker_handler.handle_apply_instantly_button(wa_number, job_code, db)
+        return
+
+    if button_id.startswith("btn_apply_rescue_"):
+        job_code = button_id.removeprefix("btn_apply_rescue_")
+        await seeker_handler.handle_apply_rescue_button(wa_number, job_code, db)
+        return
+
+    if button_id.startswith("view_job_"):
+        job_code = button_id.removeprefix("view_job_")
+        await seeker_handler.handle_view_job_card(wa_number, job_code, db)
+        return
+
+    if button_id == "btn_fresh_openings":
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate:
+            await seeker_handler.handle_fresh_openings(wa_number, candidate, db)
+        return
+
+    if button_id == "btn_my_profile":
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate:
+            await seeker_handler.handle_my_profile_button(wa_number, candidate)
+        return
+
+    if button_id == "btn_create_profile":
+        await seeker_handler.handle_create_general_profile(wa_number)
         return
 
     logger.warning("Unhandled button_id '%s' from %s", button_id, wa_number)
@@ -658,7 +780,42 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         if (datetime.now(timezone.utc) - last_msg).total_seconds() < 300:
             # User sent another message during the 5min wait, debounce.
             return
-            
+
+        # ── Fix 4: CV Upload In Progress Check (Unified 5+5 Min Pipeline) ──
+        if state.state in ("seeker_uploading_cv", "seeker_no_cv"):
+            from app.db.models import CandidateResume
+            candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+            # Early Exit: If CV uploaded or resume registered within 5 min, stop immediately
+            if candidate:
+                resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+                if bool(candidate.cv_path) or resume_count > 0:
+                    return
+
+            # Still stuck without a CV: Suppress generic menu and wait remaining 5 minutes (300s)
+            saved_context = dict(state.context or {})
+            db.close()
+            await asyncio.sleep(300)
+
+            # ── Phase 2: At 10 Minutes (600s total) ───────────────────
+            db = SessionLocal()
+            state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+            if not state or state.state not in ("seeker_uploading_cv", "seeker_no_cv"):
+                return  # State changed or application completed
+
+            last_msg_10 = state.last_user_message_at
+            if last_msg_10 and last_msg_10.tzinfo is None:
+                last_msg_10 = last_msg_10.replace(tzinfo=timezone.utc)
+            if last_msg_10 and (datetime.now(timezone.utc) - last_msg_10).total_seconds() < 600:
+                return  # User interacted between min 5 and 10
+
+            candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+            if candidate:
+                resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+                if not (bool(candidate.cv_path) or resume_count > 0):
+                    from app.handlers import seeker as seeker_handler
+                    await seeker_handler.send_cv_rescue_card(wa_number, candidate, state.context or saved_context, db)
+            return
+
         is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
         is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first()
         

@@ -16,6 +16,14 @@
         "pending_job_code": {
           "type": "string",
           "__example__": "JC1001"
+        },
+        "prefill_district": {
+          "type": "string",
+          "__example__": "Kozhikode"
+        },
+        "prefill_category": {
+          "type": "string",
+          "__example__": "office_data_entry"
         }
       },
       "layout": {
@@ -38,6 +46,7 @@
                 "name": "district",
                 "label": "Select Your District",
                 "required": true,
+                "init-value": "${data.prefill_district}",
                 "data-source": [
                   {
                     "id": "Thiruvananthapuram",
@@ -114,6 +123,7 @@
                 "name": "category",
                 "label": "Preferred Job Area",
                 "required": true,
+                "init-value": "${data.prefill_category}",
                 "data-source": [
                   {
                     "id": "retail",

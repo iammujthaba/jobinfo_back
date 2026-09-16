@@ -97,10 +97,19 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
         return True
 
     if button_id == "menu_seeker":
-        # Check if they have an active registration by importing seeker_handler
         from app.handlers import seeker as seeker_handler
-        await seeker_handler.send_seeker_greeting_menu(wa_number)
+        from app.db.models import Candidate, CandidateApplication
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate and candidate.registration_complete:
+            has_applied = db.query(CandidateApplication).filter_by(candidate_id=candidate.id).first() is not None
+            if not has_applied:
+                await seeker_handler.send_seeker_nudge_with_jobs(wa_number, candidate, db)
+            else:
+                await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
+        else:
+            await seeker_handler.handle_create_general_profile(wa_number)
         return True
+
 
     # ── OTP verification CTA buttons ─────────────────────────────────────────
     # Sent after successful OTP entry; user taps to open the relevant website page.
@@ -154,7 +163,16 @@ async def route_unrecognized_message(wa_number: str, db: Session) -> None:
     if is_recruiter and not is_seeker:
         await recruiter_handler.start(wa_number, db)
     elif is_seeker and not is_recruiter:
-        await seeker_handler.send_seeker_greeting_menu(wa_number)
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate and candidate.registration_complete:
+            from app.db.models import CandidateApplication
+            has_applied = db.query(CandidateApplication).filter_by(candidate_id=candidate.id).first() is not None
+            if not has_applied:
+                await seeker_handler.send_seeker_nudge_with_jobs(wa_number, candidate, db)
+            else:
+                await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
+        else:
+            await seeker_handler.handle_create_general_profile(wa_number)
     else:
         # Either unregistered, or dual-role (give them a choice)
         await send_help_menu(wa_number)
