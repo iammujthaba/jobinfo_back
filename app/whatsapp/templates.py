@@ -120,6 +120,147 @@ def _truncate(text: str | None, max_len: int = 600) -> str:
 
 # ─── Recruiter templates ─────────────────────────────────────────────────────
 
+def recruiter_workspace_body(
+    recruiter: Recruiter,
+    db: Any = None,
+    active_vacancies: int | None = None,
+    paused_vacancies: int | None = None,
+    total_applicants: int | None = None,
+) -> str:
+    """
+    In-code interactive card for returning recruiters.
+    Displays verified profile details, registered WhatsApp account ID,
+    and live hiring metrics with interactive buttons.
+    """
+    company = recruiter.company_name.strip() if recruiter.company_name else "Employer"
+    business = _label(BUSINESS_TYPE_LABELS, recruiter.business_type)
+    location = recruiter.location or "Kerala"
+
+    cleaned_num = (recruiter.wa_number or "").replace("+", "").replace(" ", "").strip()
+    if cleaned_num.startswith("91") and len(cleaned_num) == 12:
+        wa_display = cleaned_num[2:]
+    elif cleaned_num:
+        wa_display = cleaned_num
+    else:
+        wa_display = "—"
+
+    if db is not None:
+        if active_vacancies is None:
+            active_vacancies = (
+                db.query(JobVacancy)
+                .filter_by(recruiter_id=recruiter.id, status="approved", is_active=True)
+                .count()
+            )
+        if paused_vacancies is None:
+            paused_vacancies = (
+                db.query(JobVacancy)
+                .filter(
+                    JobVacancy.recruiter_id == recruiter.id,
+                    (JobVacancy.is_active == False) | (JobVacancy.status == "rejected")
+                )
+                .count()
+            )
+        if total_applicants is None:
+            total_applicants = (
+                db.query(CandidateApplication)
+                .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
+                .filter(JobVacancy.recruiter_id == recruiter.id)
+                .count()
+            )
+    else:
+        active_vacancies = active_vacancies or 0
+        paused_vacancies = paused_vacancies or 0
+        total_applicants = total_applicants or 0
+
+    return (
+        f"👋 *Welcome Back, {company}!* \n\n"
+        f"_Connecting you with Kerala's Premier WhatsApp Hiring Network_\n\n"
+        f"📋 *Profile Details:*\n"
+        f"• 💼 Business: {business}\n"
+        f"• 📍 Location: {location}\n"
+        f"• 🛡️ Status: Employer\n"
+        f"• 📱 Account ID : {wa_display}\n\n"
+
+        f"📊 *Live Dashboard Status:*\n"
+        f"• 🟢 Active Vacancies: {active_vacancies}\n"
+        f"• ⏸️ Paused / Closed: {paused_vacancies}\n"
+        f"• 📥 Total Applicants: {total_applicants}\n\n"
+        f"How can I assist you today? Tap an option below 👇"
+    )
+
+
+def recruiter_vacancies_overview_body(recruiter: Recruiter, db: Any) -> str:
+    """
+    Live vacancies overview card (Option 3 Spotlight).
+    Displays real-time hiring snapshot and spotlights the recruiter's latest vacancy.
+    """
+    company = recruiter.company_name.strip() if recruiter.company_name else "Employer"
+
+    all_vacancies = (
+        db.query(JobVacancy)
+        .filter(JobVacancy.recruiter_id == recruiter.id)
+        .order_by(JobVacancy.created_at.desc())
+        .all()
+    )
+
+    if not all_vacancies:
+        return (
+            f"📋 *Vacancies Overview — {company}*\n\n"
+            f"You haven’t posted any job vacancies yet!\n\n"
+            f"Post your vacancy in less than 1 minute to start receiving applications "
+            f"from verified candidates across Kerala.\n\n"
+            f"Tap the button below to view your dashboard 👇"
+        )
+
+    active_count = sum(1 for v in all_vacancies if v.status == "approved" and v.is_active)
+    pending_count = sum(1 for v in all_vacancies if v.status == "pending")
+    paused_count = sum(1 for v in all_vacancies if (not v.is_active and v.status == "approved") or v.status == "rejected")
+
+    total_apps = (
+        db.query(CandidateApplication)
+        .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
+        .filter(JobVacancy.recruiter_id == recruiter.id)
+        .count()
+    )
+
+    latest_job = all_vacancies[0]
+
+    if latest_job.status == "approved" and latest_job.is_active:
+        status_line = "🟢 Status: Active & Broadcasting"
+    elif latest_job.status == "approved" and not latest_job.is_active:
+        status_line = "⏸️ Status: Paused / Closed"
+    elif latest_job.status == "pending":
+        status_line = "⏳ Status: Under Review (Admin Verification)"
+    elif latest_job.status == "rejected":
+        status_line = "❌ Status: Rejected (Needs Revision)"
+    else:
+        status_line = f"📊 Status: {latest_job.status.capitalize()}"
+
+    loc_parts = [p.strip() for p in [latest_job.exact_location, latest_job.district_region] if p and p.strip()]
+    loc_str = ", ".join(loc_parts) if loc_parts else "Kerala"
+
+    latest_apps = (
+        db.query(CandidateApplication)
+        .filter(CandidateApplication.vacancy_id == latest_job.id)
+        .count()
+    )
+
+    return (
+        f"📋 *Vacancies Overview — {company}*\n\n"
+        f"📊 *Hiring Snapshot:*\n"
+        f"• 🟢 Active Vacancy: {active_count}\n"
+        f"• ⏳ Pending Vacancy: {pending_count}\n"
+        f"• ⏸️ Paused Vacancy: {paused_count}\n"
+        f"• 📥 Total Applicants Received: {total_apps}\n\n"
+        f"📌 *Latest Posted Vacancy:*\n"
+        f"💼 *{latest_job.job_title.strip()}* ({latest_job.job_code})\n"
+        f"📍 {loc_str}\n"
+        f"{status_line}\n"
+        f"📥 Applications: {latest_apps} candidates\n\n"
+        f"Tap the button below to review all applicants details, their CVs and shortlist them for interview 👇"
+    )
+
+
 def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]:
     """
     Utility template: shows recruiter business info + 2 buttons.
@@ -292,6 +433,7 @@ def recruiter_post_vacancy_card_body(
     company_name: str = "",
     is_new: bool = False,
     vacancy_count: int = 0,
+    from_workspace: bool = True,
 ) -> str:
     """
     Master template for recruiter post-vacancy flow card.
@@ -303,8 +445,11 @@ def recruiter_post_vacancy_card_body(
     if is_new or vacancy_count == 0:
         header = f"*Welcome aboard, {company}!* 🏢"
         instruction = "Tap the button below to post your first vacancy. Takes less than 1 minute! Let’s get started.✨"
+    elif from_workspace:
+        header = f"🚀 *Awesome! Go ahead, {company}!*" if company and company != "Employer" else "🚀 *Awesome! Go ahead!*"
+        instruction = "Tap the button below to fill your vacancy details. Takes less than 1 minute! Let’s get started.✨"
     else:
-        header = f"*Post a New Vacancy, {company}!* 📢"
+        header = f"*Post a New Vacancy, {company}!* 📢" if company and company != "Employer" else "*Post a New Vacancy!* 📢"
         instruction = "Tap the button below to post your vacancy. Takes less than 1 minute! Let’s get started.✨"
 
     return (
@@ -313,8 +458,8 @@ def recruiter_post_vacancy_card_body(
         f"✨ *100% Free Posting*\n"
         f"⚡ *Fast & Simple Hiring*\n"
         f"🔒 *Number Stays 100% Private*\n"
-        f"📋 *Clean Applicant Dashboard*\n"
-        f"🎯 *Reach Candidates Across Kerala & Locally*\n\n"
+        f"🎯 *Smart Candidate Filtering*\n"
+        f"📥 *Manage Applicants & CVs in Dashboard*\n\n"
         f"{instruction}"
     )
 

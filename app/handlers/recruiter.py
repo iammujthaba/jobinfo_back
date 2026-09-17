@@ -25,7 +25,9 @@ from app.services.job_code import generate_job_code
 from app.whatsapp.client import wa_client
 from app.whatsapp.templates import (
     admin_vacancy_alert_body,
+    recruiter_vacancies_overview_body,
     recruiter_welcome_components,
+    recruiter_workspace_body,
     vacancy_confirmation_body,
     vacancy_poster_preview_body,
     registration_confirmation_body,
@@ -60,7 +62,7 @@ def _generate_magic_token(recruiter: Recruiter, db: Session) -> str:
     from datetime import datetime, timedelta, timezone
     from app.db.models import MagicLink
     token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(days=90)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
     magic = MagicLink(
         token=token,
         wa_number=recruiter.wa_number,
@@ -101,13 +103,17 @@ async def start(wa_number: str, db: Session) -> None:
     recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
 
     if recruiter:
-        # Returning recruiter – send utility template with buttons
-        token = _generate_magic_token(recruiter, db)
-        await wa_client.send_template(
+        # Returning recruiter – send in-code dynamic workspace card with live stats & quick buttons
+        body_text = recruiter_workspace_body(recruiter, db)
+        buttons = [
+            {"id": "btn_post_vacancy", "title": "📢 Post Vacancy"},
+            {"id": "btn_my_vacancies", "title": "📋 My Vacancies"},
+            {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
+        ]
+        await wa_client.send_buttons(
             to=wa_number,
-            template_name=TEMPLATE_RECRUITER_WELCOME,
-            components=recruiter_welcome_components(recruiter, token),
-            language_code="en"
+            body_text=body_text,
+            buttons=buttons,
         )
         _set_state(wa_number, "recruiter_idle", {}, db)
         return
@@ -261,6 +267,7 @@ async def handle_post_vacancy_flow_completion(
         body_text=vacancy_confirmation_body(vacancy),
         button_display_text="View Dashboard",
         button_url=magic_url,
+        footer_text="⏳ Button active for 24 hours",
     )
 
     # Notify admins for new submission
@@ -312,61 +319,23 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
         await wa_client.send_text(to=wa_number, body="⚠️ You are not registered as a recruiter.")
         return
 
-    # Total applications across all time for this recruiter's jobs
-    total_apps = (
-        db.query(CandidateApplication)
-        .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
-        .filter(JobVacancy.recruiter_id == recruiter.id)
-        .count()
-    )
-
-    # Last 7 days vacancies
-    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    recent_vacancies = (
-        db.query(JobVacancy)
-        .filter(JobVacancy.recruiter_id == recruiter.id)
-        .filter(JobVacancy.created_at >= seven_days_ago)
-        .order_by(JobVacancy.created_at.desc())
-        .all()
-    )
-
-    # Focus Areas
-    categories = list(set([v.job_category for v in recent_vacancies if v.job_category]))
-    focus_areas_str = ", ".join(categories) if categories else "No vacancies submitted in the last 7 days"
-
-    # Most Recent Job
-    latest_job = recent_vacancies[0] if recent_vacancies else None
-
-    # Build body text
-    lines = [
-        "📊 *Your Summary in Last 7 Days*\n",
-        f"🎯 *Focus Areas:* {focus_areas_str}\n",
-        f"📥 *Applications Received:* {total_apps}\n",
-        "📌 *Most Recent Vacancy:*"
-    ]
-
-    if latest_job:
-        status_emoji = {"approved": "✅", "pending": "⏳", "rejected": "❌"}.get(latest_job.status, "❓")
-        status_label = latest_job.status.capitalize() if latest_job.status else "Unknown"
-        lines.append(f"💼 *{latest_job.job_title.strip()}* ({latest_job.job_code})")
-        lines.append(f"📍 {latest_job.exact_location}, {latest_job.district_region}")
-        lines.append(f"📊 Status: {status_emoji} {status_label}")
-    else:
-        lines.append("No new vacancies posted in the last 7 days.")
-
-    summary_text = "\n".join(lines)
-
+    summary_text = recruiter_vacancies_overview_body(recruiter, db)
     magic_url = _generate_magic_dashboard_url(recruiter, db)
 
     await wa_client.send_interactive_cta_url(
         to=wa_number,
         body_text=summary_text,
-        button_display_text="View Full Dashboard",
-        button_url=magic_url
+        button_display_text="Access Dashboard",
+        button_url=magic_url,
+        footer_text="⏳ Button active for 24 hours",
     )
 
 
-async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
+async def handle_post_vacancy_button(
+    wa_number: str,
+    db: Session,
+    from_workspace: bool = False,
+) -> None:
     """Launch the post vacancy WhatsApp Flow using the master recruiter card template."""
     recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
     company_name = recruiter.company_name if recruiter else ""
@@ -375,15 +344,17 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
         if recruiter else 1
     )
     loc_options = _location_options_for()
+    cta_title = "✍️ Fill Details" if from_workspace else "📢 Post Vacancy"
 
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_POST_VACANCY,
-        flow_cta="📢 Post Vacancy",
+        flow_cta=cta_title,
         body_text=recruiter_post_vacancy_card_body(
             company_name=company_name,
             is_new=False,
             vacancy_count=vacancy_count,
+            from_workspace=from_workspace,
         ),
         flow_action_payload={
             "screen": "JOB_DETAILS_ONE",
@@ -437,6 +408,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
             body_text=private_body,
             button_display_text="View Dashboard",
             button_url=magic_url,
+            footer_text="⏳ Button active for 24 hours",
         )
     except Exception as e:
         logger.warning("Private approval CTA failed, falling back to text: %s", e)

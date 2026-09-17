@@ -237,7 +237,7 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
         from app.db.models import Recruiter
         recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
         if recruiter:
-            await recruiter_handler.handle_post_vacancy_button(wa_number, db)
+            await recruiter_handler.handle_post_vacancy_button(wa_number, db, from_workspace=False)
         else:
             await recruiter_handler.start(wa_number, db)
         return
@@ -499,15 +499,28 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         role = "recruiter" if is_recruiter else "seeker"
         path = "recruiter-dashboard.html" if is_recruiter else "dashboard.html"
         url = _generate_magic_url(wa_number, role, path, db)
+
+        if is_recruiter:
+            body_text = (
+                "🎉 *Access Your Dashboard*\n\n"
+                "Welcome! Your web session is active and ready.\n\n"
+                "Manage your hiring, track applicant responses, download candidate CVs and schedule interviews with full desktop & mobile convenience.\n\n"
+                "Tap below to enter your workspace 👇"
+            )
+        else:
+            body_text = (
+                "🎉 *Access Your Dashboard*\n\n"
+                "Welcome! Your web session is active and ready.\n\n"
+                "Track your job applications, view status updates, and manage your profile with full desktop & mobile convenience.\n\n"
+                "Tap below to enter your career portal 👇"
+            )
+
         await wa_client.send_cta_url(
             to=wa_number,
-            body_text=(
-                "🎉 *Open Your Dashboard*\n\n"
-                "Tap the button below to open your dashboard directly in your browser."
-            ),
-            button_text="My Dashboard",
+            body_text=body_text,
+            button_text=" Open Dashboard",
             url=url,
-            footer_text="Link valid for 24 hours",
+            footer_text="⏳ Button active for 24 hours",
         )
         return
 
@@ -523,7 +536,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
 
     # ── Recruiter buttons ───────────────────────────────────────────────────
     if button_id == "btn_post_vacancy":
-        await recruiter_handler.handle_post_vacancy_button(wa_number, db)
+        await recruiter_handler.handle_post_vacancy_button(wa_number, db, from_workspace=True)
         return
 
     if button_id == "btn_my_vacancies":
