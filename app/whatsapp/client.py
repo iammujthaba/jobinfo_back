@@ -154,7 +154,12 @@ class WhatsAppClient:
             "flow_action": flow_action,
         }
         if flow_action_payload:
-            action_payload["flow_action_payload"] = flow_action_payload
+            payload_copy = dict(flow_action_payload)
+            # Meta Cloud API rejects empty data objects with:
+            # (#131009) Parameter data in flow_action_payload for CTA flow must be of type dynamic_object.
+            if "data" in payload_copy and isinstance(payload_copy["data"], dict) and not payload_copy["data"]:
+                payload_copy["data"] = {"pending_job_code": ""}
+            action_payload["flow_action_payload"] = payload_copy
 
         interactive: dict[str, Any] = {
             "type": "flow",

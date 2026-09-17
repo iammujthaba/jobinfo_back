@@ -574,7 +574,6 @@ async def api_share_vacancy_to_channel(
     job_mode = vacancy.job_mode or "—"
     experience = vacancy.experience_required or "—"
     description = vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else "") if vacancy.job_description else "—"
-    cv_note     = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
     
     lines = [
         f"🚀 *New Job Alert*",
@@ -585,7 +584,6 @@ async def api_share_vacancy_to_channel(
         f"💰 Salary: {salary}",
         f"💼 Mode: {job_mode}",
         f"🎓 Experience: {experience}",
-        f"📄 CV Required: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}",
         f"",
         f"📋 *About the Role:*",
@@ -593,7 +591,7 @@ async def api_share_vacancy_to_channel(
         f"",
         f"📲 Apply now: {apply_link}",
         f"",
-        f"_Kerala's First WhatsApp powered Career Portal_"
+        f"_jobinfo - Kerala's First WhatsApp powered Career Portal_"
     ]
 
     body_text = "\n".join(lines)

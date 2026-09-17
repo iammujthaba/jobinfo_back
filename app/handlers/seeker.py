@@ -2110,20 +2110,29 @@ async def handle_apply_instantly_button(wa_number: str, job_code: str, db: Sessi
     await handle_apply_now_button(wa_number, vacancy.id, db, bypass_cv_gate=True)
 
 
-async def handle_create_general_profile(wa_number: str) -> None:
+async def handle_create_general_profile(wa_number: str, db: Session | None = None) -> None:
     """Launches general registration flow without a pending job code."""
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_SEEKER_REGISTER,
-        flow_cta="Register Now",
-        header_text="🚀 Join JobInfo Kerala",
+        flow_cta="Create Free Profile",
+        header_text="🌟 Welcome to JobInfo Kerala",
         body_text=(
-            "Set up your free candidate profile in under a minute to get matched with fresh job openings across Kerala! ✨"
+            "Great! Let's help you find the right job opportunity in Kerala. 💼\n\n"
+            "Set up your profile in just 1 minute to get:\n"
+            "✨ *Direct Applications* — Apply with 1 tap\n"
+            "🎯 *Tailored Matches* — Roles in your district & field\n"
+            "⚡ *Instant Updates* — Connect directly with recruiters\n\n"
+            "🔒 100% Free & Verified Openings.\n\n"
+            "Tap below to get started! 👇"
         ),
+        footer_text="Takes ~1 minute • 100% Free",
         flow_action_payload={
             "screen": "SEEKER_REGISTRATION",
-            "data": {},
+            "data": {"pending_job_code": ""},
         },
     )
+    if db:
+        _set_state(wa_number, "seeker_registering", {"pending_job_code": ""}, db)
 
 

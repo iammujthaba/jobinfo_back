@@ -15,26 +15,26 @@ settings = get_settings()
 
 HELP_MENU_TEXT = (
     "👋 *Welcome to JobInfo!*\n\n"
-    "Connecting Kerala's job seekers and recruiters via WhatsApp.\n\n"
-    "What would you like to do?\n\n"
-    "🏢 *I am Recruiter* – Post a job vacancy\n"
-    "🔍 *I am Job Seeker* – Find jobs and apply\n"
-    "ℹ️ *Help/Support* – Get support from our team\n\n"
+    "Connecting Kerala's talent and recruiters directly via WhatsApp.\n\n"
+    "What brings you here today?\n\n"
+    "🔍 *Looking for Job* – Discover openings & apply in 1 tap\n"
+    "📢 *I am Hiring* – Post vacancies & connect with qualified candidates\n"
+    "ℹ️ *Help & Support* – Learn how it works or chat with us\n\n"
     "_JobInfo – Kerala's First WhatsApp powered Career Portal_"
 )
 
 HOW_IT_WORKS_TEXT = (
     "ℹ️ *How JobInfo Works* 🚀\n\n"
-    "*For Recruiters or Employers:* 🏢\n"
-    "1️⃣ Send *I am Recruiter* to set up your Recruiter profile in seconds.\n"
-    "2️⃣ Post jobs instantly via whatsapp or jobinfo.pro website\n"
-    "3️⃣ Use your Web Dashboard on whatsapp or jobinfo.pro to review applicants.\n"
-    "4️⃣ Shortlist or review applications and Contact candidates directly via WhatsApp! or call them\n\n"
     "*For Job Seekers:* 🎓\n"
-    "1️⃣ Send *I am Job Seeker* to set up your profile.\n"
-    "2️⃣ Get matched with best jobs right here on WhatsApp.\n"
-    "3️⃣ Apply with one tap and upload a CV only when needed.\n"
-    "4️⃣ Track your applications anytime using your Dashboard.\n\n"
+    "1️⃣ Tap *Looking for Job* to set up your profile in 1 minute.\n"
+    "2️⃣ Get matched with top job openings across Kerala on WhatsApp.\n"
+    "3️⃣ Apply with 1 tap — upload a CV only when required.\n"
+    "4️⃣ Track your applications anytime via your Career Dashboard.\n\n"
+    "*For Employers & Recruiters:* 🏢\n"
+    "1️⃣ Tap *I am Hiring* to set up your recruiter profile in seconds.\n"
+    "2️⃣ Post jobs instantly via WhatsApp or jobinfo.pro.\n"
+    "3️⃣ Review verified candidate applications on WhatsApp or Web.\n"
+    "4️⃣ Connect with candidates directly via WhatsApp or phone call!\n\n"
     "_JobInfo – Connecting Kerala's Talent, Instantly._ 🤝"
 )
 
@@ -45,9 +45,9 @@ async def send_help_menu(wa_number: str) -> None:
         to=wa_number,
         body_text=HELP_MENU_TEXT,
         buttons=[
-            {"id": "menu_recruiter", "title": "I am Recruiter"},
-            {"id": "menu_seeker", "title": "I am Job Seeker"},
-            {"id": "help_support", "title": "Help/Support"},
+            {"id": "menu_seeker", "title": "🔍 Looking for Job"},
+            {"id": "menu_recruiter", "title": "📢 I am Hiring"},
+            {"id": "help_support", "title": "ℹ️ Help & Support"},
         ],
     )
 
@@ -107,7 +107,7 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
             else:
                 await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
         else:
-            await seeker_handler.handle_create_general_profile(wa_number)
+            await seeker_handler.handle_create_general_profile(wa_number, db)
         return True
 
 
@@ -172,7 +172,7 @@ async def route_unrecognized_message(wa_number: str, db: Session) -> None:
             else:
                 await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
         else:
-            await seeker_handler.handle_create_general_profile(wa_number)
+            await seeker_handler.handle_create_general_profile(wa_number, db)
     else:
         # Either unregistered, or dual-role (give them a choice)
         await send_help_menu(wa_number)

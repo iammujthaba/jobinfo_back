@@ -13,6 +13,8 @@ from app.db.base import get_db
 from app.handlers.dispatcher import dispatch
 from app.whatsapp.client import WhatsAppClient
 
+from starlette.requests import ClientDisconnect
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -43,7 +45,11 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks, d
     Receives WhatsApp Cloud API events.
     Verifies HMAC signature, then dispatches to business logic.
     """
-    body_bytes = await request.body()
+    try:
+        body_bytes = await request.body()
+    except ClientDisconnect:
+        logger.warning("Webhook client disconnected before payload was fully received.")
+        return Response(status_code=200)
 
     # Verify signature (skip in dev if APP_SECRET is empty)
     if settings.app_secret:

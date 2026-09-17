@@ -29,6 +29,7 @@ from app.whatsapp.templates import (
     vacancy_confirmation_body,
     vacancy_poster_preview_body,
     registration_confirmation_body,
+    recruiter_post_vacancy_card_body,
     vacancy_rejected_body,
     job_alert_text_body,
     _label,
@@ -111,23 +112,23 @@ async def start(wa_number: str, db: Session) -> None:
         _set_state(wa_number, "recruiter_idle", {}, db)
         return
     else:
-        # New recruiter – launch registration Flow
+        # New recruiter / employer – launch registration Flow
         await wa_client.send_flow(
             to=wa_number,
             flow_id=settings.FLOW_ID_RECRUITER_REGISTER,
-            flow_cta="Register as Recruiter",
+            flow_cta="💼 Start Hiring",
             body_text=(
-                "*⏳Recruiter Registration!*\n\n"
-                "_One Step Away from best talent!_\n\n"
-                "Tap the button below to set up your profile and post vacancies.\n\n"
-
-                "✅ *100% Free & Spam Free*\n"
+                "*⏳ Employer & Hiring Setup!*\n\n"
+                "_Find the right staff for your business or shop!_\n\n"
+                "Tap the button below to set up your profile and start posting jobs.\n\n"
+                "✅ *100% Free & No Spam Calls*\n"
                 "✅ *Simple & Easy to Use*\n"
-                "✅ *WhatsApp-autmated hiring*\n"
-                "✅ *Kerala's best placement network*\n\n"
-                "Takes less than 1 minute! Let’s get started.✨"
+                "✅ *WhatsApp-Powered Hiring*\n"
+                "✅ *Kerala's Best Local Talent Pool*\n\n"
+                "Takes less than 1 minute! Let’s get started. ✨"
             ),
         )
+
         _set_state(wa_number, "recruiter_registering", {}, db)
         return
 
@@ -151,16 +152,24 @@ async def handle_registration_flow_completion(
     db.commit()
     db.refresh(recruiter)
 
-    # Confirmation message with CTA button
-    await wa_client.send_buttons(
+    # Launch post vacancy flow directly on the welcoming card (0 intermediate friction)
+    loc_options = _location_options_for()
+    await wa_client.send_flow(
         to=wa_number,
+        flow_id=settings.FLOW_ID_POST_VACANCY,
+        flow_cta="📢 Post Vacancy",
         body_text=registration_confirmation_body(recruiter.company_name, "recruiter"),
-        buttons=[
-            {"id": "btn_post_vacancy", "title": "Post Vacancy"}
-        ]
+        flow_action_payload={
+            "screen": "JOB_DETAILS_ONE",
+            "data": {
+                "location_options": loc_options
+            }
+        }
     )
-    _set_state(wa_number, "recruiter_idle", {}, db)
+
+    _set_state(wa_number, "recruiter_posting_vacancy", {}, db)
     return
+
 
 
 def _location_options_for() -> list[dict]:
@@ -237,22 +246,22 @@ async def handle_post_vacancy_flow_completion(
 
     magic_url = _generate_magic_dashboard_url(recruiter, db)
 
-    # Notify recruiter: interactive CTA with dashboard link
-    await wa_client.send_interactive_cta_url(
-        to=wa_number,
-        body_text=vacancy_confirmation_body(vacancy),
-        button_display_text="View Dashboard",
-        button_url=magic_url
-    )
-
-    # Send live preview poster immediately after confirmation
+    # 1. Send live poster preview as full-width plain text (untruncated job description)
     try:
         await wa_client.send_text(
             to=wa_number,
             body=vacancy_poster_preview_body(vacancy),
         )
     except Exception as preview_err:
-        logger.warning("Live preview send failed after WhatsApp flow submission: %s", preview_err)
+        logger.warning("Live preview send failed: %s", preview_err)
+
+    # 2. Send status confirmation with 'View Dashboard' interactive CTA button
+    await wa_client.send_interactive_cta_url(
+        to=wa_number,
+        body_text=vacancy_confirmation_body(vacancy),
+        button_display_text="View Dashboard",
+        button_url=magic_url,
+    )
 
     # Notify admins for new submission
     admin_url = _generate_admin_magic_url(db)
@@ -358,18 +367,23 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
 
 
 async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
-    """Launch the post vacancy WhatsApp Flow."""
+    """Launch the post vacancy WhatsApp Flow using the master recruiter card template."""
+    recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+    company_name = recruiter.company_name if recruiter else ""
+    vacancy_count = (
+        db.query(JobVacancy).filter_by(recruiter_id=recruiter.id).count()
+        if recruiter else 1
+    )
     loc_options = _location_options_for()
 
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_POST_VACANCY,
-        flow_cta="Post Vacancy",
-        body_text=(
-            "📝 *Post a New Vacancy!*\n\n"
-            "Reach thousands of active job seekers across Kerala instantly.\n\n"
-            "Tap the button below to fill in your job details. It takes less than a minute and it's 100% free!\n\n"
-            "_Ready to hire? Click below to begin._ 👇"
+        flow_cta="📢 Post Vacancy",
+        body_text=recruiter_post_vacancy_card_body(
+            company_name=company_name,
+            is_new=False,
+            vacancy_count=vacancy_count,
         ),
         flow_action_payload={
             "screen": "JOB_DETAILS_ONE",
@@ -379,6 +393,7 @@ async def handle_post_vacancy_button(wa_number: str, db: Session) -> None:
         }
     )
     _set_state(wa_number, "recruiter_posting_vacancy", {}, db)
+    return
 
 
 async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
@@ -403,16 +418,18 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
 
     # ── Message A: Private recruiter alert with magic dashboard link ────────
     magic_url = _generate_magic_dashboard_url(recruiter, db)
-    salary = _label(SALARY_LABELS, vacancy.salary_range)
     private_body = (
-        f"🎉 *Vacancy Approved & Live!*\n\n"
-        f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
-        f"💰 Salary: {salary}\n"
-        f"🔖 Job Code: *{vacancy.job_code}*\n\n"
-        f"⏳ Vacancy Duration: 30 days (re-run anytime from your dashboard)\n\n"
-        f"👇 *Share the job card below to start getting more applicants!*\n\n"
-        f"_Thank you for choosing *jobinfo!*_"
+        f"🎉 *Congratulations!*\n"
+        f" *Your vacancy is now live.*\n\n"
+        f"_Your job vacancy for *{vacancy.job_title.strip()}* (Code: *{vacancy.job_code}*) is now active on JobInfo Kerala!_ \n\n"
+        f"📊 *Recruiter Dashboard:*\n"
+        f"Tap the button below to manage your hiring:\n"
+        f"• 📥 View incoming applicants & download CVs.\n"
+        f"• 💬 Connect directly with shortlisted candidates.\n"
+        f"• ⏳ Vacancy active for 30 days (pause or close anytime).\n"
+        f"• 🔒 100% privacy – zero spam calls or messages to your phone.\n\n"
+        f"👇 *Shareable Job Card:*\n"
+        f"We have generated your official poster right below! Forward it to WhatsApp groups or your status to get more candidates."
     )
     try:
         await wa_client.send_interactive_cta_url(
@@ -431,6 +448,11 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
         apply_url=f"{settings.app_base_url}/api/apply/{vacancy.job_code}",
     )
     await wa_client.send_text(to=recruiter.wa_number, body=recruiter_card)
+
+    # ── Post-Approval 5-min follow-up (debounced, suppressed if 24h window closed) ──
+    import asyncio
+    from app.handlers.dispatcher import send_post_approval_session_menu
+    asyncio.create_task(send_post_approval_session_menu(recruiter.wa_number, vacancy.id))
 
     # ── Message C: Admin/channel card — wa.me deep-link (native WA button) ───
     admin_card = job_alert_text_body(

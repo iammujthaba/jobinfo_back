@@ -404,21 +404,21 @@ async def register_recruiter(body: RegisterRecruiterRequest, db: Session = Depen
 
     # Send WhatsApp confirmation to recruiter
     try:
+        from app.whatsapp.templates import registration_confirmation_body
         buttons = [
-            {"id": "btn_post_vacancy", "title": "Post Vacancy"},
-            {"id": "btn_my_dashboard", "title": "My Dashboard"},
+            {"id": "btn_post_vacancy", "title": "📢 Post Vacancy"},
+            {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
         ]
         await wa_client.send_buttons(
             to=body.wa_number,
-            body_text=(
-                "✅ *Registration Successful!*\n\n"
-                "Welcome to JobInfo! 🎉 Your recruiter profile has been created. You can now post vacancies and hire talent."
-            ),
+            body_text=registration_confirmation_body(recruiter.company_name, "recruiter"),
             buttons=buttons,
-            footer_text="Powered by JobInfo.pro",
+            footer_text="JobInfo • Kerala's Placement Network",
         )
+
     except Exception as e:
         logger.warning(f"Could not send recruiter registration confirmation to {body.wa_number}: {e}")
+
 
     return {
         "session_token": token,

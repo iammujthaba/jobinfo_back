@@ -222,10 +222,47 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
             return
 
     normalized = normalized.lower()
+    clean_text = re.sub(r"[^\w\s]", "", normalized).strip()
 
-    # Recruiter entry point
-    if normalized == "my vacancy" or normalized == "my vacancies":
+    # 1. Recruiter commands ("Post Vacancy", "My Vacancy", "I am Hiring")
+    if clean_text in ("my vacancy", "my vacancies"):
         await recruiter_handler.start(wa_number, db)
+        return
+
+    if clean_text in (
+        "post vacancy", "post vacancies", "post a vacancy",
+        "post job", "post jobs", "post a job",
+        "i am hiring", "im hiring", "hiring", "hire"
+    ):
+        from app.db.models import Recruiter
+        recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+        if recruiter:
+            await recruiter_handler.handle_post_vacancy_button(wa_number, db)
+        else:
+            await recruiter_handler.start(wa_number, db)
+        return
+
+    # 2. Seeker prefilled link & button keywords ("Suggest Jobs", "Looking for Job")
+    if clean_text in (
+        "suggest jobs", "suggest job", "suggest vacancies", "suggest vacancy",
+        "job suggestions", "jobs suggestion"
+    ):
+        await seeker_handler.handle_suggest_jobs(wa_number, db)
+        return
+
+    if clean_text in (
+        "looking for job", "looking for a job", "looking for jobs",
+        "find jobs", "find a job", "find job", "i am job seeker", "job seeker"
+    ):
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate and candidate.registration_complete:
+            await seeker_handler.handle_suggest_jobs(wa_number, db)
+        else:
+            await seeker_handler.handle_create_general_profile(wa_number, db)
+        return
+
+    if clean_text in ("explore jobs", "explore job"):
+        await seeker_handler.handle_explore_jobs(wa_number)
         return
 
     # Seeker apply link text (e.g. "Apply JC:1002")
@@ -238,6 +275,7 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
     if normalized == "renew":
         candidate_handler_renew(wa_number, db)
         return
+
 
     # ── Plan A: Seeker Interceptors & Smart Routing ─────────────────────────
     from app.db.models import ConversationState, Candidate, JobVacancy, CandidateApplication, Recruiter
@@ -603,7 +641,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         return
 
     if button_id == "btn_create_profile":
-        await seeker_handler.handle_create_general_profile(wa_number)
+        await seeker_handler.handle_create_general_profile(wa_number, db)
         return
 
     logger.warning("Unhandled button_id '%s' from %s", button_id, wa_number)
@@ -777,9 +815,26 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         if last_msg.tzinfo is None:
             last_msg = last_msg.replace(tzinfo=timezone.utc)
             
-        if (datetime.now(timezone.utc) - last_msg).total_seconds() < 300:
-            # User sent another message during the 5min wait, debounce.
+        now = datetime.now(timezone.utc)
+        time_since_msg = (now - last_msg).total_seconds()
+
+        # Debounce: user interacted within 5 min (< 300s) OR 24h customer window closed (>= 86400s)
+        if time_since_msg < 300 or time_since_msg >= 86400:
             return
+
+        # ── Check for Recruiter with Pending Vacancies ──────────────────
+        from app.db.models import JobVacancy
+        is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+        if is_recruiter:
+            has_pending = (
+                db.query(JobVacancy)
+                .filter_by(recruiter_id=is_recruiter.id, status="pending")
+                .first()
+                is not None
+            )
+            if has_pending:
+                # Recruiter is waiting for admin verification – do not send session closing menu!
+                return
 
         # ── Fix 4: CV Upload In Progress Check (Unified 5+5 Min Pipeline) ──
         if state.state in ("seeker_uploading_cv", "seeker_no_cv"):
@@ -816,14 +871,13 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                     await seeker_handler.send_cv_rescue_card(wa_number, candidate, state.context or saved_context, db)
             return
 
-        is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
         is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first()
         
         # Condition C: Both Roles
         if is_recruiter and is_seeker and is_seeker.registration_complete:
             text = (
-                "👋 *Welcome back to JobInfo!*\n\n"
-                "Thank you for using Jobinfo! 🤝 It looks like your session was paused.\n\n"
+                "⏳ *Session Paused*\n\n"
+                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
                 "Whether you're looking to hire great talent or find your next job, "
                 "you can jump right back in anytime by clicking below 👇"
             )
@@ -839,8 +893,8 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         # Condition A: Recruiter Only
         elif is_recruiter:
             text = (
-                "👋 *Welcome back to JobInfo!*\n\n"
-                "Thank you for using Jobinfo! 🤝 It looks like your session was paused.\n\n"
+                "⏳ *Session Paused*\n\n"
+                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
                 "Whenever you're ready to review job applications or post a new vacancy, "
                 "you can jump right back in anytime by clicking below 👇"
             )
@@ -848,15 +902,15 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "menu_recruiter", "title": "Get Start"}
+                    {"id": "menu_recruiter", "title": "Get Started"}
                 ]
             )
             
         # Condition B: Seeker Only
         elif is_seeker and is_seeker.registration_complete:
             text = (
-                "👋 *Welcome back to JobInfo!*\n\n"
-                "Thank you for using Jobinfo! 🤝 It looks like your session was paused.\n\n"
+                "⏳ *Session Paused*\n\n"
+                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
                 "Whenever you're ready to track your current applications or discover fresh job openings, "
                 "you can jump right back in anytime by clicking below 👇"
             )
@@ -864,14 +918,14 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "menu_seeker", "title": "Get Start"}
+                    {"id": "menu_seeker", "title": "Get Started"}
                 ]
             )
             
         # Condition D: Unregistered / None
         else:
             text = (
-                "👋 *Welcome back to JobInfo!*\n\n"
+                "⏳ *Session Paused*\n\n"
                 "We noticed you haven't set up your profile yet. It only takes a minute to get started and unlock Kerala's best job network.\n\n"
                 "👇 *What brings you here today?*\n"
                 "Please choose an option below to proceed.\n\n"
@@ -882,13 +936,135 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                 to=wa_number,
                 body_text=text,
                 buttons=[
-                    {"id": "menu_recruiter", "title": "I am Recruiter"},
-                    {"id": "menu_seeker", "title": "I am Job Seeker"}
+                    {"id": "menu_seeker", "title": "🔍 Looking for Job"},
+                    {"id": "menu_recruiter", "title": "📢 I am Hiring"},
                 ]
             )
+
             
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Error in send_delayed_session_menu: {e}")
     finally:
         db.close()
+
+
+async def send_post_approval_session_menu(wa_number: str, approved_vacancy_id: int) -> None:
+    """
+    Called after admin approves a vacancy and sends the approval messages.
+    Waits 5 minutes (300s), validates debounce across multiple vacancies,
+    verifies no other vacancy is still pending, and ensures the recruiter is
+    strictly within Meta's 24-hour customer care window (<86400s) before sending
+    the session follow-up menu.
+
+    If the 24-hour window has expired, the message is dropped (NEVER sent or queued).
+    """
+    import asyncio
+    import logging
+    from datetime import datetime, timezone
+    from app.db.base import SessionLocal
+    from app.db.models import ConversationState, Recruiter, Candidate, JobVacancy
+    from app.whatsapp.client import wa_client
+
+    logger = logging.getLogger(__name__)
+
+    await asyncio.sleep(300)
+
+    db = SessionLocal()
+    try:
+        recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+        if not recruiter:
+            return
+
+        # 1. Multi-vacancy check: Is ANY other vacancy still pending review?
+        has_pending = (
+            db.query(JobVacancy)
+            .filter_by(recruiter_id=recruiter.id, status="pending")
+            .first()
+            is not None
+        )
+        if has_pending:
+            logger.info("Suppressing post-approval session menu for %s: recruiter has other pending vacancies.", wa_number)
+            return
+
+        # 2. Multi-vacancy debounce: Was another vacancy approved more recently?
+        latest_approved = (
+            db.query(JobVacancy)
+            .filter_by(recruiter_id=recruiter.id, status="approved")
+            .order_by(JobVacancy.approved_at.desc())
+            .first()
+        )
+        if latest_approved and latest_approved.approved_at and latest_approved.id != approved_vacancy_id:
+            latest_at = latest_approved.approved_at
+            if latest_at.tzinfo is None:
+                latest_at = latest_at.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            if (now - latest_at).total_seconds() < 290:
+                # A newer vacancy was approved; that task will handle the 5-min follow-up.
+                return
+
+        # 3. Check conversation state & user activity
+        state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+        if not state or not state.last_user_message_at:
+            return
+
+        last_user_msg = state.last_user_message_at
+        if last_user_msg.tzinfo is None:
+            last_user_msg = last_user_msg.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        time_since_user_msg = (now - last_user_msg).total_seconds()
+
+        # If user interacted during the 5 minutes (< 300s), debounce (active user)
+        if time_since_user_msg < 300:
+            return
+
+        # 4. Strict 24-Hour WhatsApp Service Window Constraint:
+        # If 24h window has closed (>= 86400s), NEVER send and NEVER queue!
+        if time_since_user_msg >= 86400:
+            logger.info(
+                "Suppressing post-approval session menu for %s: 24h window expired (%ss elapsed).",
+                wa_number,
+                int(time_since_user_msg),
+            )
+            return
+
+        # 5. Dispatch the appropriate session menu
+        is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if is_seeker and is_seeker.registration_complete:
+            text = (
+                "⏳ *Session Paused*\n\n"
+                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Whether you're looking to hire great talent or find your next job, "
+                "you can jump right back in anytime by clicking below 👇\n\n"
+                "👉 _Tip: Follow our official channel for daily job alerts!_\n"
+                "🔗 https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
+            )
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=text,
+                buttons=[
+                    {"id": "menu_seeker", "title": "Start as Seeker"},
+                    {"id": "menu_recruiter", "title": "Start as Recruiter"},
+                ],
+            )
+        else:
+            text = (
+                "⏳ *Session Paused*\n\n"
+                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Whenever you're ready to review job applications or post a new vacancy, "
+                "you can jump right back in anytime by clicking below 👇"
+            )
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=text,
+                buttons=[
+                    {"id": "menu_recruiter", "title": "Get Started"},
+                ],
+            )
+
+    except Exception as e:
+        logger.error(f"Error in send_post_approval_session_menu: {e}")
+    finally:
+        db.close()
+

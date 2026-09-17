@@ -151,16 +151,15 @@ def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]
 
 
 def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
-    salary = _label(SALARY_LABELS, vacancy.salary_range)
+    """
+    Status confirmation and edit guidance sent with the 'View Dashboard' CTA button.
+    """
     return (
-        f"✅ *Vacancy Posted Successfully!*\n\n"
-        f"*🏷️ Position:* {vacancy.job_title.strip()}\n"
-        f"*💰 Salary:* {salary}\n"
-        f"*📍 Location:* {vacancy.exact_location},{vacancy.district_region}\n"
-        f"*🔖 Job Code:* {vacancy.job_code}\n"
-        f"*⏳ Status:* {vacancy.status}\n\n"
-        f"Your vacancy is *under review*. You'll be notified once vacancy approved.\n\n"
-        f"_JobInfo – Connecting Kerala's talent_"
+        f"🛡️ *Quality & Spam Protection*\n"
+        f"All vacancies undergo a quick verification before broadcasting, to keep the platform 100% genuine and spam-free.\n\n"
+        f"✏️ *Spotted any typos?*\n"
+        f"You can tap the button below to edit your vacancy before broadcasting.\n\n"
+        f"⏳ _If everything looks good, sit back and relax! I will notify you once it goes live._ "
     )
 
 
@@ -210,7 +209,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         f"📋 *About the Role:*\n{description}\n\n"
         f"👉 _Click *\"Start chatting\"* or use the link to Apply_: {link}\n\n"
         f"👥 Join WhatsApp Groups: https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR \n\n"
-        f"_Kerala's First WhatsApp powered Career Portal_"
+        f"_jobinfo - Kerala's First WhatsApp powered Career Portal_"
     )
 
 
@@ -229,28 +228,22 @@ def vacancy_rejected_body(vacancy: JobVacancy) -> str:
 
 def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
     """
-    Generates a 'Live Preview' poster showing the recruiter exactly what their
-    approved vacancy will look like when broadcast to job seekers.
-
-    Intentionally contains no raw URLs — the edit CTA refers the recruiter back
-    to the Dashboard button in the previous interactive message.
-
-    Used by:
-      - app/handlers/recruiter.py  (after WhatsApp Flow vacancy submission)
-      - app/routers/api.py         (after web dashboard vacancy edit commit)
+    Live Preview of the vacancy poster exactly as it will appear when published.
+    Sent as a standard text message for full-width bubble rendering with
+    untruncated full 'About the Role' job description.
     """
-    salary      = _label(SALARY_LABELS,     vacancy.salary_range)
-    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
-    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
-    description = _truncate(vacancy.job_description, 600)
-    company     = vacancy.recruiter.company_name if vacancy.recruiter else "—"
-    cv_note     = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
+    salary = _label(SALARY_LABELS, vacancy.salary_range, fallback="Not disclosed")
+    experience = _label(EXPERIENCE_LABELS, vacancy.experience_required)
+    job_mode = _label(JOB_MODE_LABELS, vacancy.job_mode)
+    company = vacancy.recruiter.company_name if vacancy.recruiter and vacancy.recruiter.company_name else "—"
+    cv_note = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
+    description = vacancy.job_description.strip() if vacancy.job_description else "—"
 
     return (
-        f"👀 *Preview of Your Vacancy Poster*\n\n"
-        f"_This is exactly how your vacancy poster will look like:_\n"
+        f"✅ *Vacancy Submitted Successfully!*\n\n"
+        f"Your vacancy is *under review*. You'll be notified as soon as it is approved.\n\n"
+        f"👀 *_Preview of Your Job Poster:_*\n"
         f"{'─' * 25}\n"
-        f"🚀 *New Job Alert*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
         f"🏢 Company: {company}\n"
         f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
@@ -259,10 +252,10 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
         f"🎓 Experience: {experience}\n"
         f"📄 CV Required: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
-        f"📋 *About the Role:*\n{description}\n\n"
-        f"👉 _Click *\"Start chatting\"* or use the link to Apply_: [Link to apply]\n"
-        f"{'─' * 25}\n\n"
-        f"_📝 Want to make changes? Click the 'View Dashboard' button above to edit your poster._"
+        f"📋 *About the Role:*\n"
+        f"{description}\n"
+        f"{'─' * 25}\n"
+        f"_📝 Click the 'View Dashboard' button below if you want to edit vacancy details._"
     )
 
 
@@ -295,21 +288,48 @@ def plan_renewal_body(candidate: Candidate) -> str:
     )
 
 
+def recruiter_post_vacancy_card_body(
+    company_name: str = "",
+    is_new: bool = False,
+    vacancy_count: int = 0,
+) -> str:
+    """
+    Master template for recruiter post-vacancy flow card.
+    Dynamically adjusts greeting and call-to-action between new onboarding
+    ('first vacancy') and returning recruiters ('new vacancy').
+    """
+    company = company_name.strip() if company_name and company_name.strip() else "Employer"
+
+    if is_new or vacancy_count == 0:
+        header = f"*Welcome aboard, {company}!* 🏢"
+        instruction = "Tap the button below to post your first vacancy. Takes less than 1 minute! Let’s get started.✨"
+    else:
+        header = f"*Post a New Vacancy, {company}!* 📢"
+        instruction = "Tap the button below to post your vacancy. Takes less than 1 minute! Let’s get started.✨"
+
+    return (
+        f"{header}\n\n"
+        f"_Hire Kerala's best talent directly on WhatsApp!_\n\n"
+        f"✨ *100% Free Posting*\n"
+        f"⚡ *Fast & Simple Hiring*\n"
+        f"🔒 *Number Stays 100% Private*\n"
+        f"📋 *Clean Applicant Dashboard*\n"
+        f"🎯 *Reach Candidates Across Kerala & Locally*\n\n"
+        f"{instruction}"
+    )
+
+
 def registration_confirmation_body(name: str, user_type: str = "candidate") -> str:
     if user_type == "recruiter":
-        return (
-            f"✅ *Registration Successful!*\n\n"
-            f"*{name.strip()}* is now registered as a _recruiter_. You can post vacancies and "
-            f"reach Kerala's talent directly via WhatsApp.\n\n"
-            f"Tap the *Post Vacancy* button below to post your first vacancy and start hiring instantly."
-        )
+        return recruiter_post_vacancy_card_body(company_name=name, is_new=True, vacancy_count=0)
     return (
-        f"🎉 *Registration Successful, {name}!*\n\n"
-        f"You're now part of JobInfo! Stay tuned to our WhatsApp channel "
-        f"for the latest vacancies.\n\n"
+        f"🎉 *Registration Successful, {name}!* 🎓✨\n\n"
+        f"You're now part of JobInfo Kerala!\n\n"
+        f"Stay tuned to our verified WhatsApp channel for the latest daily job postings across Kerala.\n\n"
         f"📢 Join the channel: https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k\n\n"
         f"_JobInfo – Connecting Kerala's talent_"
     )
+
 
 
 def seeker_job_detail_body(vacancy: JobVacancy) -> str:
