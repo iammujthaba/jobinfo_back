@@ -71,7 +71,7 @@ async def send_help_support_menu(wa_number: str) -> None:
         ),
         buttons=[
             {"id": "menu_how_it_works", "title": "How it works"},
-            {"id": "btn_gethelp", "title": "📞 Get Help"},
+            {"id": "btn_gethelp", "title": "📩 Request Help"},
         ],
     )
 

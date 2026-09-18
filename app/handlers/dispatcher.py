@@ -23,6 +23,130 @@ logger = logging.getLogger(__name__)
 
 from fastapi import BackgroundTasks
 
+# ─── Anti-Spam & Rate Limiter ────────────────────────────────────────────────
+_SPAM_WINDOW_SECONDS = 10.0       # Time window to monitor rapid messaging
+_SPAM_MAX_MESSAGES = 5            # Max messages allowed within the window
+
+# Tracks per wa_number:
+# {
+#     "timestamps": list[float],
+#     "cooldown_until": float,
+#     "last_cooldown_ended": float,
+#     "strike": int,
+#     "normal_count": int,
+#     "warned": bool,
+# }
+_spam_tracker: dict[str, dict] = {}
+_last_spam_cleanup: float = 0.0
+
+
+def _cleanup_old_spam_entries(now: float) -> None:
+    """Removes expired entries from _spam_tracker to prevent memory leaks."""
+    global _last_spam_cleanup
+    if now - _last_spam_cleanup < 300.0:  # Run at most once every 5 minutes
+        return
+    _last_spam_cleanup = now
+    to_delete = [
+        num for num, data in _spam_tracker.items()
+        if data.get("cooldown_until", 0) < now
+        and (not data.get("timestamps") or now - data["timestamps"][-1] > 600.0)
+    ]
+    for num in to_delete:
+        _spam_tracker.pop(num, None)
+
+
+async def _is_rate_limited(wa_number: str) -> bool:
+    """
+    Checks if a wa_number is flooding messages with tiered escalating cooldowns:
+    - Strike 1: 1 minute (60s)
+    - Strike 2: 3 minutes (180s)
+    - Strike 3+: 10 minutes (600s) each time
+    - If user messages normally (3 normal spaced interactions or 5 min clean), strikes reset to 0.
+    """
+    from app.whatsapp.client import wa_client
+    now = datetime.now(timezone.utc).timestamp()
+    _cleanup_old_spam_entries(now)
+
+    data = _spam_tracker.setdefault(wa_number, {
+        "timestamps": [],
+        "cooldown_until": 0.0,
+        "last_cooldown_ended": 0.0,
+        "strike": 0,
+        "normal_count": 0,
+        "warned": False,
+    })
+
+    # 1. Currently in active cooldown?
+    if now < data["cooldown_until"]:
+        # Drop silently without querying DB or Meta API
+        return True
+
+    # Cooldown has expired; record when it ended and reopen the window
+    if data["cooldown_until"] > 0:
+        data["last_cooldown_ended"] = data["cooldown_until"]
+        data["cooldown_until"] = 0.0
+        data["warned"] = False
+        data["timestamps"] = []
+        data["normal_count"] = 0
+
+    # If 5 minutes of clean behavior passed since last cooldown, reset strike count
+    if data["strike"] > 0 and data["last_cooldown_ended"] > 0 and (now - data["last_cooldown_ended"] > 300.0):
+        data["strike"] = 0
+        data["normal_count"] = 0
+
+    # 2. Record new message timestamp and prune timestamps outside the window
+    data["timestamps"].append(now)
+    cutoff = now - _SPAM_WINDOW_SECONDS
+    data["timestamps"] = [ts for ts in data["timestamps"] if ts >= cutoff]
+
+    # 3. Check if rate threshold is breached
+    if len(data["timestamps"]) > _SPAM_MAX_MESSAGES:
+        data["strike"] += 1
+        data["normal_count"] = 0
+
+        # Escalating cooldown tiers
+        if data["strike"] == 1:
+            cooldown_seconds = 60.0
+            wait_text = "1 minute"
+        elif data["strike"] == 2:
+            cooldown_seconds = 180.0
+            wait_text = "3 minutes"
+        else:
+            cooldown_seconds = 600.0
+            wait_text = "10 minutes"
+
+        data["cooldown_until"] = now + cooldown_seconds
+
+        if not data["warned"]:
+            data["warned"] = True
+            try:
+                await wa_client.send_text(
+                    to=wa_number,
+                    body=(
+                        "⚠️ *Too Many Messages*\n\n"
+                        "You are sending messages too quickly. To protect our jobinfo system from spam, "
+                        "responses are temporarily paused.\n\n"
+                        f"Please wait {wait_text} to try again. ⏳"
+                    ),
+                )
+            except Exception as e:
+                logger.warning("Failed to deliver spam warning to %s: %s", wa_number, e)
+        return True
+
+    # 4. Message is normal: if user has prior strikes, increment normal counter
+    if data["strike"] > 0:
+        if len(data["timestamps"]) == 1:
+            # Standalone spaced-out normal message
+            data["normal_count"] += 1
+            if data["normal_count"] >= 3:
+                data["strike"] = 0
+                data["normal_count"] = 0
+        else:
+            data["normal_count"] = 0
+
+    return False
+
+
 async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTasks") -> None:
     """
     Main entry point called by the webhook POST handler.
@@ -38,6 +162,11 @@ async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTask
             message = value["messages"][0]
             wa_number = message["from"]
             msg_type = message.get("type")
+
+            # ── Anti-Spam Rate Limiter & Flood Protection ────────────────────
+            if await _is_rate_limited(wa_number):
+                logger.warning("Spam flood suppressed for %s (rate limited / on cooldown)", wa_number)
+                return
 
             _track_user_message(wa_number, db)
             await _check_and_send_admin_catchup(wa_number, db)
@@ -80,6 +209,9 @@ async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTask
                     button_payload = "btn_my_vacancies"
                     
                 await _handle_button(wa_number, button_payload, db)
+
+            elif msg_type in ("audio", "voice", "image", "video", "sticker", "contacts", "location"):
+                await _handle_unsupported_media(wa_number, msg_type, db)
 
         # ── Status updates (read receipts, delivered, etc.) – skip ──────────
         elif "statuses" in value:
@@ -359,14 +491,14 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
 
 
 
-def _generate_magic_url(wa_number: str, role: str, path: str, db: Session) -> str:
+def _generate_magic_url(wa_number: str, role: str, path: str, db: Session, expires_hours: int = 24) -> str:
     """Generate an authenticated single-sign-on magic link URL for the user."""
     import secrets
     from datetime import datetime, timezone, timedelta
     from app.db.models import MagicLink
 
     token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    expires = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
     magic = MagicLink(
         token=token,
         wa_number=wa_number,
@@ -579,6 +711,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
             return
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
         if not candidate:
+            await seeker_handler.start(wa_number, vacancy.job_code, db)
             return
         await seeker_handler._show_job_apply_prompt(wa_number, candidate, vacancy, db)
         return
@@ -608,6 +741,11 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         return
 
     # "UPLOAD_NEW_CV_JC:1002" — upload a new CV (button variant)
+    if button_id.startswith("UPLOAD_NEW_CV_"):
+        job_code = button_id.removeprefix("UPLOAD_NEW_CV_")
+        await seeker_handler.handle_upload_new_cv(wa_number, job_code, db)
+        return
+
     # ── Plan A Button Handlers ──────────────────────────────────────────────
     if button_id.startswith("btn_resume_apply_"):
         job_code = button_id.removeprefix("btn_resume_apply_")
@@ -797,6 +935,95 @@ async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
         )
 
 
+async def _handle_unsupported_media(wa_number: str, msg_type: str, db: Session) -> None:
+    """
+    Polite guidance notice when a user sends unsupported media (audio, video, sticker, or image).
+    Includes rate-limiting (30s cooldown) to prevent spam loops if multiple stickers are sent.
+    """
+    from app.db.models import ConversationState, Recruiter, Candidate
+    from app.whatsapp.client import wa_client
+
+    state_rec = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    # Rate limiting: if a media notice was sent in the last 30 seconds, don't repeat
+    ctx = dict(state_rec.context or {}) if state_rec else {}
+    last_notice = ctx.get("last_unsupported_media_ts", 0)
+    if (now_ts - last_notice) < 30:
+        logger.info("Suppressing duplicate unsupported media notice for %s (cooldown active)", wa_number)
+        return
+
+    # Check special case: candidate sending a photo of a CV
+    if msg_type == "image" and state_rec and state_rec.state == "seeker_updating_cv":
+        ctx["last_unsupported_media_ts"] = now_ts
+        if state_rec:
+            state_rec.context = ctx
+            db.commit()
+        await wa_client.send_text(
+            to=wa_number,
+            body=(
+                "📄 *PDF or Document Format Required*\n\n"
+                "Please send your CV as a *PDF or Word document* (.pdf, .docx).\n\n"
+                "Photos and image formats cannot be verified by employers."
+            ),
+        )
+        return
+
+    # Update cooldown timestamp
+    ctx["last_unsupported_media_ts"] = now_ts
+    if state_rec:
+        state_rec.context = ctx
+        db.commit()
+
+    is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first() is not None
+    is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first() is not None
+
+    if is_recruiter and not is_seeker:
+        body_text = (
+            "🤖 *Automated Assistant*\n\n"
+            "👋 I am an automated assistant and can only read text messages.\n\n"
+            "If you need direct assistance or wish to speak with our team, you can message our Admin on WhatsApp:\n"
+            "💬 *+91 70259 62179*\n\n"
+            "Whenever you're ready to manage your hiring or post vacancies, tap below 👇"
+        )
+        buttons = [
+            {"id": "menu_recruiter", "title": "🏢 My Workspace"},
+            {"id": "help_support", "title": "ℹ️ Help & Support"},
+        ]
+    elif is_seeker and not is_recruiter:
+        body_text = (
+            "🤖 *Automated Assistant*\n\n"
+            "👋 I am an automated assistant and can only read text messages or PDF documents.\n\n"
+            "If you need direct assistance or wish to speak with our team, you can message our Admin on WhatsApp:\n"
+            "💬 *+91 70259 62179*\n\n"
+            "Whenever you're ready to explore jobs or view your applications, tap below 👇"
+        )
+        buttons = [
+            {"id": "menu_seeker", "title": "💼 Job Menu"},
+            {"id": "help_support", "title": "ℹ️ Help & Support"},
+        ]
+    else:
+        body_text = (
+            "🤖 *Automated Assistant*\n\n"
+            "Welcome to JobInfo Kerala! 👋 I can only read text messages and buttons.\n\n"
+            "If you need direct assistance or wish to speak with our team, you can message our Admin on WhatsApp:\n"
+            "💬 *+91 70259 62179*\n\n"
+            "Tap an option below to get started 👇"
+        )
+        buttons = [
+            {"id": "menu_seeker", "title": "💼 I Need a Job"},
+            {"id": "menu_recruiter", "title": "🏢 I am Hiring"},
+            {"id": "help_support", "title": "ℹ️ Help & Support"},
+        ]
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=body_text,
+        buttons=buttons,
+        footer_text="Powered by JobInfo.pro",
+    )
+
+
 def candidate_handler_renew(wa_number: str, db: Session) -> None:
     """Placeholder: handle RENEW keyword – send plan selection list."""
     import asyncio
@@ -890,7 +1117,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         if is_recruiter and is_seeker and is_seeker.registration_complete:
             text = (
                 "⏳ *Session Paused*\n\n"
-                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Thank you for using JobInfo! 🤝\nIt looks like you stepped away.\n\n"
                 "Whether you're looking to hire great talent or find your next job, "
                 "you can jump right back in anytime by clicking below 👇"
             )
@@ -907,7 +1134,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         elif is_recruiter:
             text = (
                 "⏳ *Session Paused*\n\n"
-                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Thank you for using JobInfo! 🤝\nIt looks like you stepped away.\n\n"
                 "Whenever you're ready to review job applications or post a new vacancy, "
                 "you can jump right back in anytime by clicking below 👇"
             )
@@ -923,7 +1150,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         elif is_seeker and is_seeker.registration_complete:
             text = (
                 "⏳ *Session Paused*\n\n"
-                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Thank you for using JobInfo! 🤝\nIt looks like you stepped away.\n\n"
                 "Whenever you're ready to track your current applications or discover fresh job openings, "
                 "you can jump right back in anytime by clicking below 👇"
             )
@@ -1047,7 +1274,7 @@ async def send_post_approval_session_menu(wa_number: str, approved_vacancy_id: i
         if is_seeker and is_seeker.registration_complete:
             text = (
                 "⏳ *Session Paused*\n\n"
-                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Thank you for using JobInfo! 🤝\nIt looks like you stepped away.\n\n"
                 "Whether you're looking to hire great talent or find your next job, "
                 "you can jump right back in anytime by clicking below 👇\n\n"
                 "👉 _Tip: Follow our official channel for daily job alerts!_\n"
@@ -1064,7 +1291,7 @@ async def send_post_approval_session_menu(wa_number: str, approved_vacancy_id: i
         else:
             text = (
                 "⏳ *Session Paused*\n\n"
-                "Thank you for using JobInfo! 🤝 It looks like you stepped away.\n\n"
+                "Thank you for using JobInfo! 🤝\nIt looks like you stepped away.\n\n"
                 "Whenever you're ready to review job applications or post a new vacancy, "
                 "you can jump right back in anytime by clicking below 👇"
             )

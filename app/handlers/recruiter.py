@@ -473,10 +473,23 @@ async def notify_recruiter_rejection(
 
     recruiter = vacancy.recruiter
     if recruiter:
-        await wa_client.send_text(
-            to=recruiter.wa_number,
-            body=vacancy_rejected_body(vacancy),
-        )
+        from app.handlers.dispatcher import _generate_magic_url
+        url = _generate_magic_url(recruiter.wa_number, "recruiter", "recruiter-dashboard.html", db, expires_hours=72)
+        body = vacancy_rejected_body(vacancy)
+        try:
+            await wa_client.send_cta_url(
+                to=recruiter.wa_number,
+                body_text=body,
+                button_text="Fix & Resubmit",
+                url=url,
+                footer_text="⏳ Button active for 72 hours",
+            )
+        except Exception as e:
+            logger.warning("Rejection CTA send failed for %s, falling back to text: %s", recruiter.wa_number, e)
+            await wa_client.send_text(
+                to=recruiter.wa_number,
+                body=f"{body}\n\n👉 {url}",
+            )
 
 
 def _set_state(wa_number: str, state: str, context: dict, db: Session) -> None:

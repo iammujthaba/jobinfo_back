@@ -500,8 +500,8 @@ async def handle_gethelp_button(wa_number: str, db: Session) -> None:
     await wa_client.send_text(
         to=wa_number,
         body=(
-            "📞 *Help Request Received!*\n\n"
-            "Thanks for reaching out! We've notified our support team, and one of our dedicated agents will contact you shortly to assist you.\n\n"
+            "📩 *Help Request Received!*\n\n"
+            "Thanks for reaching out! I have notified our jobinfo team, and one of our team will contact you shortly to assist you.\n\n"
             "_We appreciate your patience._ 😊\n"
             "– *Team JobInfo*"
         ),

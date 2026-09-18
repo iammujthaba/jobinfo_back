@@ -356,14 +356,19 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
 
 
 def vacancy_rejected_body(vacancy: JobVacancy) -> str:
-    reason_str = f"\n⚠️ *Reason:* {vacancy.rejection_reason.strip()}\n" if vacancy.rejection_reason else ""
+    title = (vacancy.job_title or "").strip()
+    code = (vacancy.job_code or "").strip()
+    reason_str = f"📝 *Feedback from Quality Team:*\n\"{vacancy.rejection_reason.strip()}\"\n\n" if vacancy.rejection_reason else ""
     return (
-        f"❌ *Vacancy Rejection Notice*\n\n"
-        f"Your vacancy posting for *{vacancy.job_title.strip()}* (Code: `{vacancy.job_code}`) was not approved.\n"
-        f"{reason_str}\n"
-        f"💡 *How to Resolve:* You can fix the issue and resubmit your vacancy directly from your recruiter dashboard:\n"
-        f"👉 https://jobinfo.pro/recruiter-dashboard.html\n\n"
-        f"_JobInfo Support_"
+        "⚠️ *Update on Your Vacancy Submission*\n\n"
+        f"Your vacancy posting for *{title}* ({code}) requires a few adjustments before it can be published:\n\n"
+        f"{reason_str}"
+        "💡 *Next Steps:*\n"
+        "You can easily make the correction and resubmit your vacancy directly from your dashboard. "
+        "Once updated, our team will re-verify your vacancy!\n\n"
+        "💬 *Need to clarify?* \nIf you believe this was flagged by mistake or have questions, message our team directly:\n"
+        "👉 *+91 70259 62179*\n\n"
+        "Otherwise, tap below to edit and resubmit 👇"
     )
 
 

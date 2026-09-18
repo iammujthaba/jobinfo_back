@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.models import ConversationState, JobVacancy, Recruiter
 
 logger = logging.getLogger(__name__)
-DASHBOARD_URL = "https://jobinfo.pro/recruiter-dashboard"
+DASHBOARD_URL = "https://jobinfo.pro/recruiter-dashboard.html"
 
 
 def is_a_milestone(count):
@@ -37,28 +37,55 @@ def _ordinal(n):
     return str(n) + suffix
 
 
-def _milestone_header(count):
+def _milestone_header(count: int) -> str:
     """Short header line shown above the message body (max 60 chars)."""
-    return "🎯 Milestone Reached!"
+    if count == 1:
+        return "🎉 First Application Received!"
+    elif count == 5:
+        return "🔥 5 Candidates Applied!"
+    else:
+        return f"🎯 Milestone: {count} Applications!"
 
 
-def _milestone_body(vacancy, count):
+def _milestone_body(vacancy: JobVacancy, count: int) -> str:
     """Body text for the CTA URL interactive message (max 1024 chars)."""
-    em = chr(8212)
-    loc = (vacancy.exact_location or em) + ", " + (vacancy.district_region or em)
-    return (
-        "Your vacancy for *" + vacancy.job_title.strip() + "* ("
-        + vacancy.job_code + ") just hit *" + str(count) + " applications*!\n\n"
-        + "Job Location: " + loc + "\n"
-        + "Total Applications: " + str(count) + "\n\n"
-        + "Log in to your dashboard to review your candidates."
-    )
+    title = (vacancy.job_title or "").strip()
+    code = (vacancy.job_code or "").strip()
+    loc_parts = [p.strip().title() for p in [vacancy.exact_location, vacancy.district_region] if p and p.strip()]
+    location = ", ".join(loc_parts) if loc_parts else "Kerala"
+
+    if count == 1:
+        return (
+            "Great news! You just received your *first applicant* for:\n\n"
+            f"💼 *Role:* {title}\n"
+            f"🔖 *Job Code:* {code}\n"
+            f"📍 *Location:* {location}\n\n"
+            "_Candidates who receive early responses are 2x more likely to accept interviews._\n\n "
+            "Tap below to review their profile and contact them directly 👇"
+        )
+    elif count == 5:
+        return (
+            "Your job post is picking up strong momentum! 🚀\n\n"
+            f"💼 *Role:* {title} ({code})\n"
+            f"📍 *Location:* {location}\n"
+            "👥 *Total Applicants:* 5 candidates\n\n"
+            "_Ready to start shortlisting? Tap below to compare resumes and connect with your top candidates_ 👇"
+        )
+    else:
+        return (
+            "High interest alert! Your vacancy has reached a major milestone:\n\n"
+            f"💼 *Role:* {title} ({code})\n"
+            f"📍 *Location:* {location}\n"
+            f"📈 *Total Applicants:* {count} candidates\n\n"
+            "_Top talent gets hired quickly. We recommend reviewing your applicant queue immediately_"
+            "_and connecting with shortlisted candidates_ 👇"
+        )
 
 
 def _fire_cta_send(wa_number, header, body):
     """
     Schedule a CTA URL interactive message on the running asyncio event loop.
-    Renders as a tappable 'View Dashboard' button — no naked URL in the text.
+    Renders as a tappable 'Review Applicants' button — no naked URL in the text.
     Safe to call from both async handlers and sync def endpoints.
     """
     from app.whatsapp.client import wa_client
@@ -69,7 +96,7 @@ def _fire_cta_send(wa_number, header, body):
                 to=wa_number,
                 header_text=header,
                 body_text=body,
-                button_text="View Dashboard",
+                button_text="Review Applicants",
                 url=DASHBOARD_URL,
             )
         except Exception as exc:
