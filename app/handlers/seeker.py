@@ -223,14 +223,22 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
         await wa_client.send_flow(
             to=wa_number,
             flow_id=settings.FLOW_ID_SEEKER_REGISTER,
-            flow_cta="Apply Now",
-            header_text="🚀 Apply via WhatsApp",
+            flow_cta="⚡ Apply Now",
             body_text=(
-                f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-                f"🏢 Company: {company_name}\n"
-                f"💰 Salary: {salary}\n"
-                f"📍 Location: {location_str}\n\n"
-                "Complete your 1-minute profile below to submit your application directly to the recruiter 👇"
+                f"📋 *Quick Job Application*\n\n"
+                f"_You are applying for:_\n"
+                f"💼 *Role:* {vacancy.job_title.strip()}\n"
+                f"🏢 *Company:* {company_name}\n"
+                f"📍 *Location:* {location_str}\n"
+                f"💰 *Salary:* {salary}\n\n"
+                "_Fill your basic details below so the employer can review your profile and reach out for an interview!_\n\n"
+                "*Why JobInfo?*\n"
+                "• 🔒 100% Free & spam-free\n"
+                "• ⚡ 1-Minute quick profile setup\n"
+                "• 📲 1-Tap apply to all vacancies\n"
+                "• 🎯 Directly from the recruiter\n"
+                "• 🔔 Job matches for your profile\n\n"
+                "Tap the Button below to setup your profile & submit application 👇"
             ),
             flow_action_payload={
                 "screen": "SEEKER_REGISTRATION",
