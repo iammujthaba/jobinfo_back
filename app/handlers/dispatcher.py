@@ -746,6 +746,26 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await seeker_handler.handle_upload_new_cv(wa_number, job_code, db)
         return
 
+    # "USE_MATCHING_CV_5_JC:1002" — user chose to apply with matching saved CV
+    if button_id.startswith("USE_MATCHING_CV_"):
+        parts = button_id.removeprefix("USE_MATCHING_CV_").split("_", 1)
+        if len(parts) == 2:
+            try:
+                resume_id = int(parts[0])
+                job_code = parts[1]
+                await seeker_handler.handle_select_cv(wa_number, resume_id, job_code, db)
+                return
+            except ValueError:
+                pass
+
+    if button_id == "SUGGEST_JOBS_NO_CV":
+        await seeker_handler.handle_suggest_jobs_no_cv(wa_number, db)
+        return
+
+    if button_id == "SUGGEST_JOBS_NEAR_ME":
+        await seeker_handler.handle_suggest_jobs_near_me(wa_number, db)
+        return
+
     # ── Plan A Button Handlers ──────────────────────────────────────────────
     if button_id.startswith("btn_resume_apply_"):
         job_code = button_id.removeprefix("btn_resume_apply_")

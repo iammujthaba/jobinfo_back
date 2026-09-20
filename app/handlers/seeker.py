@@ -26,6 +26,12 @@ from app.whatsapp.templates import (
     plan_renewal_body,
     registration_confirmation_body,
     seeker_job_detail_body,
+    seeker_apply_sweet_spot_body,
+    seeker_apply_smart_switch_body,
+    seeker_apply_cv_recommendation_body,
+    seeker_apply_cv_optional_body,
+    seeker_apply_relocation_body,
+    seeker_apply_no_cv_mandatory_body,
     _label,
     SALARY_LABELS,
     JOB_MODE_LABELS,
@@ -119,6 +125,22 @@ def normalize_category_for_flow(raw: str | None) -> str | None:
     if mapped in FLOW_VALID_CATEGORIES:
         return mapped
     return None
+
+
+def _normalize_district(raw: str | None) -> str:
+    """Return lowercase normalized district name or raw stripped lowercase."""
+    if not raw:
+        return ""
+    norm = normalize_district_for_flow(raw)
+    return norm.lower() if norm else raw.strip().lower()
+
+
+def _normalize_category(raw: str | None) -> str:
+    """Return lowercase normalized category key."""
+    if not raw:
+        return ""
+    norm = normalize_category_for_flow(raw)
+    return norm.lower() if norm else raw.strip().lower()
 
 
 def _get_or_create_state(wa_number: str, db: Session) -> ConversationState:
@@ -225,7 +247,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
             flow_id=settings.FLOW_ID_SEEKER_REGISTER,
             flow_cta="⚡ Apply Now",
             body_text=(
-                f"📋 *Quick Job Application*\n\n"
+                f"🚀 *Quick Job Application*\n\n"
                 f"_You are applying for:_\n"
                 f"💼 *Role:* {vacancy.job_title.strip()}\n"
                 f"🏢 *Company:* {company_name}\n"
@@ -285,12 +307,16 @@ async def _show_job_apply_prompt(
         )
         return
 
-    # ── Branch 1: Zero CVs on file ──────────────────────────────────────────
-    resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
-    has_cv = resume_count > 0 or bool(candidate.cv_path)
+    # ── Fetch Candidate Resumes ─────────────────────────────────────────────
+    resumes = (
+        db.query(CandidateResume)
+        .filter_by(candidate_id=candidate.id)
+        .order_by(CandidateResume.is_default.desc(), CandidateResume.uploaded_at.desc())
+        .all()
+    )
 
     # Safety net: if candidate.cv_path exists but no CandidateResume, backfill one
-    if resume_count == 0 and candidate.cv_path:
+    if not resumes and candidate.cv_path:
         backfill = CandidateResume(
             candidate_id=candidate.id,
             media_id=candidate.cv_path,
@@ -299,35 +325,122 @@ async def _show_job_apply_prompt(
         )
         db.add(backfill)
         db.commit()
-        resume_count = 1
-        has_cv = True
+        resumes = [backfill]
 
-    inferred_cat = _infer_job_category(vacancy)
-    job_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat, inferred_cat.replace("_", " ").title())
-
-    if not has_cv:
-        salary = _label(SALARY_LABELS, vacancy.salary_range)
-        company = vacancy.recruiter.company_name if vacancy.recruiter else "the employer"
-
-        if not vacancy.cv_required:
-            # CV Optional: offer Upload CV or 1-tap Apply Directly
+    # ── Branch A: Zero CVs on file ──────────────────────────────────────────
+    if not resumes:
+        if vacancy.cv_required:
+            # Case 4: CV Required & Zero CVs
             await wa_client.send_buttons(
                 to=wa_number,
-                header_text="🌟 Boost Your Hire Chance!",
-                body_text=(
-                    f"You're applying for:\n"
-                    f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-                    f"🏢 Company: {company}\n"
-                    f"💰 Salary: {salary}\n"
-                    f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n\n"
-                    f"💡 *Pro Tip:* Uploading a CV increases recruiter response rates!\n\n"
-                    f"Would you like to attach a CV or apply directly with your profile?"
-                ),
+                body_text=seeker_apply_no_cv_mandatory_body(candidate, vacancy),
                 buttons=[
-                    {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📄 Upload CV (Best)"},
-                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Directly"},
+                    {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload CV"},
+                    {"id": "SUGGEST_JOBS_NO_CV", "title": "🔍 Jobs Without CV"},
+                    {"id": "btn_explore_jobs", "title": "🔍 View Other Jobs"},
                 ],
-                footer_text="Profiles with CVs get more interview callbacks!",
+                footer_text=f"Job Code: {vacancy.job_code}",
+            )
+            _set_state(
+                wa_number,
+                "seeker_uploading_cv",
+                {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+                db,
+            )
+            return
+        else:
+            # Case 5: CV Optional & Zero CVs
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=seeker_apply_cv_optional_body(candidate, vacancy),
+                buttons=[
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Directly"},
+                    {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
+                ],
+                footer_text=f"Job Code: {vacancy.job_code}",
+            )
+            _set_state(
+                wa_number,
+                "seeker_no_cv",
+                {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+                db,
+            )
+            return
+
+    # ── Branch B: Has CV(s) on file ─────────────────────────────────────────
+    default_resume = next((r for r in resumes if r.is_default), resumes[0])
+
+    inferred_cat = _normalize_category(vacancy.job_category or _infer_job_category(vacancy))
+    default_cv_cat = _normalize_category(default_resume.category_tag if default_resume.category_tag else candidate.category)
+
+    if not inferred_cat or inferred_cat == "other":
+        cv_matches = True
+    else:
+        cv_matches = (default_cv_cat == inferred_cat)
+
+    cand_norm_dist = _normalize_district(candidate.district)
+    vac_norm_dist = _normalize_district(vacancy.district_region)
+    is_remote = (vacancy.job_mode or "").lower() in ("remote", "work_from_home", "wfh")
+    if is_remote or not cand_norm_dist or not vac_norm_dist:
+        district_matches = True
+    else:
+        district_matches = (cand_norm_dist == vac_norm_dist)
+
+    # ── Case 1: Sweet Spot (CV matches & District matches) ──────────────────
+    if cv_matches and district_matches:
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=seeker_apply_sweet_spot_body(candidate, vacancy, default_resume),
+            buttons=[
+                {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "📄 Submit Application"},
+                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
+            ],
+            footer_text=f"Job Code: {vacancy.job_code}",
+        )
+        _set_state(
+            wa_number,
+            "seeker_viewing_job",
+            {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+            db,
+        )
+        return
+
+    # ── Priority 1: Default CV does not match ──────────────────────────────
+    if not cv_matches:
+        matching_resume = next(
+            (r for r in resumes if _normalize_category(r.category_tag) == inferred_cat),
+            None,
+        )
+        if matching_resume:
+            # Case 2A: Found matching saved CV in profile
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=seeker_apply_smart_switch_body(candidate, vacancy, default_resume, matching_resume),
+                buttons=[
+                    {"id": f"USE_MATCHING_CV_{matching_resume.id}_{vacancy.job_code}", "title": "🎯 Use Matching CV"},
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Use Current CV"},
+                    {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
+                ],
+                footer_text=f"Job Code: {vacancy.job_code}",
+            )
+            _set_state(
+                wa_number,
+                "seeker_cv_mismatch",
+                {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
+                db,
+            )
+            return
+
+        if not vacancy.cv_required:
+            # Case 2B (CV Optional): Pro Tip & 1-tap direct apply
+            await wa_client.send_buttons(
+                to=wa_number,
+                body_text=seeker_apply_cv_optional_body(candidate, vacancy),
+                buttons=[
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Directly"},
+                    {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
+                ],
+                footer_text=f"Job Code: {vacancy.job_code}",
             )
             _set_state(
                 wa_number,
@@ -337,126 +450,44 @@ async def _show_job_apply_prompt(
             )
             return
         else:
-            # CV Mandatory: honest upfront prompt, no false erroring button
+            # Case 2B (CV Mandatory): Tailored CV coaching
             await wa_client.send_buttons(
                 to=wa_number,
-                body_text=(
-                    f"You're applying for *{vacancy.job_title.strip()}* at {company} ({vacancy.job_code}).\n\n"
-                    "📄 The employer requested a CV for this position to review your qualifications.\n\n"
-                    "Please upload your CV below to complete your application 👇"
-                ),
+                body_text=seeker_apply_cv_recommendation_body(candidate, vacancy, default_resume),
                 buttons=[
-                    {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload CV"},
-                    {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+                    {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Anyway"},
                 ],
+                footer_text=f"Job Code: {vacancy.job_code}",
             )
             _set_state(
                 wa_number,
-                "seeker_uploading_cv",
+                "seeker_cv_mismatch",
                 {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
                 db,
             )
             return
 
-
-    # ── Branch 2: Has CV(s) + Category Mismatch ───────────────────────────
-    default_resume = (
-        db.query(CandidateResume)
-        .filter_by(candidate_id=candidate.id, is_default=True)
-        .first()
-    )
-    if not default_resume:
-        default_resume = (
-            db.query(CandidateResume)
-            .filter_by(candidate_id=candidate.id)
-            .order_by(CandidateResume.uploaded_at.desc())
-            .first()
-        )
-
-    candidate_cat = (
-        (default_resume.category_tag if default_resume and default_resume.category_tag else candidate.category) or ""
-    ).strip().lower()
-
-    if (
-        candidate_cat
-        and inferred_cat != "other"
-        and candidate_cat != inferred_cat
-    ):
-        candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title())
-        job_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat, inferred_cat.replace("_", " ").title())
-
-        matching_resume = (
-            db.query(CandidateResume)
-            .filter(
-                CandidateResume.candidate_id == candidate.id,
-                CandidateResume.category_tag == inferred_cat,
-            )
-            .first()
-        )
-        match_note = (
-            f"\n\n💡 *Tip:* We found your saved *{matching_resume.file_name or job_label}* CV! "
-            f"Tap *Choose Existing* to apply with it, or upload a new one."
-            if matching_resume else ""
-        )
-
+    # ── Priority 2: District Mismatch (CV matched, District differs) ────────
+    if not district_matches:
+        # Case 3: Relocation / Location check
         await wa_client.send_buttons(
             to=wa_number,
-            header_text="🌟 Maximize Your Chances!",
-            body_text=(
-                f"We noticed your default CV is tailored for *{candidate_label.strip()}*, "
-                f"but you're applying for an exciting *{job_label.strip()}* role!{match_note}\n\n"
-                "Sending a customized CV dramatically boosts your chances of "
-                "getting shortlisted. Choose how you'd like to proceed below:"
-            ),
+            body_text=seeker_apply_relocation_body(candidate, vacancy, default_resume),
             buttons=[
-                {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload New CV"},
-                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📁 Choose Existing"},
-                {"id": f"APPLY_NO_CV_{vacancy.job_code}", "title": "🚀 Apply Without CV"},
+                {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "✈️ Yes, Apply Now"},
+                {"id": "SUGGEST_JOBS_NEAR_ME", "title": "🔍 Jobs Near Me"},
+                {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
             ],
-            footer_text="A tailored CV = 3x more callbacks!",
+            footer_text=f"Job Code: {vacancy.job_code}",
         )
         _set_state(
             wa_number,
-            "seeker_cv_mismatch",
+            "seeker_relocation_check",
             {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
             db,
         )
         return
-
-    # ── Standard apply prompt ─────────────────────────────────────────────
-    candidate_label = CATEGORY_DISPLAY_NAMES.get(candidate_cat, candidate_cat.replace("_", " ").title()) if candidate_cat else ""
-
-    # Message 1: Full job card with Apply Now button
-    await wa_client.send_buttons(
-        to=wa_number,
-        body_text=seeker_job_detail_body(vacancy),
-        buttons=[
-            {"id": f"btn_apply_now_{vacancy.id}", "title": "Apply Now"},
-        ],
-        footer_text=f"Job Code: {vacancy.job_code}",
-    )
-
-    # Message 2: Action buttons
-    await wa_client.send_buttons(
-        to=wa_number,
-        header_text="✅ Perfect Match!",
-        body_text=(
-            f"Your default CV is perfectly tailored for this {candidate_label} role. "
-            "Ready to submit your application to the recruiter?\n\n"
-            "Or would you want to change your current CV?"
-        ),
-        buttons=[
-            {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "🚀 Submit Application"},
-            {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload New CV"},
-            {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📁 Choose Existing"},
-        ],
-    )
-    _set_state(
-        wa_number,
-        "seeker_viewing_job",
-        {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
-        db,
-    )
 
 
 async def handle_gethelp_button(wa_number: str, db: Session) -> None:
@@ -647,6 +678,19 @@ async def handle_registration_flow_completion(
         # Skip subscription during launch phase
         candidate.registration_complete = True
         db.commit()
+
+        # If they were in the middle of applying, resume directly with the Job Apply Prompt
+        state = _get_or_create_state(wa_number, db)
+        pending_code = (state.context or {}).get("pending_job_code") or flow_data.get(
+            "pending_job_code"
+        )
+        if pending_code:
+            vacancy = db.query(JobVacancy).filter_by(job_code=pending_code).first()
+            if vacancy:
+                await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
+                return
+
+        # General registration (no pending job) → Welcome menu card
         name = candidate.name.split()[0] if candidate.name else "there"
         await wa_client.send_buttons(
             to=wa_number,
@@ -663,15 +707,6 @@ async def handle_registration_flow_completion(
             ],
             footer_text="Powered by JobInfo.pro",
         )
-        # If they were in the middle of applying, resume
-        state = _get_or_create_state(wa_number, db)
-        pending_code = (state.context or {}).get("pending_job_code") or flow_data.get(
-            "pending_job_code"
-        )
-        if pending_code:
-            vacancy = db.query(JobVacancy).filter_by(job_code=pending_code).first()
-            if vacancy:
-                await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
 
 
 async def _send_plan_selection(wa_number: str, db: Session) -> None:
@@ -960,6 +995,19 @@ async def handle_manage_cv(wa_number: str, job_code: str, db: Session) -> None:
                 "description": description_text,
             })
         sections.append({"title": "Your Saved CVs", "rows": rows})
+
+    # Section 2: Upload New CV option
+    if resume_count < MAX_CANDIDATE_RESUMES:
+        sections.append({
+            "title": "Need a Different CV?",
+            "rows": [
+                {
+                    "id": f"UPLOAD_NEW_CV_{job_code}",
+                    "title": "➕ Upload New CV",
+                    "description": "Upload a tailored CV for this role",
+                }
+            ],
+        })
 
     # Fallback if somehow no saved CVs exist despite earlier check
     if not sections:
@@ -2015,6 +2063,164 @@ async def handle_fresh_openings(wa_number: str, candidate: Candidate, db: Sessio
         ),
         buttons=buttons,
         footer_text="Showing top 2 picks • 50+ more roles on website" if len(fresh_jobs) >= 2 else "Showing top pick • 50+ more roles on website",
+    )
+
+
+async def handle_suggest_jobs_no_cv(wa_number: str, db: Session) -> None:
+    """Finds jobs that do not require a CV, prioritizing candidate preferences."""
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    applied_ids = []
+    if candidate:
+        applied_ids = [
+            a.vacancy_id for a in db.query(CandidateApplication.vacancy_id)
+            .filter_by(candidate_id=candidate.id).all()
+        ]
+
+    from sqlalchemy import func, case
+    query = db.query(JobVacancy).filter(
+        JobVacancy.is_active == True,
+        JobVacancy.status == "approved",
+        JobVacancy.cv_required == False,
+    )
+    if applied_ids:
+        query = query.filter(JobVacancy.id.notin_(applied_ids))
+
+    if candidate and (candidate.category or candidate.district):
+        cat = (candidate.category or "").strip().lower()
+        dist = (candidate.district or "").strip().lower()
+        match_score = case(
+            (func.lower(JobVacancy.job_category) == cat, 2),
+            (func.lower(JobVacancy.district_region) == dist, 1),
+            else_=0,
+        )
+        jobs = query.order_by(match_score.desc(), JobVacancy.created_at.desc()).limit(2).all()
+    else:
+        jobs = query.order_by(JobVacancy.created_at.desc()).limit(2).all()
+
+    if not jobs:
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                "ℹ️ *No CV-Optional Jobs Right Now*\n\n"
+                "All current vacancies in this category require a CV.\n\n"
+                "Uploading a CV takes less than a minute and unlocks 100% of open positions!"
+            ),
+            buttons=[
+                {"id": "btn_explore_jobs", "title": "🌐 View Other Jobs"},
+            ],
+        )
+        return
+
+    name = (candidate.name.split()[0].title()) if candidate and candidate.name else "there"
+    job_blocks = []
+    buttons = []
+    for i, j in enumerate(jobs):
+        num_prefix = f"{i+1}️⃣ " if len(jobs) > 1 else "1️⃣ "
+        role_title = j.job_title.strip()
+        loc = (j.district_region or "Kerala").strip().title()
+        if j.exact_location:
+            exact = j.exact_location.strip().title()
+            candidate_loc = f"{exact}, {loc}"
+            if len(candidate_loc) <= 25:
+                loc = candidate_loc
+
+        sal = _label(SALARY_LABELS, j.salary_range, fallback="")
+
+        lines = [
+            f"{num_prefix}*{role_title}*",
+            f"• 🔖 Job Code: {j.job_code}",
+            f"• 📍 {loc}",
+        ]
+        if sal:
+            lines.append(f"• 💰 {sal}")
+        job_blocks.append("\n".join(lines))
+        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"[:20]})
+
+    buttons.append({"id": "btn_explore_jobs", "title": "🌐 View all Jobs"})
+
+    body_text = (
+        "🎯 *Jobs Without CV Required:*\n\n"
+        + "\n\n".join(job_blocks)
+        + f"\n\n_{name}, you don't need a CV for this position! Recruiters review your profile directly and will contact you for next steps._\n\n"
+        "Tap a button below to view details\nand apply directly 👇"
+    )
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=body_text,
+        buttons=buttons,
+        footer_text="Explore 50+ more on website",
+    )
+
+
+async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
+    """Finds matching jobs near candidate's preferred district."""
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate or not candidate.district:
+        if candidate:
+            await handle_fresh_openings(wa_number, candidate, db)
+        return
+
+    applied_ids = [
+        a.vacancy_id for a in db.query(CandidateApplication.vacancy_id)
+        .filter_by(candidate_id=candidate.id).all()
+    ]
+
+    from sqlalchemy import func
+    cand_dist = _normalize_district(candidate.district).lower()
+    query = db.query(JobVacancy).filter(
+        JobVacancy.is_active == True,
+        JobVacancy.status == "approved",
+    )
+    if applied_ids:
+        query = query.filter(JobVacancy.id.notin_(applied_ids))
+
+    query = query.filter(func.lower(JobVacancy.district_region).like(f"%{cand_dist}%"))
+
+    if candidate.category:
+        cat = candidate.category.strip().lower()
+        jobs = query.order_by(
+            (func.lower(JobVacancy.job_category) == cat).desc(),
+            JobVacancy.created_at.desc(),
+        ).limit(2).all()
+    else:
+        jobs = query.order_by(JobVacancy.created_at.desc()).limit(2).all()
+
+    if not jobs:
+        dist_display = candidate.district.strip().title()
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                f"ℹ️ *No Openings in {dist_display} Today*\n\n"
+                "We don't have fresh vacancies in your district at this moment.\n\n"
+                "Check out all active openings across Kerala on our website!"
+            ),
+            buttons=[
+                {"id": "btn_explore_jobs", "title": "🌐 View Other Jobs"},
+            ],
+        )
+        return
+
+    name = candidate.name.split()[0].title() if candidate.name else "there"
+    job_lines = []
+    buttons = []
+    for i, j in enumerate(jobs):
+        num_emoji = "1️⃣" if i == 0 else "2️⃣"
+        dist = j.district_region.strip().title() if j.district_region else candidate.district.strip().title()
+        job_lines.append(f"{num_emoji} 🏷️ {j.job_title.strip()} — {dist} ({j.job_code})")
+        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"[:20]})
+
+    buttons.append({"id": "btn_explore_jobs", "title": "🌐 View Other Jobs"})
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=(
+            f"📍 *Openings Near You in {candidate.district.strip().title()}, {name}:*\n\n"
+            + "\n".join(job_lines)
+            + "\n\nTap a job below for details and 1-tap application 👇"
+        ),
+        buttons=buttons,
+        footer_text="Fresh local openings",
     )
 
 

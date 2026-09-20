@@ -6,7 +6,7 @@ These are plain Python dicts – no WhatsApp API call is made here.
 """
 from typing import Any
 
-from app.db.models import Candidate, JobVacancy, Recruiter, CandidateApplication
+from app.db.models import Candidate, JobVacancy, Recruiter, CandidateApplication, CandidateResume
 from app.config import get_settings
 
 settings = get_settings()
@@ -60,6 +60,7 @@ JOB_MODE_LABELS: dict[str, str] = {
     "part_time":        "Part-Time",
     "remote":           "Remote",
     "hybrid":           "Hybrid",
+    "on_site":          "On-site",
 }
 
 BUSINESS_TYPE_LABELS: dict[str, str] = {
@@ -86,6 +87,26 @@ REGISTRANT_ROLE_LABELS: dict[str, str] = {
     "manager":          "Manager",
     "employee":         "Employee",
     "other":            "Other"
+}
+
+CATEGORY_DISPLAY_NAMES: dict[str, str] = {
+    "retail": "Retail & Showrooms",
+    "sales_business": "Sales & Business Executive",
+    "hospitality": "Hospitality & Food Service",
+    "healthcare": "Healthcare & Caretaking",
+    "education": "Education & Academic Advisor",
+    "office_data_entry": "Office Admin & Data Entry",
+    "front_office": "Receptionist & Front Office",
+    "finance_accounts": "Accountant & Billing Staff",
+    "hr_management": "HR, Branch Manager & Team Lead",
+    "telecalling": "Telecaller & Customer Support",
+    "it_digital_marketing": "IT & Digital Marketing",
+    "logistics_store": "Driving, Logistics & Store Keeper",
+    "beauty_wellness": "Beauty & Wellness",
+    "maintenance_technician": "Maintenance & Technician",
+    "construction_labor": "Construction & Manual Labor",
+    "gulf_abroad": "Gulf / Abroad Jobs",
+    "other": "Other / General",
 }
 
 
@@ -505,4 +526,170 @@ def cv_update_confirmation_body(candidate: Candidate) -> str:
         f"✅ *CV Updated Successfully!*\n\n"
         f"Hi {candidate.name}, your CV has been updated.\n\n"
         f"Your new CV will be used for future applications.\n_JobInfo_"
+    )
+
+
+# ─── Dynamic Seeker Application Prompt Builders ─────────────────────────────
+
+def _candidate_first_name(candidate: Candidate | None) -> str:
+    if not candidate or not candidate.name:
+        return "there"
+    return candidate.name.strip().split()[0].title()
+
+
+def _resume_display_name(resume: Any) -> str:
+    if not resume:
+        return "Your Saved CV"
+    fn = getattr(resume, "file_name", None)
+    if fn and fn.strip():
+        return fn.strip()
+    media_id = getattr(resume, "media_id", "") or ""
+    if "/" in media_id or "\\" in media_id:
+        return media_id.replace("\\", "/").split("/")[-1]
+    tag = getattr(resume, "category_tag", "") or "General"
+    tag_label = CATEGORY_DISPLAY_NAMES.get(tag.lower(), tag.replace("_", " ").title())
+    return f"{tag_label}_CV.pdf"
+
+
+def job_application_anchor_block(vacancy: JobVacancy) -> str:
+    """Standardized 4-line job anchor block across all apply templates."""
+    salary = _label(SALARY_LABELS, vacancy.salary_range, fallback="Not disclosed")
+    company = vacancy.recruiter.company_name.strip() if vacancy.recruiter and vacancy.recruiter.company_name else "—"
+    location_str = f"{vacancy.exact_location or '—'}, {vacancy.district_region or '—'}"
+    return (
+        "You are applying for:\n"
+        f"💼 *Role:* {vacancy.job_title.strip()}\n"
+        f"🏢 *Company:* {company}\n"
+        f"📍 *Location:* {location_str}\n"
+        f"💰 *Salary:* {salary}"
+    )
+
+
+def seeker_apply_sweet_spot_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+    resume: Any,
+) -> str:
+    """Case 1: Default CV & District match."""
+    name = _candidate_first_name(candidate)
+    cv_name = _resume_display_name(resume)
+    location_name = vacancy.exact_location or vacancy.district_region or "your preferred location"
+    anchor = job_application_anchor_block(vacancy)
+    return (
+        "🌟 *Great Match for Your Profile!*\n\n"
+        f"{anchor}\n\n"
+        f"📄 *Selected CV:* {cv_name}\n\n"
+        f"_🎯 {name}, this CV looks like a perfect match for this role, and it's right in your preferred location {location_name}._\n\n"
+        "Submit your application directly to the hiring team in 1 tap 👇"
+    )
+
+
+def seeker_apply_smart_switch_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+    default_resume: Any,
+    matching_resume: Any,
+) -> str:
+    """Case 2A: Default CV is different, but a saved matching CV was found in profile."""
+    name = _candidate_first_name(candidate)
+    selected_cv = _resume_display_name(default_resume)
+    found_cv = _resume_display_name(matching_resume)
+    inferred_cat = vacancy.job_category or ""
+    cat_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat.lower(), inferred_cat.replace("_", " ").title())
+    anchor = job_application_anchor_block(vacancy)
+    return (
+        "💡 *Smart CV Recommendation!*\n\n"
+        f"{anchor}\n\n"
+        f"📄 *Selected CV:* {selected_cv}\n\n"
+        f"🎯 *Found Saved CV:* {found_cv}\n\n"
+        f"_{name}, we found your saved {cat_label} CV in your profile! Submitting this tailored CV gives you 3x higher interview callbacks 👇_"
+    )
+
+
+def seeker_apply_cv_recommendation_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+    current_resume: Any,
+) -> str:
+    """Case 2B (CV Mandatory): Default CV does not match, no matching CV in library."""
+    name = _candidate_first_name(candidate)
+    current_cv = _resume_display_name(current_resume)
+    inferred_cat = vacancy.job_category or ""
+    job_cat_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat.lower(), inferred_cat.replace("_", " ").title())
+    anchor = job_application_anchor_block(vacancy)
+
+    cv_tag = getattr(current_resume, "category_tag", "") or candidate.category or "General"
+    cv_tag_label = CATEGORY_DISPLAY_NAMES.get(cv_tag.lower(), cv_tag.replace("_", " ").title())
+
+    if candidate.category and candidate.category.lower() == inferred_cat.lower():
+        # Dynamic Variation 1: Target field match, wrong CV active
+        coaching = (
+            f"{name}, we noticed your current CV is set for {cv_tag_label}. "
+            f"Uploading a tailored {job_cat_label} CV will dramatically boost your interview callbacks 👇"
+        )
+    else:
+        # Dynamic Variation 2: Career pivot / exploring a new field
+        coaching = (
+            f"{name}, we see you're exploring an opportunity in {job_cat_label}! "
+            "Submitting a tailored CV highlighting your transferable skills will 3x your interview chances 👇"
+        )
+
+    return (
+        "💡 *CV Recommendation*\n\n"
+        f"{anchor}\n\n"
+        f"📄 *Current CV:* {current_cv}\n\n"
+        f"_⚠️ This role focuses on {job_cat_label}_\n\n"
+        f"{coaching}"
+    )
+
+
+def seeker_apply_cv_optional_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+) -> str:
+    """Case 2B (CV Optional) and Case 5: Role does not require a CV."""
+    name = _candidate_first_name(candidate)
+    anchor = job_application_anchor_block(vacancy)
+    return (
+        "🌟 *1-Tap Direct Application*\n\n"
+        f"{anchor}\n\n"
+        "✨ *Good News:* A CV is optional for this role!\n"
+        "💡 *Pro Tip:* Attaching a tailored CV boosts your interview callback chance by 5X.\n\n"
+        f"_{name}, you have two great options to choose from. How would you like to apply below 👇_"
+    )
+
+
+def seeker_apply_relocation_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+    resume: Any,
+) -> str:
+    """Case 3: CV matches, but candidate's district differs from job district."""
+    name = _candidate_first_name(candidate)
+    selected_cv = _resume_display_name(resume)
+    cand_dist = candidate.district or "your preferred district"
+    vac_dist = vacancy.district_region or "this area"
+    job_mode_label = _label(JOB_MODE_LABELS, vacancy.job_mode, fallback="on-site").lower()
+    anchor = job_application_anchor_block(vacancy)
+    return (
+        "✈️ *Quick Location Check!*\n\n"
+        f"{anchor}\n\n"
+        f"📄 *Selected CV:* {selected_cv}\n\n"
+        f"🎯 {name}, this CV looks like a perfect match for this role!\n\n"
+        f"_📌 Your preferred location is {cand_dist}, This is an {job_mode_label} position in *{vac_dist}*, Are you open to relocating? 👇_"
+    )
+
+
+def seeker_apply_no_cv_mandatory_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+) -> str:
+    """Case 4: Zero CVs on file & role requires a CV."""
+    name = _candidate_first_name(candidate)
+    anchor = job_application_anchor_block(vacancy)
+    return (
+        "📄 *CV Required for This Role*\n\n"
+        f"{anchor}\n\n"
+        f"_{name}, the hiring team requires a CV for this position to review your qualifications._\n\n"
+        "Upload your CV below to complete your application, or explore roles that don't require a CV 👇"
     )
