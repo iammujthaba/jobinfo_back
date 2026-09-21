@@ -652,7 +652,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
             body_text=body_text,
             button_text=" Open Dashboard",
             url=url,
-            footer_text="⏳ Button active for 24 hours",
+            footer_text="⏳ Secure link • Valid for 24 hours",
         )
         return
 
@@ -764,6 +764,10 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
 
     if button_id == "SUGGEST_JOBS_NEAR_ME":
         await seeker_handler.handle_suggest_jobs_near_me(wa_number, db)
+        return
+
+    if button_id in ("btn_suggest_more_jobs", "SUGGEST_WEIGHTED_JOBS"):
+        await seeker_handler.handle_suggest_weighted_jobs(wa_number, db)
         return
 
     # ── Plan A Button Handlers ──────────────────────────────────────────────

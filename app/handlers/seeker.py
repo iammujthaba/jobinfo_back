@@ -29,6 +29,7 @@ from app.whatsapp.templates import (
     seeker_apply_sweet_spot_body,
     seeker_apply_smart_switch_body,
     seeker_apply_cv_recommendation_body,
+    seeker_apply_cv_mismatch_optional_body,
     seeker_apply_cv_optional_body,
     seeker_apply_relocation_body,
     seeker_apply_no_cv_mandatory_body,
@@ -432,31 +433,32 @@ async def _show_job_apply_prompt(
             return
 
         if not vacancy.cv_required:
-            # Case 2B (CV Optional): Pro Tip & 1-tap direct apply
+            # Case 2B (CV Optional with Mismatched CV):
             await wa_client.send_buttons(
                 to=wa_number,
-                body_text=seeker_apply_cv_optional_body(candidate, vacancy),
+                body_text=seeker_apply_cv_mismatch_optional_body(candidate, vacancy, default_resume),
                 buttons=[
-                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Directly"},
+                    {"id": f"APPLY_NO_CV_{vacancy.job_code}", "title": "⚡ Apply without CV"},
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "📄 Apply with this CV"},
                     {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
                 ],
                 footer_text=f"Job Code: {vacancy.job_code}",
             )
             _set_state(
                 wa_number,
-                "seeker_no_cv",
+                "seeker_cv_mismatch",
                 {"vacancy_id": vacancy.id, "job_code": vacancy.job_code},
                 db,
             )
             return
         else:
-            # Case 2B (CV Mandatory): Tailored CV coaching
+            # Case 2B (CV Mandatory with Mismatched CV):
             await wa_client.send_buttons(
                 to=wa_number,
                 body_text=seeker_apply_cv_recommendation_body(candidate, vacancy, default_resume),
                 buttons=[
+                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "📄 Apply with this CV"},
                     {"id": f"MANAGE_CV_{vacancy.job_code}", "title": "📤 Change / Upload CV"},
-                    {"id": f"CONFIRM_APPLY_{vacancy.job_code}", "title": "⚡ Apply Anyway"},
                 ],
                 footer_text=f"Job Code: {vacancy.job_code}",
             )
@@ -834,11 +836,41 @@ async def handle_apply_now_button(
     app_count = db.query(CandidateApplication).filter_by(vacancy_id=vacancy.id).count()
     dispatch_milestone_notification(vacancy, app_count, db)
 
-    # Confirmation with 'View Applications' button
+    # Confirmation with 'My Applications' button
+    default_resume = (
+        db.query(CandidateResume)
+        .filter_by(candidate_id=candidate.id, is_default=True)
+        .first()
+    )
+    if not default_resume:
+        default_resume = (
+            db.query(CandidateResume)
+            .filter_by(candidate_id=candidate.id)
+            .first()
+        )
+
+    if default_resume and default_resume.category_tag:
+        cv_category = CATEGORY_DISPLAY_NAMES.get(
+            default_resume.category_tag.lower(),
+            default_resume.category_tag.replace("_", " ").title(),
+        )
+        scenario = "standard"
+    elif candidate.cv_path:
+        cv_category = "Saved"
+        scenario = "standard"
+    else:
+        cv_category = None
+        scenario = "no_cv"
+
     await wa_client.send_buttons(
         to=wa_number,
-        body_text=application_confirmation_body(candidate, vacancy),
-        buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
+        body_text=application_confirmation_body(
+            candidate, vacancy, scenario=scenario, cv_category=cv_category
+        ),
+        buttons=[
+            {"id": "btn_view_applications", "title": "📑 My Applications"},
+            {"id": "btn_suggest_more_jobs", "title": "🎯 Suggest Jobs"},
+        ],
     )
     _set_state(wa_number, "idle", {}, db)
 
@@ -940,14 +972,11 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
 
     await wa_client.send_buttons(
         to=wa_number,
-        header_text="Application Submitted!",
-        body_text=(
-            f"We've sent your profile to the recruiter for *{vacancy.job_title.strip()}* "
-            "without a CV attached.\n\n"
-            "Pro tip: Uploading a tailored CV for future applications "
-            "can dramatically boost your chances. Best of luck!"
-        ),
-        buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
+        body_text=application_confirmation_body(candidate, vacancy, scenario="no_cv"),
+        buttons=[
+            {"id": "btn_view_applications", "title": "📑 My Applications"},
+            {"id": "btn_suggest_more_jobs", "title": "🎯 Suggest Jobs"},
+        ],
     )
     _set_state(wa_number, "idle", {}, db)
 
@@ -1090,13 +1119,13 @@ async def handle_select_cv(
 
     await wa_client.send_buttons(
         to=wa_number,
-        header_text="✅ Application Submitted!",
-        body_text=(
-            f"Excellent choice! We've updated your active CV to *{tag_label}* "
-            f"and successfully submitted your tailored application for *{vacancy.job_title.strip()}*.\n\n"
-            "The recruiter will review your profile shortly. Keep an eye on your dashboard for updates! 🎯"
+        body_text=application_confirmation_body(
+            candidate, vacancy, scenario="switched", cv_category=tag_label
         ),
-        buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
+        buttons=[
+            {"id": "btn_view_applications", "title": "📑 My Applications"},
+            {"id": "btn_suggest_more_jobs", "title": "🎯 Suggest Jobs"},
+        ],
     )
     _set_state(wa_number, "idle", {}, db)
 
@@ -1292,7 +1321,7 @@ async def handle_cv_update_flow_completion(
         candidate.cv_updates_used = (candidate.cv_updates_used or 0) + 1
         db.commit()
 
-        # Auto-apply for the job
+        # Re-evaluate with Decision Tree (Case 1 if match, Case 2B if mismatch, Case 3 if relocation)
         vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
         if not vacancy:
             await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
@@ -1313,34 +1342,7 @@ async def handle_cv_update_flow_completion(
             _set_state(wa_number, "idle", {}, db)
             return
 
-        application = CandidateApplication(
-            candidate_id=candidate.id,
-            vacancy_id=vacancy.id,
-            resume_id=new_resume.id,
-        )
-        db.add(application)
-        candidate.applications_used = (candidate.applications_used or 0) + 1
-        db.commit()
-
-        tag_label = CATEGORY_DISPLAY_NAMES.get(
-            new_cv_category.lower(),
-            new_cv_category.replace("_", " ").title(),
-        )
-
-        display_name = filename or f"{tag_label} CV"
-
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="🎉 CV Uploaded & Application Sent!",
-            body_text=(
-                f"Your CV *{display_name}* ({tag_label}) has been securely uploaded successfully!\n"
-                f"Your application for *{vacancy.job_title.strip()}* has been submitted to the recruiter with *{tag_label}* CV!\n\n"
-                "You're one step closer to landing your dream role. "
-                "Keep the momentum going! 🚀"
-            ),
-            buttons=[{"id": "btn_view_applications", "title": "View Applications"}],
-        )
-        _set_state(wa_number, "idle", {}, db)
+        await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
         return
 
     # ── Legacy flow (no category/job_code) ────────────────────────────────
@@ -1379,13 +1381,13 @@ async def _send_application_summary_cta(
     wa_number: str, candidate: Candidate, db: Session
 ) -> None:
     """
-    Reusable helper: 7-day summary + category breakdown + 1 latest job + dashboard CTA.
+    Direct 1-tap gateway to candidate's career dashboard on dashboard.html.
     Called from both handle_view_applications_button and handle_my_applications_menu.
     """
-    now = datetime.now(timezone.utc)
-    seven_days_ago = now - timedelta(days=7)
+    name = candidate.name.split()[0].title() if candidate.name else "there"
+    dashboard_url = _generate_magic_dashboard_url(wa_number, db)
 
-    # ── Most recent application ───────────────────────────────────────────
+    # Check if candidate has submitted any applications
     latest = (
         db.query(CandidateApplication)
         .filter_by(candidate_id=candidate.id)
@@ -1398,99 +1400,29 @@ async def _send_application_summary_cta(
             to=wa_number,
             header_text="📂 Your Applications",
             body_text=(
-                "You haven't applied for any jobs yet — but that's about to change! 🚀\n\n"
-                "Tap *Suggest Jobs* from the main menu to discover roles "
-                "that match your profile, or browse our Jobs Channel for "
-                "the latest walk-in openings.\n\n"
-                "Your career journey starts with a single tap! 💪"
+                f"Hi {name}, you haven't applied for any jobs yet!\n\n"
+                "Explore live openings on our web portal or tap *Suggest Jobs* "
+                "to discover roles tailored to your profile 👇"
             ),
-            button_text="Browse Jobs Channel",
-            url=WHATSAPP_CHANNEL_URL,
+            button_text="Browse All Jobs ↗",
+            url="https://jobinfo.pro/jobs.html",
             footer_text="Updated daily with new opportunities",
         )
         return
 
-    # ── 7-day applications ────────────────────────────────────────────────
-    week_apps = (
-        db.query(CandidateApplication)
-        .filter(
-            CandidateApplication.candidate_id == candidate.id,
-            CandidateApplication.applied_at >= seven_days_ago,
-        )
-        .all()
-    )
-    total_7d = len(week_apps)
-
-    # ── Category breakdown ────────────────────────────────────────────────
-    CATEGORY_LABELS = {
-        "retail": ("🛍️", "Retail & Showrooms"),
-        "sales_business": ("💼", "Sales & Business"),
-        "hospitality": ("🍽️", "Hospitality & Food"),
-        "healthcare": ("🏥", "Healthcare & Caretaking"),
-        "education": ("🎓", "Education & Academic"),
-        "office_data_entry": ("💻", "Office & Data Entry"),
-        "front_office": ("🏢", "Receptionist & Front Office"),
-        "finance_accounts": ("📊", "Finance & Accounts"),
-        "hr_management": ("👥", "HR & Management"),
-        "telecalling": ("📞", "Telecalling & Support"),
-        "it_digital_marketing": ("🖥️", "IT & Digital Marketing"),
-        "logistics_store": ("🚚", "Logistics, Driving & Store"),
-        "beauty_wellness": ("💇‍♀️", "Beauty & Wellness"),
-        "maintenance_technician": ("🔧", "Maintenance & Technician"),
-        "construction_labor": ("🏗️", "Construction & Labor"),
-        "gulf_abroad": ("✈️", "Gulf / Abroad"),
-        "other": ("📌", "Other / General"),
-    }
-
-    cat_counts: dict[str, int] = {}
-    for app in week_apps:
-        cat = _infer_job_category(app.vacancy)
-        cat_counts[cat] = cat_counts.get(cat, 0) + 1
-
-    # ── Build message ─────────────────────────────────────────────────────
-    name = candidate.name.split()[0] if candidate.name else "there"
-    lines = [f"*Great momentum, {name}!✨*\n"]
-
-    if total_7d > 0:
-        lines.append(
-            f"Over the last 7 days, you've applied for *{total_7d} "
-            f"role{'s' if total_7d != 1 else ''}*! Keep it up — "
-            "consistency is the key to landing the right opportunity.\n"
-        )
-        if cat_counts:
-            parts = []
-            for cat, count in sorted(cat_counts.items(), key=lambda x: -x[1]):
-                emoji, label = CATEGORY_LABELS.get(cat, ("📌", cat.replace("_", " ").title()))
-                parts.append(f"{emoji} {label}: *{count}*")
-            lines.append("*Your Focus Areas:*")
-            lines.append("\n".join(parts) + "\n")
-    else:
-        lines.append("No new applications this week — it's a perfect time to explore fresh openings!\n")
-
-    # ── Latest application ────────────────────────────────────────────────
-    status_emoji = {"applied": "✅", "shortlisted": "🌟", "rejected": "❌"}
-    status_label = {"applied": "Applied", "shortlisted": "Shortlisted", "rejected": "Not Selected"}
-
-    v = latest.vacancy
-    emoji = status_emoji.get(latest.status.value, "❓")
-    label = status_label.get(latest.status.value, latest.status.value.title())
-    company = f" — {v.recruiter.company_name}" if v.recruiter and v.recruiter.company_name else ""
-
-    lines.append("*Your Latest Application:*")
-    lines.append(f"  {emoji}  *{v.job_title.strip()}*{company} · _{label}_")
-
-    lines.append(
-        "\nTo view your profile strength and manage your CV's, "
-        "log in to your dashboard below 👇"
+    # Direct 1-tap Dashboard Launcher
+    body_text = (
+        f"Hi {name}, your secure 1-tap login link is ready.\n\n"
+        "Track all your submitted applications, view recruiter updates, and manage your CVs on your web dashboard 👇"
     )
 
     await wa_client.send_cta_url(
         to=wa_number,
-        header_text="📊 Your Application Summary",
-        body_text="\n".join(lines),
-        button_text="View Your Profile",
-        url=_generate_magic_dashboard_url(wa_number, db),
-        footer_text="Updated in real-time",
+        header_text="📊 Your Career Dashboard",
+        body_text=body_text,
+        button_text="Open Dashboard ↗",
+        url=dashboard_url,
+        footer_text="⏳ Secure link • Valid for 24 hours",
     )
 
 
@@ -2142,6 +2074,150 @@ async def handle_suggest_jobs_no_cv(wa_number: str, db: Session) -> None:
         "🎯 *Jobs Without CV Required:*\n\n"
         + "\n\n".join(job_blocks)
         + f"\n\n_{name}, you don't need a CV for this position! Recruiters review your profile directly and will contact you for next steps._\n\n"
+        "Tap a button below to view details\nand apply directly 👇"
+    )
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=body_text,
+        buttons=buttons,
+        footer_text="Explore 50+ more on website",
+    )
+
+
+async def handle_suggest_weighted_jobs(wa_number: str, db: Session) -> None:
+    """
+    Tiered weightage job suggestion algorithm:
+    Tier 1 (5 pts): Same category as last applied job + Candidate's home district
+    Tier 2 (4 pts): Same category as last applied job + Other districts
+    Tier 3 (3 pts): Candidate profile preferred category + Home district
+    Tier 4 (2 pts): Candidate profile preferred category + Other districts
+    Tier 5 (1 pt):  Any category + Home district
+    Tier 6 (0 pts): Newest available active openings anywhere in Kerala
+    Always returns top 2 best available vacancies (excludes already applied).
+    """
+    from sqlalchemy import func, case, and_
+    candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    if not candidate:
+        return
+
+    # Exclude all vacancies candidate has already applied to
+    applied_ids = [
+        a.vacancy_id
+        for a in db.query(CandidateApplication.vacancy_id)
+        .filter_by(candidate_id=candidate.id)
+        .all()
+    ]
+
+    # Find the most recently applied vacancy for category context
+    applied_cat = ""
+    latest_app = (
+        db.query(CandidateApplication)
+        .filter_by(candidate_id=candidate.id)
+        .order_by(CandidateApplication.applied_at.desc())
+        .first()
+    )
+    if latest_app:
+        recent_vac = db.query(JobVacancy).filter_by(id=latest_app.vacancy_id).first()
+        if recent_vac and recent_vac.job_category:
+            applied_cat = _normalize_category(recent_vac.job_category)
+
+    cand_cat = _normalize_category(candidate.category) if candidate.category else ""
+    cand_dist = _normalize_district(candidate.district) if candidate.district else ""
+
+    query = db.query(JobVacancy).filter(
+        JobVacancy.is_active == True,
+        JobVacancy.status == "approved",
+    )
+    if applied_ids:
+        query = query.filter(JobVacancy.id.notin_(applied_ids))
+
+    conditions = []
+    # Tier 1: Same category as applied job + Home district
+    if applied_cat and cand_dist:
+        conditions.append(
+            (
+                and_(
+                    func.lower(JobVacancy.job_category) == applied_cat,
+                    func.lower(JobVacancy.district_region).like(f"%{cand_dist}%"),
+                ),
+                5,
+            )
+        )
+    # Tier 2: Same category as applied job (any district)
+    if applied_cat:
+        conditions.append((func.lower(JobVacancy.job_category) == applied_cat, 4))
+    # Tier 3: Profile preferred category + Home district
+    if cand_cat and cand_dist:
+        conditions.append(
+            (
+                and_(
+                    func.lower(JobVacancy.job_category) == cand_cat,
+                    func.lower(JobVacancy.district_region).like(f"%{cand_dist}%"),
+                ),
+                3,
+            )
+        )
+    # Tier 4: Profile preferred category (any district)
+    if cand_cat:
+        conditions.append((func.lower(JobVacancy.job_category) == cand_cat, 2))
+    # Tier 5: Any other category in Home district
+    if cand_dist:
+        conditions.append((func.lower(JobVacancy.district_region).like(f"%{cand_dist}%"), 1))
+
+    if conditions:
+        match_score = case(*conditions, else_=0)
+        jobs = query.order_by(match_score.desc(), JobVacancy.created_at.desc()).limit(2).all()
+    else:
+        jobs = query.order_by(JobVacancy.created_at.desc()).limit(2).all()
+
+    if not jobs:
+        name = candidate.name.split()[0].title() if candidate.name else "there"
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                f"ℹ️ *No More Openings Right Now, {name}*\n\n"
+                "You have applied to all current matching vacancies in your area!\n\n"
+                "Fresh vacancies are posted daily. Check out the latest roles on our website 👇"
+            ),
+            buttons=[
+                {"id": "btn_explore_jobs", "title": "🌐 View all Jobs"},
+            ],
+            footer_text="JobInfo Career Network",
+        )
+        return
+
+    name = candidate.name.split()[0].title() if candidate.name else "there"
+    job_blocks = []
+    buttons = []
+    for i, j in enumerate(jobs):
+        num_prefix = f"{i+1}️⃣ " if len(jobs) > 1 else "1️⃣ "
+        role_title = j.job_title.strip()
+        loc = (j.district_region or "Kerala").strip().title()
+        if j.exact_location:
+            exact = j.exact_location.strip().title()
+            candidate_loc = f"{exact}, {loc}"
+            if len(candidate_loc) <= 25:
+                loc = candidate_loc
+
+        sal = _label(SALARY_LABELS, j.salary_range, fallback="")
+
+        lines = [
+            f"{num_prefix}*{role_title}*",
+            f"• 🔖 Job Code: {j.job_code}",
+            f"• 📍 {loc}",
+        ]
+        if sal:
+            lines.append(f"• 💰 {sal}")
+        job_blocks.append("\n".join(lines))
+        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"[:20]})
+
+    buttons.append({"id": "btn_explore_jobs", "title": "🌐 View all Jobs"})
+
+    body_text = (
+        "🎯 *Recommended Jobs for You:*\n\n"
+        + "\n\n".join(job_blocks)
+        + f"\n\n_{name}, based on your application and profile, here are top opportunities you can apply for right now._\n\n"
         "Tap a button below to view details\nand apply directly 👇"
     )
 

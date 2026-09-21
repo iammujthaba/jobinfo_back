@@ -431,14 +431,76 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
 def application_confirmation_body(
     candidate: Candidate,
     vacancy: JobVacancy,
+    scenario: str = "standard",  # "no_cv", "standard", "switched", "new_cv"
+    cv_category: str | None = None,
 ) -> str:
+    name = _candidate_first_name(candidate)
+    company = (
+        vacancy.recruiter.company_name.strip()
+        if vacancy.recruiter and vacancy.recruiter.company_name
+        else "—"
+    )
+    loc = (vacancy.district_region or "Kerala").strip().title()
+    if vacancy.exact_location:
+        exact = vacancy.exact_location.strip().title()
+        loc_str = f"{exact}, {loc}"
+        if len(loc_str) <= 28:
+            loc = loc_str
+
+    # Auto-detect scenario if standard but candidate has 0 CVs
+    if scenario == "standard" and not cv_category:
+        has_cv = bool(candidate.cv_path)
+        if hasattr(candidate, "resumes") and candidate.resumes:
+            has_cv = True
+            default_res = next(
+                (r for r in candidate.resumes if getattr(r, "is_default", False)),
+                candidate.resumes[0],
+            )
+            if getattr(default_res, "category_tag", None):
+                cv_category = CATEGORY_DISPLAY_NAMES.get(
+                    default_res.category_tag.lower(),
+                    default_res.category_tag.replace("_", " ").title(),
+                )
+        if not has_cv:
+            scenario = "no_cv"
+
+    # Format CV attachment line & coaching note based on scenario
+    if scenario == "no_cv":
+        cv_status_line = "📄 *Attachment:* No CV attached, Profile Only."
+        coaching_note = (
+            "_Recruiters will review your profile directly. Adding a tailored CV in future can boost callbacks by 5X._"
+        )
+    elif scenario == "switched":
+        cat = (cv_category or "Tailored").strip()
+        cat_display = cat if cat.endswith("CV") else f"{cat} CV"
+        cv_status_line = f"📄 *Attachment:* {cat_display}"
+        coaching_note = "_Great choice! Submitting this tailored CV gives you higher interview callbacks._"
+    elif scenario == "new_cv":
+        cat = (cv_category or "Tailored").strip()
+        cat_display = cat if cat.endswith("CV") else f"{cat} CV"
+        cv_status_line = f"📄 *Attachment:* {cat_display}"
+        coaching_note = (
+            "_Your new CV is safely stored in your profile and was delivered directly to the recruiter!_"
+        )
+    else:  # standard
+        cat = (cv_category or "Tailored").strip()
+        cat_display = cat if cat.endswith("CV") else f"{cat} CV"
+        cv_status_line = f"📄 *Attachment:* {cat_display}"
+        coaching_note = (
+            "_The recruiter will review your tailored CV and contact you directly if shortlisted._"
+        )
+
     return (
-        f"✅ *Application Submitted!*\n\n"
-        f"Hi {candidate.name},\n\n"
-        f"You have successfully applied for:\n"
-        f"*{vacancy.job_title.strip()}* Position at *{vacancy.recruiter.company_name.strip() if vacancy.recruiter and vacancy.recruiter.company_name else '—'}* in *{vacancy.exact_location or '—'}*, *{vacancy.district_region or '—'}*\n\n"
-        f"We'll notify you of any updates. Good luck! 🍀\n\n"
-        f"_JobInfo – Connecting Kerala's talent_"
+        "✅ *Application Submitted!*\n\n"
+        f"Hi {name}, your application has been delivered to the hiring team:\n\n"
+        f"💼 *Role:* {vacancy.job_title.strip()}\n"
+        f"🏢 *Company:* {company}\n"
+        f"📍 *Location:* {loc}\n"
+        f"🔖 *Job Code:* {vacancy.job_code}\n"
+        f"{cv_status_line}\n\n"
+        f"{coaching_note}\n\n"
+        "Good luck! 🍀\n"
+        "_JobInfo – Kerala's Trusted Career Network_"
     )
 
 
@@ -621,25 +683,36 @@ def seeker_apply_cv_recommendation_body(
     cv_tag = getattr(current_resume, "category_tag", "") or candidate.category or "General"
     cv_tag_label = CATEGORY_DISPLAY_NAMES.get(cv_tag.lower(), cv_tag.replace("_", " ").title())
 
-    if candidate.category and candidate.category.lower() == inferred_cat.lower():
-        # Dynamic Variation 1: Target field match, wrong CV active
-        coaching = (
-            f"{name}, we noticed your current CV is set for {cv_tag_label}. "
-            f"Uploading a tailored {job_cat_label} CV will dramatically boost your interview callbacks 👇"
-        )
-    else:
-        # Dynamic Variation 2: Career pivot / exploring a new field
-        coaching = (
-            f"{name}, we see you're exploring an opportunity in {job_cat_label}! "
-            "Submitting a tailored CV highlighting your transferable skills will 3x your interview chances 👇"
-        )
+    return (
+        "💡 *CV Recommendation*\n\n"
+        f"{anchor}\n\n"
+        f"📄 *Selected CV:* {current_cv}\n\n"
+        f"_⚠️ Your current CV is labeled for {cv_tag_label}, but this role specifically focuses on {job_cat_label}._\n\n"
+        f"{name}, if this CV already includes relevant {job_cat_label.lower()} experience, you can submit it right away! Otherwise, uploading a tailored {job_cat_label} CV will 3X your interview callbacks 👇"
+    )
+
+
+def seeker_apply_cv_mismatch_optional_body(
+    candidate: Candidate,
+    vacancy: JobVacancy,
+    current_resume: Any,
+) -> str:
+    """Case 2B (CV Optional): Candidate has CV on file, but category does not match."""
+    name = _candidate_first_name(candidate)
+    current_cv = _resume_display_name(current_resume)
+    inferred_cat = vacancy.job_category or ""
+    job_cat_label = CATEGORY_DISPLAY_NAMES.get(inferred_cat.lower(), inferred_cat.replace("_", " ").title())
+    anchor = job_application_anchor_block(vacancy)
+
+    cv_tag = getattr(current_resume, "category_tag", "") or candidate.category or "General"
+    cv_tag_label = CATEGORY_DISPLAY_NAMES.get(cv_tag.lower(), cv_tag.replace("_", " ").title())
 
     return (
         "💡 *CV Recommendation*\n\n"
         f"{anchor}\n\n"
-        f"📄 *Current CV:* {current_cv}\n\n"
-        f"_⚠️ This role focuses on {job_cat_label}_\n\n"
-        f"{coaching}"
+        f"📄 *Selected CV:* {current_cv}\n\n"
+        f"_⚠️ Your current CV is labeled for {cv_tag_label}, while this role focuses on {job_cat_label}._\n\n"
+        f"{name}, a CV is optional for this role! You can apply directly with your profile, submit this CV anyway if it highlights relevant skills, or upload a tailored {job_cat_label} CV 👇"
     )
 
 
@@ -647,15 +720,15 @@ def seeker_apply_cv_optional_body(
     candidate: Candidate,
     vacancy: JobVacancy,
 ) -> str:
-    """Case 2B (CV Optional) and Case 5: Role does not require a CV."""
+    """Case 5: Zero CVs on file & Role does not require a CV."""
     name = _candidate_first_name(candidate)
     anchor = job_application_anchor_block(vacancy)
     return (
         "🌟 *1-Tap Direct Application*\n\n"
         f"{anchor}\n\n"
-        "✨ *Good News:* A CV is optional for this role!\n"
+        "✨ *Good News:* CV is optional for this role!\n"
         "💡 *Pro Tip:* Attaching a tailored CV boosts your interview callback chance by 5X.\n\n"
-        f"_{name}, you have two great options to choose from. How would you like to apply below 👇_"
+        f"_{name}, you have two great options to choose from, How would you like to apply below 👇_"
     )
 
 
