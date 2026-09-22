@@ -15,27 +15,33 @@ settings = get_settings()
 
 HELP_MENU_TEXT = (
     "👋 *Welcome to JobInfo!*\n\n"
-    "Connecting Kerala's talent and recruiters directly via WhatsApp.\n\n"
-    "What brings you here today?\n\n"
-    "🔍 *Looking for Job* – Discover openings & apply in 1 tap\n"
-    "📢 *I am Hiring* – Post vacancies & connect with qualified candidates\n"
-    "ℹ️ *Help & Support* – Learn how it works or chat with us\n\n"
-    "_JobInfo – Kerala's First WhatsApp powered Career Portal_"
+    "_Kerala's premier career network_\n"
+    "_connecting talent on WhatsApp 🌴_\n\n"
+    "*What you can do right here:*\n"
+    "• 📍 Find jobs in preferred area\n"
+    "• ⚡ 1-Tap WhatsApp apply\n"
+    "• 🏢 Post openings & hire fast\n"
+    "• 🔒 100% Free & zero spam\n"
+    "• 📢 Broadcast jobs across Kerala\n\n"
+    "How can we help you today? 👇"
 )
+
 
 HOW_IT_WORKS_TEXT = (
     "ℹ️ *How JobInfo Works* 🚀\n\n"
-    "*For Job Seekers:* 🎓\n"
-    "1️⃣ Tap *Looking for Job* to set up your profile in 1 minute.\n"
-    "2️⃣ Get matched with top job openings across Kerala on WhatsApp.\n"
-    "3️⃣ Apply with 1 tap — upload a CV only when required.\n"
-    "4️⃣ Track your applications anytime via your Career Dashboard.\n\n"
-    "*For Employers & Recruiters:* 🏢\n"
-    "1️⃣ Tap *I am Hiring* to set up your recruiter profile in seconds.\n"
-    "2️⃣ Post jobs instantly via WhatsApp or jobinfo.pro.\n"
-    "3️⃣ Review verified candidate applications on WhatsApp or Web.\n"
-    "4️⃣ Connect with candidates directly via WhatsApp or phone call!\n\n"
-    "_JobInfo – Connecting Kerala's Talent, Instantly._ 🤝"
+    "_Kerala's automated career & hiring network 🌴_\n\n"
+    "🎓 *For Job Seekers:*\n"
+    "1️⃣ Tap *Looking for Job* (1-minute setup)\n"
+    "2️⃣ Smart matches in your home district\n"
+    "3️⃣ 1-Tap apply (CV optional & 100% free)\n"
+    "4️⃣ Direct interview calls from employers\n\n"
+    "🏢 *For Employers & Recruiters:*\n"
+    "1️⃣ Tap *I am Hiring* (1-minute setup)\n"
+    "2️⃣ Post vacancies free in 1 minute\n"
+    "3️⃣ Broadcast across all 14 districts\n"
+    "4️⃣ Zero call clutter — review & hire fast\n\n"
+    "🌐 *Explore live vacancies on web:*\n"
+    "https://jobinfo.pro/jobs.html"
 )
 
 
@@ -47,32 +53,56 @@ async def send_help_menu(wa_number: str) -> None:
         buttons=[
             {"id": "menu_seeker", "title": "🔍 Looking for Job"},
             {"id": "menu_recruiter", "title": "📢 I am Hiring"},
-            {"id": "help_support", "title": "ℹ️ Help & Support"},
+            {"id": "help_support", "title": "ℹ️ Help & More"},
         ],
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
 async def send_how_it_works(wa_number: str) -> None:
-    await wa_client.send_cta_url(
+    """Send the interactive How It Works guide with quick role & menu navigation."""
+    await wa_client.send_buttons(
         to=wa_number,
         body_text=HOW_IT_WORKS_TEXT,
-        button_text="🌐 Visit Website",
-        url="https://jobinfo.pro"
+        buttons=[
+            {"id": "menu_seeker", "title": "🔍 Looking for Job"},
+            {"id": "menu_recruiter", "title": "📢 I am Hiring"},
+            {"id": "btn_main_menu", "title": "🏠 Main Menu"},
+        ],
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
+HELP_RESOURCES_TEXT = (
+    "ℹ️ *JobInfo Help & Resources*\n\n"
+    "_Official links, live vacancies, and direct support 🌴_\n\n"
+    "🌐 *Browse Live on Website:*\n"
+    "https://jobinfo.pro/jobs.html\n"
+    "_Filter 100+ jobs by district, role & salary_\n\n"
+    "👥 *WhatsApp Community:*\n"
+    "https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR\n"
+    "_Get alerts right in your WhatsApp chat list_\n\n"
+    "📢 *WhatsApp Channel:*\n"
+    "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k\n"
+    "_Follow new openings quietly in Updates tab_\n\n"
+    "💬 *Need Help or Support?*\n"
+    "Tap *Request Help* below or chat with our team:\n"
+    "https://wa.me/917025962179\n\n"
+    "Choose an option below to proceed 👇"
+)
+
+
 async def send_help_support_menu(wa_number: str) -> None:
-    """Send a sub-menu containing How It Works and Get Help buttons."""
+    """Send a resource sub-menu with official links, community, channel, and support options."""
     await wa_client.send_buttons(
         to=wa_number,
-        body_text=(
-            "🤔 *Need Help?*\n\n"
-            "Choose an option below to learn how JobInfo works, or connect directly with our support team."
-        ),
+        body_text=HELP_RESOURCES_TEXT,
         buttons=[
-            {"id": "menu_how_it_works", "title": "How it works"},
+            {"id": "menu_how_it_works", "title": "📖 How it Works"},
             {"id": "btn_gethelp", "title": "📩 Request Help"},
+            {"id": "btn_main_menu", "title": "🏠 Main Menu"},
         ],
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 async def handle_global_button(wa_number: str, button_id: str, db: Session) -> bool:
@@ -80,6 +110,11 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
     Handle top-level menu buttons.
     Returns True if the button was handled here (so dispatcher skips other handlers).
     """
+    if button_id in ("btn_main_menu", "menu_main"):
+        await send_help_menu(wa_number)
+        _reset_state(wa_number, db)
+        return True
+
     if button_id == "menu_how_it_works":
         await send_how_it_works(wa_number)
         _reset_state(wa_number, db)

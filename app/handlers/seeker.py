@@ -538,14 +538,19 @@ async def handle_gethelp_button(wa_number: str, db: Session) -> None:
         body=admin_alert
     )
 
-    await wa_client.send_text(
+    await wa_client.send_buttons(
         to=wa_number,
-        body=(
+        body_text=(
             "📩 *Help Request Received!*\n\n"
-            "Thanks for reaching out! I have notified our jobinfo team, and one of our team will contact you shortly to assist you.\n\n"
-            "_We appreciate your patience._ 😊\n"
-            "– *Team JobInfo*"
+            "Thank you for reaching out! We have received your request, "
+            "and a member of our support team will contact you shortly on this WhatsApp chat to assist you.\n\n"
+            "While you wait, feel free to browse live vacancies or return to the main menu 👇"
         ),
+        buttons=[
+            {"id": "btn_explore_jobs", "title": "🌐 Explore all Jobs"},
+            {"id": "btn_main_menu", "title": "🏠 Main Menu"},
+        ],
+        footer_text="JobInfo.pro • Made for Kerala",
     )
     _set_state(wa_number, "idle", {}, db)
 
@@ -693,21 +698,63 @@ async def handle_registration_flow_completion(
                 return
 
         # General registration (no pending job) → Welcome menu card
-        name = candidate.name.split()[0] if candidate.name else "there"
+        name = candidate.name.split()[0].title() if candidate.name else "there"
+
+        # Location string
+        if candidate.exact_location and candidate.district:
+            loc_str = f"{candidate.exact_location.strip().title()}, {candidate.district.strip().title()}"
+        elif candidate.district:
+            loc_str = candidate.district.strip().title()
+        elif candidate.exact_location:
+            loc_str = candidate.exact_location.strip().title()
+        else:
+            loc_str = "Kerala"
+
+        # Target Field
+        cat_str = CATEGORY_DISPLAY_NAMES.get(
+            (candidate.category or "").lower(),
+            (candidate.category or "General").replace("_", " ").title(),
+        )
+
+        # CV Status: uploaded CV name or "No CV attached"
+        resume = (
+            db.query(CandidateResume)
+            .filter_by(candidate_id=candidate.id)
+            .order_by(CandidateResume.uploaded_at.desc())
+            .first()
+        )
+        if resume and resume.file_name:
+            cv_str = resume.file_name
+        elif resume and resume.category_tag:
+            tag_label = CATEGORY_DISPLAY_NAMES.get(
+                resume.category_tag.lower(),
+                resume.category_tag.replace("_", " ").title(),
+            )
+            cv_str = f"{tag_label} CV"
+        elif candidate.cv_path:
+            cv_str = "Uploaded CV"
+        else:
+            cv_str = "No CV attached"
+
+        body_text = (
+            f"🎉 *Congratulations, {name}!*\n\n"
+            "_Your profile is officially active — \nyou can now apply to any job across Kerala with just 1 tap!_\n\n"
+            "📋 *Your Job Preferences:*\n"
+            f"• 📍 {loc_str}\n"
+            f"• 💼 {cat_str}\n"
+            f"• 📄 {cv_str}\n\n"
+            "We'll match you with opportunities tailored to your preferences.\n\n"
+            "What would you like to do? 👇"
+        )
+
         await wa_client.send_buttons(
             to=wa_number,
-            header_text="Welcome to JobInfo! 🎉",
-            body_text=(
-                f"🎉 *Congratulations, {name}!* Your professional profile is officially live!\n\n"
-                "You're now part of Kerala's fastest-growing job network. "
-                "We'll match you with opportunities tailored to your skills and preferences.\n\n"
-                "What would you like to do next? 👇"
-            ),
+            body_text=body_text,
             buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
+                {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
+                {"id": "ACTION_EXPLORE_JOBS", "title": "🌐 Explore all Jobs"},
             ],
-            footer_text="Powered by JobInfo.pro",
+            footer_text="JobInfo.pro • Made for Kerala",
         )
 
 
@@ -1495,24 +1542,26 @@ async def send_seeker_greeting_menu(wa_number: str) -> None:
             {"id": "ACTION_EXPLORE_JOBS", "title": "Explore all Jobs"},
             {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
         ],
-        footer_text="Powered by JobInfo.pro",
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
 async def handle_explore_jobs(wa_number: str) -> None:
-    """Send a CTA URL inviting the seeker to the WhatsApp job channel."""
+    """Send a CTA URL inviting the seeker to the WhatsApp job channel and web portal."""
     await wa_client.send_cta_url(
         to=wa_number,
-        header_text="📢 JobInfo Jobs Channel",
         body_text=(
-            "🔥 *Stay ahead of the crowd!*\n\n"
-            "Our WhatsApp Channel is updated daily with the freshest walk-in interviews "
-            "and urgent vacancies across Kerala and beyond.\n\n"
-            "Join now so you never miss an opportunity — your next job could be one tap away! 🚀"
+            "📢 *JobInfo Jobs Network*\n\n"
+            "We publish verified vacancies and walk-in interviews "
+            "across all 14 districts in Kerala daily:\n\n"
+            "🌐 *Browse Live on Website:*\n"
+            "https://jobinfo.pro/jobs.html\n\n"
+            "📲 *Instant WhatsApp Alerts:*\n"
+            "Join our official channel below to receive new openings directly in your WhatsApp feed 👇"
         ),
-        button_text="Join Channel",
+        button_text="Join Channel ↗",
         url=WHATSAPP_CHANNEL_URL,
-        footer_text="Free • Instant updates • No spam",
+        footer_text="Free • Daily updates • No spam",
     )
 
 
@@ -1566,7 +1615,8 @@ def _get_preferred_role_title(candidate: Candidate) -> str:
 
 async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
     """
-    Suggest matching jobs: if registered → find jobs by category, else → registration flow.
+    Suggest matching jobs: delegates to the smart tiered weightage algorithm.
+    If unregistered, prompts registration flow first.
     """
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
 
@@ -1590,92 +1640,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         )
         return
 
-    # ── Find matching jobs based on candidate's category ──────────────────
-    from sqlalchemy import func
-    from app.db.models import CandidateApplication
-    category = (candidate.category or "").strip().lower()
-
-    # Collect vacancy IDs the candidate has already applied to so we can exclude them
-    applied_vacancy_ids = [
-        row.vacancy_id
-        for row in db.query(CandidateApplication.vacancy_id)
-        .filter(CandidateApplication.candidate_id == candidate.id)
-        .all()
-    ]
-
-    jobs_query = (
-        db.query(JobVacancy)
-        .filter(JobVacancy.status == "approved")
-        .filter(JobVacancy.is_active == True)
-        .filter(func.lower(JobVacancy.job_category) == category)
-    )
-    if applied_vacancy_ids:
-        jobs_query = jobs_query.filter(JobVacancy.id.notin_(applied_vacancy_ids))
-
-    matching_jobs = (
-        jobs_query
-        .order_by(JobVacancy.approved_at.desc())
-        .limit(5)
-        .all()
-    ) if category else []
-
-    if not matching_jobs:
-        preferred_role = _get_preferred_role_title(candidate)
-        # No matching active jobs
-        await wa_client.send_cta_url(
-            to=wa_number,
-            header_text="JobInfo — Job Suggestions",
-            body_text=(
-                f"📋 *Currently the positions for {preferred_role} are filled or hiring has completed.*\n\n"
-                "Our team is working actively to bring fresh opportunities daily. "
-                "Keep an eye on the *JobInfo Channel* for daily urgent openings and walk-in interviews.\n\n"
-                "We'll match you as soon as new roles match your profile — hang tight! 💪"
-            ),
-            button_text="Browse Jobs Channel",
-            url=WHATSAPP_CHANNEL_URL,
-            footer_text="Updated daily with new opportunities",
-        )
-        return
-
-    # ── Send individual job cards ─────────────────────────────────────────
-    await wa_client.send_text(
-        to=wa_number,
-        body=(
-            f"🎯 *Here is the Great picks for you, {candidate.name.split()[0] if candidate.name else 'there'}!*\n\n"
-            "Based on your profile, here are the best vacancys we've found for you.\n\n"
-            f"If any of them excites you, Tap *Apply Now* button below! 👇"
-        ),
-    )
-
-    for job in matching_jobs:
-        salary  = _label(SALARY_LABELS,     job.salary_range,       fallback="Not disclosed")
-        exp     = _label(EXPERIENCE_LABELS, job.experience_required, fallback="")
-        mode    = _label(JOB_MODE_LABELS,   job.job_mode,            fallback="")
-        desc    = (job.job_description[:120] + "…") if job.job_description and len(job.job_description) > 120 else (job.job_description or "")
-
-        salary_line = f"💰 Salary: {salary}\n"    if job.salary_range          else ""
-        exp_line    = f"🎓 Experience: {exp}\n" if job.experience_required     else ""
-        mode_line   = f"💼 Mode: {mode}\n"     if job.job_mode              else ""
-
-        body = (
-            f"🏷️ *{job.job_title.strip()}*\n"
-            f"🏢 {job.recruiter.company_name if job.recruiter else 'Company'}\n"
-            f"📍 {job.exact_location or '—'}, {job.district_region or '—'}\n"
-            f"{salary_line}"
-            f"{mode_line}"
-            f"{exp_line}"
-            f"📋 *About the Role:*\n_{desc}_\n\n"
-            f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
-        )
-
-        await wa_client.send_buttons(
-            to=wa_number,
-            body_text=body.strip(),
-            buttons=[
-                {"id": f"btn_apply_now_{job.id}", "title": "Apply Now"},
-            ],
-            footer_text=f"Job Code: {job.job_code}",
-        )
+    await handle_suggest_weighted_jobs(wa_number, db)
 
 
 # ─── Plan A: Bot Friction Elimination Helpers ─────────────────────────────────
@@ -1688,57 +1653,24 @@ async def handle_resume_recent(wa_number: str, vacancy: JobVacancy) -> None:
     await wa_client.send_buttons(
         to=wa_number,
         body_text=(
-            "👋 *Welcome back!*\n\n"
-            "Your application is almost ready to send:\n\n"
-            f"📋 *Role:* {vacancy.job_title.strip()}\n"
+            "👋 *Welcome back to JobInfo!*\n\n"
+            "When you last visited, you were looking at this opening:\n\n"
+            f"💼 *Role:* {vacancy.job_title.strip()}\n"
             f"🏢 *Company:* {company_name}\n"
             f"📍 *Location:* {location_str}\n"
             f"💰 *Salary:* {salary}\n"
             f"🔖 *Job Code:* {vacancy.job_code}\n\n"
-            "⚡ *You're just 1 quick step away!*\n"
-            "Finish your profile in under a minute to submit your application directly to the hiring team 👇"
+            "This role is still actively receiving applications! "
+            "How would you like to proceed? 👇"
         ),
         buttons=[
-            {"id": f"btn_resume_apply_{vacancy.job_code}", "title": "🚀 Complete & Apply"},
-            {"id": "btn_explore_website", "title": "🌐 Explore Jobs"},
-            {"id": "btn_not_interested_unreg", "title": "❌ Not Interested"},
+            {"id": f"btn_resume_apply_{vacancy.job_code}", "title": "🚀 Apply Now"},
+            {"id": "menu_recruiter", "title": "📢 I am Hiring"},
+            {"id": "btn_explore_jobs", "title": "🌐 Explore all Jobs"},
         ],
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
-
-async def handle_resume_closed(wa_number: str) -> None:
-    """Sub-case B: Recent flow dropout (<=14d) but vacancy is closed or missing."""
-    await wa_client.send_buttons(
-        to=wa_number,
-        body_text=(
-            "👋 *Welcome back!*\n\n"
-            "The position you were interested in has been filled, "
-            "but fresh openings are posted every week! 🎯\n\n"
-            "Complete your free profile in under a minute and "
-            "we'll match you with new roles automatically."
-        ),
-        buttons=[
-            {"id": "btn_create_profile", "title": "Complete Profile"},
-            {"id": "ACTION_EXPLORE_JOBS", "title": "Browse Jobs"},
-        ],
-    )
-
-
-async def handle_resume_generic(wa_number: str, pending_job_code: str | None = None) -> None:
-    """Master Template: Stale (>14d) or no pending job code."""
-    await wa_client.send_buttons(
-        to=wa_number,
-        body_text=(
-            "👋 *Hi! Great to hear from you.*\n\n"
-            "JobInfo connects you to new openings every week. "
-            "Complete your free profile in under a minute — "
-            "and we'll match you to the right roles instantly! 🎯"
-        ),
-        buttons=[
-            {"id": "btn_create_profile", "title": "Complete Profile"},
-            {"id": "ACTION_EXPLORE_JOBS", "title": "Browse Jobs"},
-        ],
-    )
 
 
 async def handle_registered_quick_apply(wa_number: str, candidate: Candidate, vacancy: JobVacancy) -> None:
@@ -2183,7 +2115,7 @@ async def handle_suggest_weighted_jobs(wa_number: str, db: Session) -> None:
             buttons=[
                 {"id": "btn_explore_jobs", "title": "🌐 View all Jobs"},
             ],
-            footer_text="JobInfo Career Network",
+            footer_text="JobInfo.pro • Made for Kerala",
         )
         return
 
@@ -2214,11 +2146,17 @@ async def handle_suggest_weighted_jobs(wa_number: str, db: Session) -> None:
 
     buttons.append({"id": "btn_explore_jobs", "title": "🌐 View all Jobs"})
 
+    if latest_app:
+        context_sub = f"_{name}, based on your recent applications and profile, here are top opportunities you can apply for right now._"
+    else:
+        dist_display = candidate.district.strip().title() if candidate.district else "Kerala"
+        context_sub = f"_{name}, based on your preferences in {dist_display}, here are top opportunities you can apply for right now._"
+
     body_text = (
         "🎯 *Recommended Jobs for You:*\n\n"
         + "\n\n".join(job_blocks)
-        + f"\n\n_{name}, based on your application and profile, here are top opportunities you can apply for right now._\n\n"
-        "Tap a button below to view details\nand apply directly 👇"
+        + f"\n\n{context_sub}\n\n"
+        "Tap a job below for details 👇"
     )
 
     await wa_client.send_buttons(
@@ -2296,7 +2234,7 @@ async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
             + "\n\nTap a job below for details and 1-tap application 👇"
         ),
         buttons=buttons,
-        footer_text="Fresh local openings",
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
@@ -2405,18 +2343,18 @@ async def handle_create_general_profile(wa_number: str, db: Session | None = Non
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_SEEKER_REGISTER,
-        flow_cta="Create Free Profile",
-        header_text="🌟 Welcome to JobInfo Kerala",
+        flow_cta="⚡ Get Started",
         body_text=(
-            "Great! Let's help you find the right job opportunity in Kerala. 💼\n\n"
-            "Set up your profile in just 1 minute to get:\n"
-            "✨ *Direct Applications* — Apply with 1 tap\n"
-            "🎯 *Tailored Matches* — Roles in your district & field\n"
-            "⚡ *Instant Updates* — Connect directly with recruiters\n\n"
-            "🔒 100% Free & Verified Openings.\n\n"
-            "Tap below to get started! 👇"
+            "🚀 *Create Job Seeker Profile*\n\n"
+            "_Fill your basic details below to unlock direct interview calls from verified employers across Kerala!_\n\n"
+            "*Why JobInfo?*\n"
+            "• 🔒 100% Free & spam-free\n"
+            "• ⚡ 1-Minute quick profile setup\n"
+            "• 📲 1-Tap apply to 100+ jobs\n"
+            "• 📞 Direct calls from hiring team\n"
+            "• 🔔 Job matches in your district\n\n"
+            "Tap the Button below to setup your profile & start applying 👇"
         ),
-        footer_text="Takes ~1 minute • 100% Free",
         flow_action_payload={
             "screen": "SEEKER_REGISTRATION",
             "data": {"pending_job_code": ""},

@@ -127,10 +127,11 @@ async def start(wa_number: str, db: Session) -> None:
                 "*⏳ Employer & Hiring Setup!*\n\n"
                 "_Find the right staff for your business or shop!_\n\n"
                 "Tap the button below to set up your profile and start posting jobs.\n\n"
-                "✅ *100% Free & No Spam Calls*\n"
-                "✅ *Simple & Easy to Use*\n"
-                "✅ *WhatsApp-Powered Hiring*\n"
-                "✅ *Kerala's Best Local Talent Pool*\n\n"
+                "✅ *100% Free hiring platform*\n"
+                "✅ *Zero call & message clutter*\n"
+                "✅ *Post vacancies in 1 minute*\n"
+                "✅ *Organised applicant list*\n"
+                "✅ *Filter & shortlist candidates*\n\n"
                 "Takes less than 1 minute! Let’s get started. ✨"
             ),
         )

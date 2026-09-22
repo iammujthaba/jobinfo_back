@@ -474,17 +474,19 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
             vacancy = db.query(JobVacancy).filter_by(job_code=pending_job_code).first()
             from app.services.ad_lifecycle import ensure_ad_active
             if vacancy and ensure_ad_active(vacancy, db):
-                # Sub-case A: recent + active job
+                # Sub-case A: recent + active job -> show vacancy recall card
                 await seeker_handler.handle_resume_recent(wa_number, vacancy)
                 return
             else:
-                # Sub-case B: recent + closed/missing job
-                await seeker_handler.handle_resume_closed(wa_number)
-                return
+                # Vacancy closed or missing -> silently clear context and fall through to welcome menu
+                conv_state.state = "idle"
+                conv_state.context = {}
+                db.commit()
         else:
-            # Master Template: stale (>14 days) OR no job code
-            await seeker_handler.handle_resume_generic(wa_number, pending_job_code)
-            return
+            # No specific pending job code or stale: reset state so user is not trapped
+            conv_state.state = "idle"
+            conv_state.context = {}
+            db.commit()
 
     # Default: personalized routing
     await global_handler.route_unrecognized_message(wa_number, db)
@@ -553,7 +555,7 @@ async def _handle_login_otp(wa_number: str, otp_code: str, db: Session) -> None:
                 to=wa_number,
                 body_text=body_text,
                 buttons=buttons,
-                footer_text="Powered by JobInfo.pro",
+                footer_text="JobInfo.pro • Made for Kerala",
             )
         else:
             if role == "recruiter":
@@ -576,7 +578,7 @@ async def _handle_login_otp(wa_number: str, otp_code: str, db: Session) -> None:
                     "Please switch back to the website to access your account. 🎉"
                 ),
                 buttons=buttons,
-                footer_text="Powered by JobInfo.pro",
+                footer_text="JobInfo.pro • Made for Kerala",
             )
     else:
         reason = result.get("reason", "unknown")
@@ -680,7 +682,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await seeker_handler.handle_suggest_jobs(wa_number, db)
         return
 
-    if button_id in ("ACTION_EXPLORE_JOBS", "btn_whatsapp_channel", "btn_channel"):
+    if button_id in ("ACTION_EXPLORE_JOBS", "btn_whatsapp_channel", "btn_channel", "btn_explore_jobs"):
         await seeker_handler.handle_explore_jobs(wa_number)
         return
 
@@ -776,7 +778,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await seeker_handler.start(wa_number, job_code, db)
         return
 
-    if button_id in ("btn_explore_website", "btn_explore_jobs"):
+    if button_id == "btn_explore_website":
         await seeker_handler.handle_explore_website_cta(wa_number)
         return
 
@@ -1029,10 +1031,10 @@ async def _handle_unsupported_media(wa_number: str, msg_type: str, db: Session) 
     else:
         body_text = (
             "🤖 *Automated Assistant*\n\n"
-            "Welcome to JobInfo Kerala! 👋 I can only read text messages and buttons.\n\n"
-            "If you need direct assistance or wish to speak with our team, you can message our Admin on WhatsApp:\n"
+            "Welcome to JobInfo Kerala! 👋 \nI can only read text messages and action buttons.\n\n"
+            "If you need direct assistance or wish to speak with our team, you can message our team on WhatsApp:\n"
             "💬 *+91 70259 62179*\n\n"
-            "Tap an option below to get started 👇"
+            "How can I help you today? 👇"
         )
         buttons = [
             {"id": "menu_seeker", "title": "💼 I Need a Job"},
@@ -1044,7 +1046,7 @@ async def _handle_unsupported_media(wa_number: str, msg_type: str, db: Session) 
         to=wa_number,
         body_text=body_text,
         buttons=buttons,
-        footer_text="Powered by JobInfo.pro",
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
