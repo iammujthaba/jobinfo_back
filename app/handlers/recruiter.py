@@ -237,23 +237,56 @@ async def handle_post_vacancy_flow_completion(
         logger.error("Post vacancy flow completed but recruiter %s not found", wa_number)
         return
 
+    # ── Field validation (CRIT-5) ──────────────────────────────────────────
+    required_fields = {
+        "job_title": "Job Title",
+        "job_category": "Job Category",
+        "district_region": "District / Location",
+        "job_description": "Job Description",
+    }
+    missing = [label for key, label in required_fields.items() if not str(flow_data.get(key, "")).strip()]
+    if missing:
+        logger.warning(
+            "Incomplete vacancy submission from recruiter %s: missing %s (flow_data=%s)",
+            wa_number, missing, flow_data
+        )
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                f"⚠️ *Incomplete Vacancy Details*\n\n"
+                f"We couldn't post your vacancy because the following details were missing:\n"
+                + "\n".join(f"• {m}" for m in missing) + "\n\n"
+                f"Please tap below to post your vacancy again."
+            ),
+            buttons=[
+                {"id": "btn_post_vacancy", "title": "📢 Post Vacancy"},
+            ],
+        )
+        return
+
     job_code = generate_job_code(db)
 
     # The WhatsApp Flow dropdown sends the *id* string ("yes" or "no")
     cv_required_raw = flow_data.get("cv_required", "no")
     cv_required: bool = str(cv_required_raw).strip().lower() == "yes"
 
+    district_region = str(flow_data.get("district_region", "")).strip()
+    exact_location = str(flow_data.get("exact_location", "")).strip() or district_region
+    job_mode = str(flow_data.get("job_mode", "")).strip() or "on_site"
+    experience_required = str(flow_data.get("experience_required", "")).strip() or "fresher"
+    salary_range = str(flow_data.get("salary_range", "")).strip() or "not_disclosed"
+
     vacancy = JobVacancy(
         job_code=job_code,
         recruiter_id=recruiter.id,
-        job_category=flow_data.get("job_category", ""),
-        district_region=flow_data.get("district_region", ""),
-        exact_location=flow_data.get("exact_location", ""),
-        job_title=flow_data.get("job_title", ""),
-        job_description=flow_data.get("job_description", ""),
-        job_mode=flow_data.get("job_mode", ""),
-        experience_required=flow_data.get("experience_required", ""),
-        salary_range=flow_data.get("salary_range", ""),
+        job_category=str(flow_data.get("job_category", "")).strip(),
+        district_region=district_region,
+        exact_location=exact_location,
+        job_title=str(flow_data.get("job_title", "")).strip(),
+        job_description=str(flow_data.get("job_description", "")).strip(),
+        job_mode=job_mode,
+        experience_required=experience_required,
+        salary_range=salary_range,
         cv_required=cv_required,
     )
     db.add(vacancy)

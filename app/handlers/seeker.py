@@ -863,6 +863,28 @@ async def handle_apply_now_button(
         await wa_client.send_text(to=wa_number, body=plan_renewal_body(candidate))
         return
 
+    # ── Check if already applied ──────────────────────────────────────────
+    existing = (
+        db.query(CandidateApplication)
+        .filter_by(candidate_id=candidate.id, vacancy_id=vacancy.id)
+        .first()
+    )
+    if existing:
+        status_value = str(getattr(existing.status, 'value', existing.status)).title()
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                f"ℹ️ *Already Applied*\n\n"
+                f"You have already submitted an application for the *{vacancy.job_title.strip()}* position.\n\n"
+                f"📌 *Current Status:* _{status_value}_\n\n"
+                "Would you like to explore other roles that match your profile?"
+            ),
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+            ],
+        )
+        return
+
     # ── CV-required gate ───────────────────────────────────────────────────
     if vacancy.cv_required and not bypass_cv_gate:
         resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()

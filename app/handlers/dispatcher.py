@@ -8,6 +8,7 @@ appropriate handler.
 """
 import logging
 import re
+import time
 
 from datetime import datetime, timezone
 
@@ -22,6 +23,32 @@ logger = logging.getLogger(__name__)
 
 
 from fastapi import BackgroundTasks
+
+# ─── Webhook Message Deduplication (CRIT-2) ──────────────────────────────────
+# Prevents processing duplicate webhook events re-sent by Meta or rapid duplicates
+_SEEN_MSG_WINDOW_SECONDS = 1800.0  # 30 minutes retention
+_seen_message_ids: dict[str, float] = {}
+_last_msg_cleanup: float = 0.0
+
+
+def _is_duplicate_message(msg_id: str | None) -> bool:
+    """Returns True if message id was already received recently; otherwise records it."""
+    if not msg_id:
+        return False
+    now = time.time()
+    global _last_msg_cleanup
+    if now - _last_msg_cleanup > 300.0:  # Prune every 5 minutes
+        _last_msg_cleanup = now
+        cutoff = now - _SEEN_MSG_WINDOW_SECONDS
+        to_del = [mid for mid, ts in _seen_message_ids.items() if ts < cutoff]
+        for mid in to_del:
+            _seen_message_ids.pop(mid, None)
+
+    if msg_id in _seen_message_ids:
+        return True
+    _seen_message_ids[msg_id] = now
+    return False
+
 
 # ─── Anti-Spam & Rate Limiter ────────────────────────────────────────────────
 _SPAM_WINDOW_SECONDS = 10.0       # Time window to monitor rapid messaging
@@ -162,6 +189,12 @@ async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTask
             message = value["messages"][0]
             wa_number = message["from"]
             msg_type = message.get("type")
+            msg_id = message.get("id")
+
+            # ── Message Deduplication (CRIT-2) ──────────────────────────────
+            if _is_duplicate_message(msg_id):
+                logger.info("Duplicate webhook message %s from %s suppressed", msg_id, wa_number)
+                return
 
             # ── Anti-Spam Rate Limiter & Flood Protection ────────────────────
             if await _is_rate_limited(wa_number):
