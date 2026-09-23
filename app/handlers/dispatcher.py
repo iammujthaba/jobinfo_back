@@ -18,6 +18,7 @@ from app.db.models import Candidate, JobVacancy
 
 from app.db.models import ConversationState
 from app.handlers import global_handler
+from app.whatsapp.client import wa_client
 
 logger = logging.getLogger(__name__)
 
@@ -471,6 +472,42 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     is_registered = candidate and candidate.registration_complete
 
+    # ── Global Navigation Commands ─────────────────────────────────────────
+    if clean_text in ("menu", "main menu", "home"):
+        await global_handler.send_help_menu(wa_number)
+        if conv_state:
+            conv_state.state = "idle"
+            conv_state.context = {}
+            db.commit()
+        return
+
+    if clean_text in ("help", "support"):
+        await global_handler.send_help_support_menu(wa_number)
+        if conv_state:
+            conv_state.state = "idle"
+            conv_state.context = {}
+            db.commit()
+        return
+
+    # ── Mid-Flow Free Text Interceptor (MAJOR-1) ───────────────────────────
+    # If the user is in an active interactive application flow, any other free text
+    # (e.g. "ok", "yes", "apply", "when") must not abandon the application or jump to dashboard.
+    if conv_state and conv_state.state in (
+        "seeker_viewing_job", "seeker_cv_mismatch",
+        "seeker_relocation_check", "seeker_uploading_cv", "seeker_no_cv"
+    ):
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                "Please tap one of the buttons on the message above to proceed with your application.\n\n"
+                "Or tap below to return to the main menu."
+            ),
+            buttons=[
+                {"id": "btn_main_menu", "title": "🏠 Main Menu"},
+            ],
+        )
+        return
+
     ctx = (conv_state.context or {}) if conv_state else {}
     pending_job_code = ctx.get("pending_job_code")
 
@@ -782,8 +819,23 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
     if button_id.startswith("btn_apply_now_"):
         vacancy_id = int(button_id.removeprefix("btn_apply_now_"))
         vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
-        if not vacancy:
+        from app.services.ad_lifecycle import ensure_ad_active
+        if not vacancy or not ensure_ad_active(vacancy, db):
+            await wa_client.send_buttons(
+                to=wa_number,
+                header_text="Position No Longer Available",
+                body_text=(
+                    "Sorry, this position is no longer accepting applications.\n"
+                    "The role may have been filled, or the ad has been removed.\n\n"
+                    "Browse latest open roles on the JobInfo channel for fresh opportunities!"
+                ),
+                buttons=[
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                    {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
+                ],
+            )
             return
+
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
         if not candidate:
             await seeker_handler.start(wa_number, vacancy.job_code, db)
@@ -831,7 +883,12 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
                 await seeker_handler.handle_select_cv(wa_number, resume_id, job_code, db)
                 return
             except ValueError:
-                pass
+                logger.error("Failed to parse resume_id from button '%s' for %s", button_id, wa_number)
+                await wa_client.send_text(to=wa_number, body="❌ Something went wrong processing your CV selection. Please try again.")
+                return
+        logger.warning("Malformed USE_MATCHING_CV button '%s' for %s", button_id, wa_number)
+        await wa_client.send_text(to=wa_number, body="❌ Something went wrong processing your CV selection. Please try again.")
+        return
 
     if button_id == "SUGGEST_JOBS_NO_CV":
         await seeker_handler.handle_suggest_jobs_no_cv(wa_number, db)
@@ -1158,23 +1215,30 @@ async def send_delayed_session_menu(wa_number: str) -> None:
     button menu based on their profile combinations.
     """
     import asyncio
+    import logging
     from datetime import datetime, timezone
     from app.db.base import SessionLocal
-    from app.db.models import ConversationState, Recruiter, Candidate
+    from app.db.models import ConversationState, Recruiter, Candidate, JobVacancy, CandidateResume
     from app.whatsapp.client import wa_client
 
+    logger = logging.getLogger(__name__)
+
     await asyncio.sleep(300)
-    
-    db = SessionLocal()
+
+    # ── Phase 1: Check at 5 minutes ─────────────────────────────────────────
+    needs_phase_2 = False
+    saved_context: dict = {}
+
+    db1 = SessionLocal()
     try:
-        state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+        state = db1.query(ConversationState).filter_by(wa_number=wa_number).first()
         if not state or not state.last_user_message_at:
             return
-            
+
         last_msg = state.last_user_message_at
         if last_msg.tzinfo is None:
             last_msg = last_msg.replace(tzinfo=timezone.utc)
-            
+
         now = datetime.now(timezone.utc)
         time_since_msg = (now - last_msg).total_seconds()
 
@@ -1183,11 +1247,10 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             return
 
         # ── Check for Recruiter with Pending Vacancies ──────────────────
-        from app.db.models import JobVacancy
-        is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+        is_recruiter = db1.query(Recruiter).filter_by(wa_number=wa_number).first()
         if is_recruiter:
             has_pending = (
-                db.query(JobVacancy)
+                db1.query(JobVacancy)
                 .filter_by(recruiter_id=is_recruiter.id, status="pending")
                 .first()
                 is not None
@@ -1198,41 +1261,20 @@ async def send_delayed_session_menu(wa_number: str) -> None:
 
         # ── Fix 4: CV Upload In Progress Check (Unified 5+5 Min Pipeline) ──
         if state.state in ("seeker_uploading_cv", "seeker_no_cv"):
-            from app.db.models import CandidateResume
-            candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+            candidate = db1.query(Candidate).filter_by(wa_number=wa_number).first()
             # Early Exit: If CV uploaded or resume registered within 5 min, stop immediately
             if candidate:
-                resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+                resume_count = db1.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
                 if bool(candidate.cv_path) or resume_count > 0:
                     return
 
-            # Still stuck without a CV: Suppress generic menu and wait remaining 5 minutes (300s)
+            # Still stuck without a CV: Suppress generic menu and proceed to Phase 2 after sleep
             saved_context = dict(state.context or {})
-            db.close()
-            await asyncio.sleep(300)
-
-            # ── Phase 2: At 10 Minutes (600s total) ───────────────────
-            db = SessionLocal()
-            state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
-            if not state or state.state not in ("seeker_uploading_cv", "seeker_no_cv"):
-                return  # State changed or application completed
-
-            last_msg_10 = state.last_user_message_at
-            if last_msg_10 and last_msg_10.tzinfo is None:
-                last_msg_10 = last_msg_10.replace(tzinfo=timezone.utc)
-            if last_msg_10 and (datetime.now(timezone.utc) - last_msg_10).total_seconds() < 600:
-                return  # User interacted between min 5 and 10
-
-            candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
-            if candidate:
-                resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
-                if not (bool(candidate.cv_path) or resume_count > 0):
-                    from app.handlers import seeker as seeker_handler
-                    await seeker_handler.send_cv_rescue_card(wa_number, candidate, state.context or saved_context, db)
+            needs_phase_2 = True
             return
 
-        is_seeker = db.query(Candidate).filter_by(wa_number=wa_number).first()
-        
+        is_seeker = db1.query(Candidate).filter_by(wa_number=wa_number).first()
+
         # Condition C: Both Roles
         if is_recruiter and is_seeker and is_seeker.registration_complete:
             text = (
@@ -1249,7 +1291,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                     {"id": "menu_recruiter", "title": "Start as Recruiter"}
                 ]
             )
-            
+
         # Condition A: Recruiter Only
         elif is_recruiter:
             text = (
@@ -1265,7 +1307,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                     {"id": "menu_recruiter", "title": "Get Started"}
                 ]
             )
-            
+
         # Condition B: Seeker Only
         elif is_seeker and is_seeker.registration_complete:
             text = (
@@ -1281,7 +1323,7 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                     {"id": "menu_seeker", "title": "Get Started"}
                 ]
             )
-            
+
         # Condition D: Unregistered / None
         else:
             text = (
@@ -1301,12 +1343,40 @@ async def send_delayed_session_menu(wa_number: str) -> None:
                 ]
             )
 
-            
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error in send_delayed_session_menu: {e}")
+        logger.error("Error in send_delayed_session_menu (phase 1): %s", e)
+        return
     finally:
-        db.close()
+        db1.close()
+
+    # ── Phase 2: At 10 Minutes (600s total, only for stuck CV upload) ──────
+    if not needs_phase_2:
+        return
+
+    await asyncio.sleep(300)
+
+    db2 = SessionLocal()
+    try:
+        state = db2.query(ConversationState).filter_by(wa_number=wa_number).first()
+        if not state or state.state not in ("seeker_uploading_cv", "seeker_no_cv"):
+            return  # State changed or application completed
+
+        last_msg_10 = state.last_user_message_at
+        if last_msg_10 and last_msg_10.tzinfo is None:
+            last_msg_10 = last_msg_10.replace(tzinfo=timezone.utc)
+        if last_msg_10 and (datetime.now(timezone.utc) - last_msg_10).total_seconds() < 600:
+            return  # User interacted between min 5 and 10
+
+        candidate = db2.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate:
+            resume_count = db2.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+            if not (bool(candidate.cv_path) or resume_count > 0):
+                from app.handlers import seeker as seeker_handler
+                await seeker_handler.send_cv_rescue_card(wa_number, candidate, state.context or saved_context, db2)
+    except Exception as e:
+        logger.error("Error in send_delayed_session_menu (phase 2): %s", e)
+    finally:
+        db2.close()
 
 
 async def send_post_approval_session_menu(wa_number: str, approved_vacancy_id: int) -> None:
