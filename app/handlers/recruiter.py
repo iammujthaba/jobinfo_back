@@ -146,18 +146,27 @@ async def handle_registration_flow_completion(
     """
     Called when Meta sends the WhatsApp Flow completion event for recruiter registration.
     flow_data keys (from Flow): company_name, business_type, location, business_contact
+
+    Idempotent: Meta can re-deliver flow completion webhooks. We do an upsert so a
+    retry never crashes with an IntegrityError — the recruiter always gets their
+    Post Vacancy flow regardless.
     """
-    recruiter = Recruiter(
-        wa_number=wa_number,
-        company_name=flow_data.get("company_name", ""),
-        business_type=flow_data.get("business_type", ""),
-        location=flow_data.get("location", ""),
-        business_contact=flow_data.get("business_contact", ""),
-        registrant_role=flow_data.get("registrant_role", "other") or "other",
-    )
-    db.add(recruiter)
-    db.commit()
-    db.refresh(recruiter)
+    recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+    if not recruiter:
+        recruiter = Recruiter(
+            wa_number=wa_number,
+            company_name=flow_data.get("company_name", ""),
+            business_type=flow_data.get("business_type", ""),
+            location=flow_data.get("location", ""),
+            business_contact=flow_data.get("business_contact", ""),
+            registrant_role=flow_data.get("registrant_role", "other") or "other",
+        )
+        db.add(recruiter)
+        db.commit()
+        db.refresh(recruiter)
+        logger.info("New recruiter registered: %s (%s)", wa_number, recruiter.company_name)
+    else:
+        logger.info("Recruiter %s already exists — skipping duplicate insert (webhook retry)", wa_number)
 
     # Launch post vacancy flow directly on the welcoming card (0 intermediate friction)
     loc_options = _location_options_for()

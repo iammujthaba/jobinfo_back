@@ -221,6 +221,27 @@ async def dispatch(payload: dict, db: Session, background_tasks: "BackgroundTask
     except (KeyError, IndexError) as exc:
         logger.warning("Unexpected payload structure: %s | %s", exc, payload)
 
+    except Exception as exc:
+        logger.exception("Unhandled error in dispatch(): %s", exc)
+        # Try to notify the user so they don't experience complete silence.
+        # wa_number is only available if the crash happened after the messages block.
+        try:
+            _wa = payload["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
+        except (KeyError, IndexError, TypeError):
+            _wa = None
+        if _wa:
+            try:
+                from app.whatsapp.client import wa_client
+                await wa_client.send_text(
+                    to=_wa,
+                    body=(
+                        "⚠️ Something went wrong on our end. "
+                        "Please try again in a moment, or type *menu* to start over."
+                    ),
+                )
+            except Exception as notify_err:
+                logger.warning("Failed to send error fallback message to %s: %s", _wa, notify_err)
+
 
 # ─── Routing helpers ──────────────────────────────────────────────────────────
 
@@ -485,6 +506,25 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
         else:
             # No specific pending job code or stale: reset state so user is not trapped
             conv_state.state = "idle"
+            conv_state.context = {}
+            db.commit()
+
+    # 3. Recruiter Registration Flow Dropout Interceptor (CRIT-4)
+    # If the user closed the flow without submitting, no Recruiter record exists yet
+    # but their state is stuck as "recruiter_registering". Re-invite them to register.
+    if conv_state and conv_state.state == "recruiter_registering":
+        from app.db.models import Recruiter
+        recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+        if not recruiter:
+            # Abandoned flow — re-launch registration cleanly
+            conv_state.state = "idle"
+            conv_state.context = {}
+            db.commit()
+            await recruiter_handler.start(wa_number, db)
+            return
+        else:
+            # Recruiter exists (e.g. flow completed via a race / retry already) — reset state
+            conv_state.state = "recruiter_idle"
             conv_state.context = {}
             db.commit()
 
@@ -896,7 +936,7 @@ async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
     from app.handlers import seeker as seeker_handler
 
     state_rec = db.query(ConversationState).filter_by(wa_number=wa_number).first()
-    if state_rec and state_rec.state == "seeker_updating_cv":
+    if state_rec and state_rec.state in ("seeker_updating_cv", "seeker_uploading_cv"):
         from app.services.storage import MAX_CV_SIZE_BYTES, save_cv_from_whatsapp
         from app.whatsapp.client import wa_client
         doc_size = doc.get("file_size", 0)
@@ -939,10 +979,31 @@ async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
                     )
                     db.add(new_res)
                 db.commit()
-                await wa_client.send_text(
-                    to=wa_number,
-                    body=cv_update_confirmation_body(candidate),
-                )
+
+                if state_rec and state_rec.state == "seeker_uploading_cv":
+                    # Apply flow: CV just uploaded — auto-submit the application now
+                    job_code = (state_rec.context or {}).get("job_code")
+                    vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first() if job_code else None
+                    if vacancy:
+                        state_rec.state = "idle"
+                        state_rec.context = {}
+                        db.commit()
+                        await seeker_handler.handle_apply_now_button(
+                            wa_number, vacancy.id, db, bypass_cv_gate=False
+                        )
+                    else:
+                        # Job code missing/vacancy gone — just confirm CV saved
+                        await wa_client.send_text(
+                            to=wa_number,
+                            body=cv_update_confirmation_body(candidate),
+                        )
+                else:
+                    # General CV update flow — just show confirmation
+                    await wa_client.send_text(
+                        to=wa_number,
+                        body=cv_update_confirmation_body(candidate),
+                    )
+
         else:
             await wa_client.send_text(
                 to=wa_number,
