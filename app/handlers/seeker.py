@@ -246,6 +246,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
         await wa_client.send_flow(
             to=wa_number,
             flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+            flow_token="seeker_register",
             flow_cta="⚡ Apply Now",
             body_text=(
                 f"🚀 *Quick Job Application*\n\n"
@@ -533,10 +534,15 @@ async def handle_gethelp_button(wa_number: str, db: Session) -> None:
         f"Context: {context}"
     )
 
-    await wa_client.send_text(
-        to="917025962179",
-        body=admin_alert
-    )
+    admin_targets = settings.submission_admins or ([settings.admin_wa_number] if settings.admin_wa_number else ["917025962179"])
+    for admin_num in admin_targets:
+        try:
+            await wa_client.send_text(
+                to=admin_num,
+                body=admin_alert
+            )
+        except Exception as e:
+            logger.warning("Failed to deliver help request alert to admin %s: %s", admin_num, e)
 
     await wa_client.send_buttons(
         to=wa_number,
@@ -560,6 +566,7 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+        flow_token="seeker_register",
         flow_cta="Register Now",
         body_text=(
             "⏳ *Job Seeker Registration*\n\n"
@@ -1204,6 +1211,7 @@ async def handle_upload_new_cv(wa_number: str, job_code: str, db: Session) -> No
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_CV_UPDATE,
+        flow_token="cv_update",
         flow_cta="Upload CV",
         body_text=(
             "📄 *Upload Your Tailored CV*\n\n"
@@ -1229,6 +1237,7 @@ async def handle_update_cv_button(
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_CV_UPDATE,
+        flow_token="cv_update",
         flow_cta="Upload New CV",
         body_text=(
             "📄 *Update Your CV*\n\n"
@@ -1599,6 +1608,7 @@ async def handle_my_applications_menu(wa_number: str, db: Session) -> None:
         await wa_client.send_flow(
             to=wa_number,
             flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+            flow_token="seeker_register",
             flow_cta="Set Up Profile",
             header_text="JobInfo — Profile Required",
             body_text=(
@@ -1646,6 +1656,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         await wa_client.send_flow(
             to=wa_number,
             flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+            flow_token="seeker_register",
             flow_cta="Set Up Profile",
             header_text="JobInfo — Let Us Know Your Preferences",
             body_text=(
@@ -2365,6 +2376,7 @@ async def handle_create_general_profile(wa_number: str, db: Session | None = Non
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_SEEKER_REGISTER,
+        flow_token="seeker_register",
         flow_cta="⚡ Get Started",
         body_text=(
             "🚀 *Create Job Seeker Profile*\n\n"

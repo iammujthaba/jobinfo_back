@@ -985,9 +985,14 @@ async def _handle_list_reply(wa_number: str, row_id: str, db: Session) -> None:
 
 async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> None:
     """
-    Route WhatsApp Flow completion callbacks by inspecting the payload keys.
+    Route WhatsApp Flow completion callbacks safely and robustly (MINOR-2).
+    Disambiguation priority:
+      1. Explicit flow identifiers (flow_token, flow_name, form_id, flow_id)
+      2. Active ConversationState in the database
+      3. Mutually exclusive, robust key heuristics fallback
     """
     import json
+    from app.config import settings
     from app.handlers import recruiter as recruiter_handler
     from app.handlers import seeker as seeker_handler
 
@@ -997,29 +1002,78 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
     except json.JSONDecodeError:
         submitted = {}
 
-    # Inspect the submitted data keys to determine which form was filled out
-    if "job_title" in submitted and "job_category" in submitted:
+    # 1. Explicit flow tokens or form identifiers
+    flow_token = str(
+        submitted.get("flow_token")
+        or flow_data.get("flow_token")
+        or submitted.get("flow_name")
+        or submitted.get("form_id")
+        or submitted.get("flow_id")
+        or ""
+    ).strip().lower()
+
+    if flow_token in ("post_vacancy", "post_job") or (settings.FLOW_ID_POST_VACANCY and flow_token == settings.FLOW_ID_POST_VACANCY.lower()):
+        await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
+        return
+
+    if flow_token in ("recruiter_register", "recruiter_registration") or (settings.FLOW_ID_RECRUITER_REGISTER and flow_token == settings.FLOW_ID_RECRUITER_REGISTER.lower()):
+        await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
+        return
+
+    if flow_token in ("seeker_register", "seeker_registration") or (settings.FLOW_ID_SEEKER_REGISTER and flow_token == settings.FLOW_ID_SEEKER_REGISTER.lower()):
+        await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
+        return
+
+    if flow_token in ("cv_update", "upload_cv", "cv_upload") or (settings.FLOW_ID_CV_UPDATE and flow_token == settings.FLOW_ID_CV_UPDATE.lower()):
+        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
+        return
+
+    # 2. State-driven disambiguation from active ConversationState
+    conv_state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    active_state = conv_state.state if conv_state else ""
+
+    if active_state == "recruiter_posting_vacancy":
+        await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
+        return
+
+    if active_state == "recruiter_registering":
+        await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
+        return
+
+    if active_state in ("seeker_uploading_cv", "seeker_updating_cv"):
+        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
+        return
+
+    if active_state == "seeker_registering":
+        await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
+        return
+
+    # 3. Robust key-based heuristics fallback (mutually exclusive)
+    if ("job_title" in submitted and "job_category" in submitted) or ("job_description" in submitted and "job_title" in submitted):
         # Post Vacancy Flow
         await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
-
-    elif "category" in submitted and "sub_category" in submitted:
-        # Seeker Registration Flow
-        await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
-
-    elif "new_cv_category" in submitted:
-        # CV Update Flow (with category tag + job_code for Smart CV Manager)
-        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
-
-    elif "media_id" in submitted and "category" not in submitted:
-        # Legacy CV Update Flow (without category)
-        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
 
     elif "company_name" in submitted and "business_type" in submitted:
         # Recruiter Registration Flow
         await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
 
+    elif "new_cv_category" in submitted or (
+        "media_id" in submitted and "sub_category" not in submitted and "district" not in submitted and "name" not in submitted
+    ):
+        # CV Update Flow
+        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
+
+    elif ("category" in submitted and "sub_category" in submitted) or (
+        "name" in submitted and ("district" in submitted or "age" in submitted or "gender" in submitted)
+    ):
+        # Seeker Registration Flow
+        await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
+
     else:
-        logger.warning("Could not identify flow from payload: %s from %s", submitted, wa_number)
+        logger.warning(
+            "Could not identify flow from payload: %s from %s (state=%s)",
+            submitted, wa_number, active_state
+        )
 
 async def _handle_document(wa_number: str, doc: dict, db: Session) -> None:
     """Handle a raw document upload (CV sent directly in chat)."""

@@ -122,6 +122,7 @@ async def start(wa_number: str, db: Session) -> None:
         await wa_client.send_flow(
             to=wa_number,
             flow_id=settings.FLOW_ID_RECRUITER_REGISTER,
+            flow_token="recruiter_register",
             flow_cta="💼 Start Hiring",
             body_text=(
                 "*⏳ Employer & Hiring Setup!*\n\n"
@@ -173,6 +174,7 @@ async def handle_registration_flow_completion(
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_POST_VACANCY,
+        flow_token="post_vacancy",
         flow_cta="📢 Post Vacancy",
         body_text=registration_confirmation_body(recruiter.company_name, "recruiter"),
         flow_action_payload={
@@ -392,6 +394,7 @@ async def handle_post_vacancy_button(
     await wa_client.send_flow(
         to=wa_number,
         flow_id=settings.FLOW_ID_POST_VACANCY,
+        flow_token="post_vacancy",
         flow_cta=cta_title,
         body_text=recruiter_post_vacancy_card_body(
             company_name=company_name,
