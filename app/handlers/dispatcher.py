@@ -766,7 +766,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
             body_text=body_text,
             button_text=" Open Dashboard",
             url=url,
-            footer_text="🔒 Safe & private • Valid 24h",
+            footer_text="⏳ Button expires in 24h",
         )
         return
 

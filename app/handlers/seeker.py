@@ -1520,7 +1520,7 @@ async def _send_application_summary_cta(
         body_text=body_text,
         button_text="Open Dashboard ↗",
         url=dashboard_url,
-        footer_text="🔒 Safe & private • Valid 24h",
+        footer_text="⏳ Button expires in 24h",
     )
 
 
