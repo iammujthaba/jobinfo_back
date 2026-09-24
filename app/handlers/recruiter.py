@@ -312,7 +312,7 @@ async def handle_post_vacancy_flow_completion(
         body_text=vacancy_confirmation_body(vacancy),
         button_display_text="View Dashboard",
         button_url=magic_url,
-        footer_text="⏳ Secure link • Valid for 24 hours",
+        footer_text="🔒 Safe & private • Valid 24h",
     )
 
     # Notify admins for new submission
@@ -372,7 +372,7 @@ async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
         body_text=summary_text,
         button_display_text="Access Dashboard",
         button_url=magic_url,
-        footer_text="⏳ Secure link • Valid for 24 hours",
+        footer_text="🔒 Safe & private • Valid 24h",
     )
 
 
@@ -454,7 +454,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
             body_text=private_body,
             button_display_text="View Dashboard",
             button_url=magic_url,
-            footer_text="⏳ Secure link • Valid for 24 hours",
+            footer_text="🔒 Safe & private • Valid 24h",
         )
     except Exception as e:
         logger.warning("Private approval CTA failed, falling back to text: %s", e)
@@ -528,7 +528,7 @@ async def notify_recruiter_rejection(
                 body_text=body,
                 button_text="Fix & Resubmit",
                 url=url,
-                footer_text="⏳ Secure link • Valid for 72 hours",
+                footer_text="🔒 Safe & private • Valid 72h",
             )
         except Exception as e:
             logger.warning("Rejection CTA send failed for %s, falling back to text: %s", recruiter.wa_number, e)

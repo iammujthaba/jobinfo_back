@@ -114,6 +114,7 @@ class WhatsAppClient:
         button_label: str,
         sections: list[dict],
         header_text: str | None = None,
+        footer_text: str | None = None,
     ) -> dict:
         """Send an interactive list message."""
         interactive: dict[str, Any] = {
@@ -123,6 +124,8 @@ class WhatsAppClient:
         }
         if header_text:
             interactive["header"] = {"type": "text", "text": header_text}
+        if footer_text:
+            interactive["footer"] = {"text": footer_text}
 
         return await self._post({
             "messaging_product": "whatsapp",

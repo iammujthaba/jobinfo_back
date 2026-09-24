@@ -540,30 +540,57 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
 
     # 2. Unregistered Seeker Flow Dropout Interceptor (Fix 1)
     if conv_state and conv_state.state == "seeker_registering":
-        last_active = conv_state.last_user_message_at
-        if last_active and last_active.tzinfo is None:
-            last_active = last_active.replace(tzinfo=timezone.utc)
-        days_since = (datetime.now(timezone.utc) - last_active).days if last_active else 999
+        flow_sent_at_str = ctx.get("flow_sent_at")
+        flow_sent_dt = None
+        if flow_sent_at_str:
+            try:
+                flow_sent_dt = datetime.fromisoformat(flow_sent_at_str)
+                if flow_sent_dt.tzinfo is None:
+                    flow_sent_dt = flow_sent_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                flow_sent_dt = None
 
-        is_recent = days_since <= 14
+        if not flow_sent_dt:
+            # Fallback to conv_state.updated_at or last_user_message_at
+            flow_sent_dt = conv_state.updated_at or conv_state.last_user_message_at
+            if flow_sent_dt and flow_sent_dt.tzinfo is None:
+                flow_sent_dt = flow_sent_dt.replace(tzinfo=timezone.utc)
 
-        if is_recent and pending_job_code:
+        hours_since = (datetime.now(timezone.utc) - flow_sent_dt).total_seconds() / 3600.0 if flow_sent_dt else 9999.0
+        days_since = hours_since / 24.0
+
+        if pending_job_code:
             vacancy = db.query(JobVacancy).filter_by(job_code=pending_job_code).first()
             from app.services.ad_lifecycle import ensure_ad_active
             if vacancy and ensure_ad_active(vacancy, db):
-                # Sub-case A: recent + active job -> show vacancy recall card
-                await seeker_handler.handle_resume_recent(wa_number, vacancy)
-                return
+                if hours_since < 24.0:
+                    # Within 24 hours: user messaged during active session before 24h
+                    # Show standard Help Menu without awkward "Welcome back" recall template
+                    await global_handler.send_help_menu(wa_number)
+                    return
+                elif days_since <= 14.0:
+                    # Returning visit: >= 24 hours up to 14 days
+                    await seeker_handler.handle_resume_recent(wa_number, vacancy)
+                    return
+                else:
+                    # Stale (>14 days) -> silently clear context and fall through to welcome menu
+                    conv_state.state = "idle"
+                    conv_state.context = {}
+                    db.commit()
             else:
                 # Vacancy closed or missing -> silently clear context and fall through to welcome menu
                 conv_state.state = "idle"
                 conv_state.context = {}
                 db.commit()
         else:
-            # No specific pending job code or stale: reset state so user is not trapped
-            conv_state.state = "idle"
-            conv_state.context = {}
-            db.commit()
+            # General profile registration flow (no pending job code)
+            if hours_since < 24.0:
+                await global_handler.send_help_menu(wa_number)
+                return
+            else:
+                conv_state.state = "idle"
+                conv_state.context = {}
+                db.commit()
 
     # 3. Recruiter Registration Flow Dropout: reset state so user is not trapped
     if conv_state and conv_state.state == "recruiter_registering":
@@ -739,7 +766,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
             body_text=body_text,
             button_text=" Open Dashboard",
             url=url,
-            footer_text="⏳ Secure link • Valid for 24 hours",
+            footer_text="🔒 Safe & private • Valid 24h",
         )
         return
 
@@ -875,6 +902,14 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
 
     if button_id in ("btn_suggest_more_jobs", "SUGGEST_WEIGHTED_JOBS"):
         await seeker_handler.handle_suggest_weighted_jobs(wa_number, db)
+        return
+
+    if button_id.startswith("btn_suggest_other_"):
+        try:
+            exclude_id = int(button_id.removeprefix("btn_suggest_other_"))
+        except ValueError:
+            exclude_id = None
+        await seeker_handler.handle_suggest_weighted_jobs(wa_number, db, exclude_vacancy_id=exclude_id)
         return
 
     # ── Plan A Button Handlers ──────────────────────────────────────────────

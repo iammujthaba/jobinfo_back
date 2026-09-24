@@ -268,8 +268,17 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
                 "screen": "SEEKER_REGISTRATION",
                 "data": flow_data,
             },
+            footer_text="JobInfo.pro - Made for Kerala",
         )
-        _set_state(wa_number, "seeker_registering", {"pending_job_code": job_code}, db)
+        _set_state(
+            wa_number,
+            "seeker_registering",
+            {
+                "pending_job_code": job_code,
+                "flow_sent_at": datetime.now(timezone.utc).isoformat(),
+            },
+            db,
+        )
     else:
         await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
 
@@ -586,7 +595,15 @@ async def handle_register_button(wa_number: str, job_code: str, db: Session) -> 
             }
         },
     )
-    _set_state(wa_number, "seeker_registering", {"pending_job_code": job_code}, db)
+    _set_state(
+        wa_number,
+        "seeker_registering",
+        {
+            "pending_job_code": job_code,
+            "flow_sent_at": datetime.now(timezone.utc).isoformat(),
+        },
+        db,
+    )
 
 async def handle_registration_flow_completion(
     wa_number: str, flow_data: dict, db: Session
@@ -1132,6 +1149,7 @@ async def handle_manage_cv(wa_number: str, job_code: str, db: Session) -> None:
         ),
         button_label="Choose CV",
         sections=sections,
+        footer_text="Maximum allowed size: 1MB",
     )
 
 
@@ -1502,7 +1520,7 @@ async def _send_application_summary_cta(
         body_text=body_text,
         button_text="Open Dashboard ↗",
         url=dashboard_url,
-        footer_text="⏳ Secure link • Valid for 24 hours",
+        footer_text="🔒 Safe & private • Valid 24h",
     )
 
 
@@ -1647,7 +1665,7 @@ def _get_preferred_role_title(candidate: Candidate) -> str:
     return "your field"
 
 
-async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
+async def handle_suggest_jobs(wa_number: str, db: Session, exclude_vacancy_id: int | None = None) -> None:
     """
     Suggest matching jobs: delegates to the smart tiered weightage algorithm.
     If unregistered, prompts registration flow first.
@@ -1675,7 +1693,7 @@ async def handle_suggest_jobs(wa_number: str, db: Session) -> None:
         )
         return
 
-    await handle_suggest_weighted_jobs(wa_number, db)
+    await handle_suggest_weighted_jobs(wa_number, db, exclude_vacancy_id=exclude_vacancy_id)
 
 
 # ─── Plan A: Bot Friction Elimination Helpers ─────────────────────────────────
@@ -1701,7 +1719,7 @@ async def handle_resume_recent(wa_number: str, vacancy: JobVacancy) -> None:
         buttons=[
             {"id": f"btn_resume_apply_{vacancy.job_code}", "title": "🚀 Apply Now"},
             {"id": "menu_recruiter", "title": "📢 I am Hiring"},
-            {"id": "btn_explore_jobs", "title": "🌐 Explore all Jobs"},
+            {"id": "btn_main_menu", "title": "🏠 Main Menu"},
         ],
         footer_text="JobInfo.pro • Made for Kerala",
     )
@@ -1712,7 +1730,7 @@ async def handle_registered_quick_apply(wa_number: str, candidate: Candidate, va
     """
     Registered Seeker Guard (Fix 1):
     Registered candidate who messaged bot while having a recent active pending job code.
-    Shows 1-Tap Quick Apply Card with [⚡ Apply Instantly] (17 chars).
+    Shows 1-Tap Quick Apply Card with [⚡ Apply Now] (17 chars).
     """
     salary = _label(SALARY_LABELS, vacancy.salary_range)
     company_name = vacancy.recruiter.company_name if vacancy.recruiter else "—"
@@ -1729,9 +1747,9 @@ async def handle_registered_quick_apply(wa_number: str, candidate: Candidate, va
             "Your profile is already set up. Tap below to submit your application instantly 👇"
         ),
         buttons=[
-            {"id": f"btn_apply_instantly_{vacancy.job_code}", "title": "⚡ Apply Instantly"},
-            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
-            {"id": "btn_not_interested_reg", "title": "❌ Not Interested"},
+            {"id": f"btn_apply_instantly_{vacancy.job_code}", "title": "⚡ Apply Now"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest More"},
+            {"id": "btn_main_menu", "title": "🏠 Main Menu"},
         ],
     )
 
@@ -1747,7 +1765,7 @@ async def handle_not_interested_registered(wa_number: str, db: Session) -> None:
             "How would you like to proceed?"
         ),
         buttons=[
-            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest More"},
             {"id": "btn_explore_website", "title": "🌐 More on Website"},
             {"id": "ACTION_MY_APPLICATIONS", "title": "📑 My Applications"},
         ],
@@ -2052,7 +2070,11 @@ async def handle_suggest_jobs_no_cv(wa_number: str, db: Session) -> None:
     )
 
 
-async def handle_suggest_weighted_jobs(wa_number: str, db: Session) -> None:
+async def handle_suggest_weighted_jobs(
+    wa_number: str,
+    db: Session,
+    exclude_vacancy_id: int | None = None,
+) -> None:
     """
     Tiered weightage job suggestion algorithm:
     Tier 1 (5 pts): Same category as last applied job + Candidate's home district
@@ -2061,20 +2083,23 @@ async def handle_suggest_weighted_jobs(wa_number: str, db: Session) -> None:
     Tier 4 (2 pts): Candidate profile preferred category + Other districts
     Tier 5 (1 pt):  Any category + Home district
     Tier 6 (0 pts): Newest available active openings anywhere in Kerala
-    Always returns top 2 best available vacancies (excludes already applied).
+    Always returns top 2 best available vacancies (excludes already applied and current viewing job).
     """
     from sqlalchemy import func, case, and_
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     if not candidate:
         return
 
-    # Exclude all vacancies candidate has already applied to
+    # Exclude all vacancies candidate has already applied to + currently viewed vacancy (if any)
     applied_ids = [
         a.vacancy_id
         for a in db.query(CandidateApplication.vacancy_id)
         .filter_by(candidate_id=candidate.id)
         .all()
     ]
+    excluded_ids = set(applied_ids)
+    if exclude_vacancy_id:
+        excluded_ids.add(exclude_vacancy_id)
 
     # Find the most recently applied vacancy for category context
     applied_cat = ""
@@ -2096,8 +2121,8 @@ async def handle_suggest_weighted_jobs(wa_number: str, db: Session) -> None:
         JobVacancy.is_active == True,
         JobVacancy.status == "approved",
     )
-    if applied_ids:
-        query = query.filter(JobVacancy.id.notin_(applied_ids))
+    if excluded_ids:
+        query = query.filter(JobVacancy.id.notin_(excluded_ids))
 
     conditions = []
     # Tier 1: Same category as applied job + Home district
@@ -2299,15 +2324,56 @@ async def handle_my_profile_button(wa_number: str, candidate: Candidate) -> None
 
 async def handle_view_job_card(wa_number: str, job_code: str, db: Session) -> None:
     """Sends rich job detail card when seeker taps [📋 View JC:X]."""
+    from app.services.ad_lifecycle import ensure_ad_active
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
-    if not vacancy:
-        await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
+    if not vacancy or not ensure_ad_active(vacancy, db):
+        await wa_client.send_buttons(
+            to=wa_number,
+            header_text="Position No Longer Available",
+            body_text=(
+                "Sorry, this position is no longer accepting applications.\n"
+                "The role may have been filled, or the ad has been removed.\n\n"
+                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
+            ),
+            buttons=[
+                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
+            ],
+        )
         return
+
+    _set_state(wa_number, "seeker_viewing_job", {"job_code": job_code, "pending_job_code": job_code}, db)
+
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+    already_applied = False
     if candidate:
-        await _show_job_apply_prompt(wa_number, candidate, vacancy, db)
+        already_applied = (
+            db.query(CandidateApplication)
+            .filter_by(candidate_id=candidate.id, vacancy_id=vacancy.id)
+            .first()
+            is not None
+        )
+
+    body_text = seeker_job_detail_body(vacancy, already_applied=already_applied)
+
+    if already_applied:
+        buttons = [
+            {"id": "ACTION_MY_APPLICATIONS", "title": "📑 My Applications"},
+            {"id": f"btn_suggest_other_{vacancy.id}", "title": "🎯 Suggest More"},
+            {"id": "btn_explore_website", "title": "🌐 More on Website"},
+        ]
     else:
-        await start(wa_number, job_code, db)
+        buttons = [
+            {"id": f"btn_apply_now_{vacancy.id}", "title": "⚡ Apply Now"},
+            {"id": f"btn_suggest_other_{vacancy.id}", "title": "🎯 Suggest More"},
+            {"id": "btn_explore_website", "title": "🌐 More on Website"},
+        ]
+
+    await wa_client.send_buttons(
+        to=wa_number,
+        body_text=body_text,
+        buttons=buttons,
+    )
 
 
 async def send_cv_rescue_card(
@@ -2362,7 +2428,7 @@ async def send_cv_rescue_card(
         ),
         buttons=[
             {"id": f"btn_apply_rescue_{vacancy.job_code}", "title": "⚡ Apply Without CV"},
-            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 View Other Jobs"},
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest More"},
         ],
     )
 
@@ -2428,6 +2494,14 @@ async def handle_create_general_profile(wa_number: str, db: Session | None = Non
         },
     )
     if db:
-        _set_state(wa_number, "seeker_registering", {"pending_job_code": ""}, db)
+        _set_state(
+            wa_number,
+            "seeker_registering",
+            {
+                "pending_job_code": "",
+                "flow_sent_at": datetime.now(timezone.utc).isoformat(),
+            },
+            db,
+        )
 
 

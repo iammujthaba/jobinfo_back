@@ -565,21 +565,29 @@ def registration_confirmation_body(name: str, user_type: str = "candidate") -> s
 
 
 
-def seeker_job_detail_body(vacancy: JobVacancy) -> str:
+def seeker_job_detail_body(vacancy: JobVacancy, already_applied: bool = False) -> str:
     salary      = _label(SALARY_LABELS,     vacancy.salary_range,       fallback="Not disclosed")
-    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
-    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
-    description = _truncate(vacancy.job_description, 600)
+    experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required, fallback="Any / Fresher")
+    job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode,           fallback="On-site")
+    company     = vacancy.recruiter.company_name.strip() if vacancy.recruiter and vacancy.recruiter.company_name else "—"
+    location    = f"{vacancy.exact_location or '—'}, {vacancy.district_region or '—'}"
+    cv_req      = "Required" if vacancy.cv_required else "Optional"
+    description = _truncate(vacancy.job_description, 450) if vacancy.job_description else "No detailed description provided."
+
+    status_line = "\n📌 *Status:* _You have already applied for this role_\n" if already_applied else ""
+
     return (
-        f"✅ *You're Ready to Apply!*\n\n"
-        f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
-        f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter else '—'}\n"
-        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}\n"
-        f"💰 Salary: {salary}\n"
-        f"💼 Mode: {job_mode}\n"
-        f"🎓 Experience: {experience}\n\n"
-        f"📋 *About the Role:*\n{description}\n\n"
-        f"_JobInfo.pro – Kerala's First WhatsApp powered Career Portal_"
+        f"📋 *Job Overview ({vacancy.job_code})*\n\n"
+        f"🏷️ *Position:* {vacancy.job_title.strip()}\n"
+        f"🏢 *Company:* {company}\n"
+        f"📍 *Location:* {location}\n"
+        f"💰 *Salary:* {salary}\n"
+        f"💼 *Mode:* {job_mode}\n"
+        f"🎓 *Experience:* {experience}\n"
+        f"📄 *CV Requirement:* {cv_req}\n"
+        f"{status_line}\n"
+        f"📋 *About the Role:*\n"
+        f"{description}\n\n"
     )
 
 
