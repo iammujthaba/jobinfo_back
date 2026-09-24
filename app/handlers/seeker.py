@@ -598,6 +598,7 @@ async def handle_registration_flow_completion(
     """
     # Save CV
     cv_path = None
+    filename = None
     raw_media = flow_data.get("media_id")
 
     
@@ -678,7 +679,7 @@ async def handle_registration_flow_completion(
             new_resume = CandidateResume(
                 candidate_id=candidate.id,
                 media_id=candidate.cv_path,
-                file_name=filename if 'filename' in locals() and filename else None,
+                file_name=filename or None,
                 category_tag=candidate.category or "other",
                 is_default=True,
             )
@@ -892,8 +893,9 @@ async def handle_apply_now_button(
         )
         return
 
-    # ── CV-required gate ───────────────────────────────────────────────────
-    if vacancy.cv_required and not bypass_cv_gate:
+    # ── CV-required gate (CRIT-1) ──────────────────────────────────────────
+    # If the vacancy strictly requires a CV, never allow bypass if candidate has no CV
+    if vacancy.cv_required:
         resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
         has_cv = resume_count > 0 or bool(candidate.cv_path)
         if not has_cv:
@@ -2206,6 +2208,8 @@ async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
     if not candidate or not candidate.district:
         if candidate:
             await handle_fresh_openings(wa_number, candidate, db)
+        else:
+            await handle_create_general_profile(wa_number, db)
         return
 
     applied_ids = [
@@ -2327,6 +2331,27 @@ async def send_cv_rescue_card(
         return
 
     company = vacancy.recruiter.company_name if vacancy.recruiter else "the employer"
+
+    # CRIT-1: For mandatory-CV vacancies, do not offer bypass. Provide actionable upload/suggest options.
+    if vacancy.cv_required:
+        await wa_client.send_buttons(
+            to=wa_number,
+            body_text=(
+                f"👋 Still interested in the *{vacancy.job_title.strip()}* role at {company}?\n\n"
+                "📌 *Note:* The employer strictly requires a CV for this position.\n\n"
+                "When you have your PDF resume ready, tap below to upload your CV and complete this application. "
+                "Or explore jobs that don't require a CV! 🚀"
+            ),
+            buttons=[
+                {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload CV"},
+                {"id": "SUGGEST_JOBS_NO_CV", "title": "🔍 Jobs Without CV"},
+                {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
+            ],
+            footer_text="JobInfo.pro • Made for Kerala",
+        )
+        return
+
+    # Optional CV: Allow 1-tap submission without CV
     await wa_client.send_buttons(
         to=wa_number,
         body_text=(
@@ -2345,7 +2370,7 @@ async def send_cv_rescue_card(
 async def handle_apply_rescue_button(wa_number: str, job_code: str, db: Session) -> None:
     """
     User tapped [⚡ Apply Without CV] on the 10-minute CV rescue card.
-    Bypasses cv_required check and creates the application with profile data.
+    Bypasses cv_required check and creates the application with profile data (optional CV only).
     """
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
@@ -2353,7 +2378,15 @@ async def handle_apply_rescue_button(wa_number: str, job_code: str, db: Session)
         await wa_client.send_text(to=wa_number, body="❌ This vacancy is no longer available.")
         return
 
-    # Direct submission with bypass_cv_gate=True
+    # CRIT-1 Guard: If vacancy strictly requires a CV and user has no CV, do NOT bypass
+    if vacancy.cv_required:
+        resume_count = db.query(CandidateResume).filter_by(candidate_id=candidate.id).count()
+        has_cv = resume_count > 0 or bool(candidate.cv_path)
+        if not has_cv:
+            await _send_cv_required_message(wa_number, vacancy, vacancy.job_code)
+            return
+
+    # Direct submission with bypass_cv_gate=True (for optional-CV vacancies)
     await handle_apply_now_button(wa_number, vacancy.id, db, bypass_cv_gate=True)
 
 

@@ -301,12 +301,19 @@ def _track_user_message(wa_number: str, db: Session) -> None:
 async def _check_and_send_admin_catchup(wa_number: str, db: Session) -> None:
     """Processes pending admin notifications and lazily cleans old queue items."""
     try:
+        from app.config import get_settings
+        settings = get_settings()
+        admin_numbers = set(settings.submission_admins + settings.approval_admins)
+        if settings.admin_wa_number:
+            admin_numbers.add(settings.admin_wa_number)
+        if wa_number not in admin_numbers:
+            return
+
         from app.db.models import AdminNotificationQueue, JobVacancy
         from datetime import datetime, timedelta, timezone
         from app.whatsapp.templates import admin_vacancy_alert_body, job_alert_text_body
         from app.handlers.recruiter import _generate_admin_magic_url
         from app.whatsapp.client import wa_client
-        from app.config import get_settings
 
         # 1. Lazy Cleanup: delete records older than 10 days
         ten_days_ago = datetime.now(timezone.utc) - timedelta(days=10)
@@ -460,7 +467,7 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
 
     # RENEW keyword
     if normalized == "renew":
-        candidate_handler_renew(wa_number, db)
+        await candidate_handler_renew(wa_number, db)
         return
 
 
@@ -487,27 +494,6 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
             conv_state.state = "idle"
             conv_state.context = {}
             db.commit()
-        return
-
-    # ── Mid-Flow Free Text Interceptor (MAJOR-1) ───────────────────────────
-    # If the user is in an active interactive application flow, any other free text
-    # (e.g. "ok", "yes", "apply", "when") must not abandon the application or jump to dashboard.
-    if conv_state and conv_state.state in (
-        "seeker_viewing_job", "seeker_cv_mismatch",
-        "seeker_relocation_check", "seeker_uploading_cv", "seeker_no_cv"
-    ):
-        await wa_client.send_buttons(
-            to=wa_number,
-            body_text=(
-                "Please tap one of the buttons on the message above to proceed with your application.\n\n"
-                "Or tap below to return to the main menu."
-            ),
-            buttons=[
-                {"id": "btn_main_menu", "title": "🏠 Main Menu"},
-            ],
-        )
-        return
-
     ctx = (conv_state.context or {}) if conv_state else {}
     pending_job_code = ctx.get("pending_job_code")
 
@@ -579,24 +565,13 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
             conv_state.context = {}
             db.commit()
 
-    # 3. Recruiter Registration Flow Dropout Interceptor (CRIT-4)
-    # If the user closed the flow without submitting, no Recruiter record exists yet
-    # but their state is stuck as "recruiter_registering". Re-invite them to register.
+    # 3. Recruiter Registration Flow Dropout: reset state so user is not trapped
     if conv_state and conv_state.state == "recruiter_registering":
         from app.db.models import Recruiter
         recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
-        if not recruiter:
-            # Abandoned flow — re-launch registration cleanly
-            conv_state.state = "idle"
-            conv_state.context = {}
-            db.commit()
-            await recruiter_handler.start(wa_number, db)
-            return
-        else:
-            # Recruiter exists (e.g. flow completed via a race / retry already) — reset state
-            conv_state.state = "recruiter_idle"
-            conv_state.context = {}
-            db.commit()
+        conv_state.state = "recruiter_idle" if recruiter else "idle"
+        conv_state.context = {}
+        db.commit()
 
     # Default: personalized routing
     await global_handler.route_unrecognized_message(wa_number, db)
@@ -992,7 +967,8 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
       3. Mutually exclusive, robust key heuristics fallback
     """
     import json
-    from app.config import settings
+    from app.config import get_settings
+    settings = get_settings()
     from app.handlers import recruiter as recruiter_handler
     from app.handlers import seeker as seeker_handler
 
@@ -1028,47 +1004,43 @@ async def _handle_flow_reply(wa_number: str, flow_data: dict, db: Session) -> No
         await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
         return
 
-    # 2. State-driven disambiguation from active ConversationState
-    conv_state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
-    active_state = conv_state.state if conv_state else ""
-
-    if active_state == "recruiter_posting_vacancy":
-        await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
-        return
-
-    if active_state == "recruiter_registering":
-        await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
-        return
-
-    if active_state in ("seeker_uploading_cv", "seeker_updating_cv"):
-        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
-        return
-
-    if active_state == "seeker_registering":
-        await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
-        return
-
-    # 3. Robust key-based heuristics fallback (mutually exclusive)
+    # 2. Inspect submitted data keys directly (ground truth)
     if ("job_title" in submitted and "job_category" in submitted) or ("job_description" in submitted and "job_title" in submitted):
         # Post Vacancy Flow
         await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
+        return
 
     elif "company_name" in submitted and "business_type" in submitted:
         # Recruiter Registration Flow
         await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
+        return
 
     elif "new_cv_category" in submitted or (
         "media_id" in submitted and "sub_category" not in submitted and "district" not in submitted and "name" not in submitted
     ):
         # CV Update Flow
         await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
+        return
 
     elif ("category" in submitted and "sub_category" in submitted) or (
         "name" in submitted and ("district" in submitted or "age" in submitted or "gender" in submitted)
     ):
         # Seeker Registration Flow
         await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
+        return
 
+    # 3. State-driven tiebreaker only if payload keys were completely unrecognized
+    conv_state = db.query(ConversationState).filter_by(wa_number=wa_number).first()
+    active_state = conv_state.state if conv_state else ""
+
+    if active_state == "recruiter_posting_vacancy":
+        await recruiter_handler.handle_post_vacancy_flow_completion(wa_number, submitted, db)
+    elif active_state == "recruiter_registering":
+        await recruiter_handler.handle_registration_flow_completion(wa_number, submitted, db)
+    elif active_state in ("seeker_uploading_cv", "seeker_updating_cv"):
+        await seeker_handler.handle_cv_update_flow_completion(wa_number, submitted, db)
+    elif active_state == "seeker_registering":
+        await seeker_handler.handle_registration_flow_completion(wa_number, submitted, db)
     else:
         logger.warning(
             "Could not identify flow from payload: %s from %s (state=%s)",
@@ -1255,11 +1227,10 @@ async def _handle_unsupported_media(wa_number: str, msg_type: str, db: Session) 
     )
 
 
-def candidate_handler_renew(wa_number: str, db: Session) -> None:
-    """Placeholder: handle RENEW keyword – send plan selection list."""
-    import asyncio
+async def candidate_handler_renew(wa_number: str, db: Session) -> None:
+    """Handle RENEW keyword – send plan selection list."""
     from app.handlers.seeker import _send_plan_selection
-    asyncio.create_task(_send_plan_selection(wa_number, db))
+    await _send_plan_selection(wa_number, db)
 
 
 async def send_delayed_session_menu(wa_number: str) -> None:
@@ -1325,9 +1296,9 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             # Still stuck without a CV: Suppress generic menu and proceed to Phase 2 after sleep
             saved_context = dict(state.context or {})
             needs_phase_2 = True
-            return
 
-        is_seeker = db1.query(Candidate).filter_by(wa_number=wa_number).first()
+        else:
+            is_seeker = db1.query(Candidate).filter_by(wa_number=wa_number).first()
 
         # Condition C: Both Roles
         if is_recruiter and is_seeker and is_seeker.registration_complete:
