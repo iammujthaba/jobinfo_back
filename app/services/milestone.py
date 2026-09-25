@@ -116,7 +116,7 @@ def _fire_cta_send(wa_number: str, header: str, body: str, url: str | None = Non
                 body_text=body,
                 button_text="Review Applicants",
                 url=target_url,
-                footer_text="🔒 Safe & private • Valid 72h",
+                footer_text="⏳ Button expires in 72h",
             )
         except Exception as exc:
             logger.warning("Milestone CTA send failed to %s: %s", wa_number, exc)
