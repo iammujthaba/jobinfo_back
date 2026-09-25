@@ -692,7 +692,7 @@ def seeker_apply_cv_recommendation_body(
     cv_tag_label = CATEGORY_DISPLAY_NAMES.get(cv_tag.lower(), cv_tag.replace("_", " ").title())
 
     return (
-        "💡 *CV Recommendation*\n\n"
+        "💡 *CV Recommendation!*\n\n"
         f"{anchor}\n\n"
         f"📄 *Selected CV:* {current_cv}\n\n"
         f"_⚠️ Your current CV is labeled for {cv_tag_label}, but this role specifically focuses on {job_cat_label}._\n\n"
@@ -716,7 +716,7 @@ def seeker_apply_cv_mismatch_optional_body(
     cv_tag_label = CATEGORY_DISPLAY_NAMES.get(cv_tag.lower(), cv_tag.replace("_", " ").title())
 
     return (
-        "💡 *CV Recommendation*\n\n"
+        "💡 *CV Recommendation!*\n\n"
         f"{anchor}\n\n"
         f"📄 *Selected CV:* {current_cv}\n\n"
         f"_⚠️ Your current CV is labeled for {cv_tag_label}, while this role focuses on {job_cat_label}._\n\n"
@@ -732,7 +732,7 @@ def seeker_apply_cv_optional_body(
     name = _candidate_first_name(candidate)
     anchor = job_application_anchor_block(vacancy)
     return (
-        "🌟 *1-Tap Direct Application*\n\n"
+        "🌟 *1-Tap Direct Application!*\n\n"
         f"{anchor}\n\n"
         "✨ *Good News:* CV is optional for this role!\n"
         "💡 *Pro Tip:* Attaching a tailored CV boosts your interview callback chance by 5X.\n\n"
@@ -769,7 +769,7 @@ def seeker_apply_no_cv_mandatory_body(
     name = _candidate_first_name(candidate)
     anchor = job_application_anchor_block(vacancy)
     return (
-        "📄 *CV Required for This Role*\n\n"
+        "📄 *CV Required for This Role!*\n\n"
         f"{anchor}\n\n"
         f"_{name}, the hiring team requires a CV for this position to review your qualifications._\n\n"
         "Upload your CV below to complete your application, or explore roles that don't require a CV 👇"

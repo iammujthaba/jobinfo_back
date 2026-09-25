@@ -348,7 +348,6 @@ async def _show_job_apply_prompt(
                 buttons=[
                     {"id": f"UPLOAD_NEW_CV_{vacancy.job_code}", "title": "📤 Upload CV"},
                     {"id": "SUGGEST_JOBS_NO_CV", "title": "🔍 Jobs Without CV"},
-                    {"id": "btn_explore_jobs", "title": "🔍 View Other Jobs"},
                 ],
                 footer_text=f"Job Code: {vacancy.job_code}",
             )
@@ -1827,39 +1826,8 @@ def get_seeker_recommended_vacancies(candidate: Candidate, db: Session) -> list[
 
 
 async def send_seeker_nudge_with_jobs(wa_number: str, candidate: Candidate, db: Session) -> None:
-    """Nudge inactive seekers with 1 or 2 blended matching jobs."""
-    jobs = get_seeker_recommended_vacancies(candidate, db)
-    if not jobs:
-        await send_seeker_empty_nudge(wa_number, candidate)
-        return
-
-    name = candidate.name.split()[0] if candidate.name else "there"
-    job_lines = []
-    buttons = []
-
-    for i, j in enumerate(jobs):
-        num_emoji = "1️⃣" if i == 0 else "2️⃣"
-        dist = j.district_region.strip().title() if j.district_region else "Kerala"
-        job_lines.append(f"{num_emoji} 🏷️ {j.job_title.strip()} — {dist} ({j.job_code})")
-        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"})
-
-    buttons.append({"id": "btn_explore_website", "title": "🌐 More on Website"})
-
-    body = (
-        f"👋 Welcome back, {name}!\n\n"
-        "Here are top openings matching your profile:\n\n"
-        + "\n".join(job_lines)
-        + "\n\nTap a job below for salary & full details, or explore our full job board online 👇"
-    )
-
-    footer = "Showing top 2 picks • 50+ more roles on website" if len(jobs) >= 2 else "Showing top pick • 50+ more roles on website"
-
-    await wa_client.send_buttons(
-        to=wa_number,
-        body_text=body,
-        buttons=buttons,
-        footer_text=footer,
-    )
+    """Nudge registered seekers with top recommended jobs using tiered weightage format."""
+    await handle_suggest_weighted_jobs(wa_number, db)
 
 
 async def send_seeker_empty_nudge(wa_number: str, candidate: Candidate) -> None:
