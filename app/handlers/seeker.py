@@ -25,6 +25,7 @@ from app.whatsapp.templates import (
     _resume_display_name,
     cv_update_confirmation_body,
     plan_renewal_body,
+    position_closed_body,
     registration_confirmation_body,
     seeker_job_detail_body,
     seeker_apply_sweet_spot_body,
@@ -68,6 +69,19 @@ CATEGORY_DISPLAY_NAMES: dict[str, str] = {
 }
 
 WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029VbBrkDB8fewxd9QIMA2k"
+
+
+async def send_position_closed_message(wa_number: str) -> None:
+    """Send standard 'Position No Longer Available' message with next action buttons."""
+    await wa_client.send_buttons(
+        to=wa_number,
+        header_text="Position No Longer Available",
+        body_text=position_closed_body(),
+        buttons=[
+            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
+            {"id": "ACTION_EXPLORE_JOBS", "title": "🌐 Explore Channel"},
+        ],
+    )
 
 DISTRICT_ALIAS_MAP: dict[str, str] = {
     "trivandrum": "Thiruvananthapuram",
@@ -210,19 +224,7 @@ async def start(wa_number: str, job_code: str, db: Session) -> None:
     from app.services.ad_lifecycle import ensure_ad_active
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     if not vacancy or not ensure_ad_active(vacancy, db):
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="Position No Longer Available",
-            body_text=(
-                "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled, or the ad has been removed.\n\n"
-                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
-            ),
-            buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
-            ],
-        )
+        await send_position_closed_message(wa_number)
         return
 
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
@@ -314,7 +316,7 @@ async def _show_job_apply_prompt(
                 "Would you like to explore other roles that match your profile?"
             ),
             buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
             ],
         )
         return
@@ -868,19 +870,7 @@ async def handle_apply_now_button(
 
     from app.services.ad_lifecycle import ensure_ad_active
     if not ensure_ad_active(vacancy, db):
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="Position No Longer Available",
-            body_text=(
-                "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled, or the ad has been removed.\n\n"
-                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
-            ),
-            buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
-            ],
-        )
+        await send_position_closed_message(wa_number)
         return
 
     # Double-check plan is still active
@@ -905,7 +895,7 @@ async def handle_apply_now_button(
                 "Would you like to explore other roles that match your profile?"
             ),
             buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
             ],
         )
         return
@@ -1010,19 +1000,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
 
     from app.services.ad_lifecycle import ensure_ad_active
     if not ensure_ad_active(vacancy, db):
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="Position No Longer Available",
-            body_text=(
-                "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled, or the ad has been removed.\n\n"
-                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
-            ),
-            buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
-            ],
-        )
+        await send_position_closed_message(wa_number)
         return
 
     if not _has_active_plan(candidate):
@@ -1050,7 +1028,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
                 "Would you like to explore other roles that match your profile?"
             ),
             buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
             ],
         )
         return
@@ -1198,7 +1176,7 @@ async def handle_select_cv(
                 "Would you like to explore other roles that match your profile?"
             ),
             buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
+                {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
             ],
         )
         return
@@ -2298,19 +2276,7 @@ async def handle_view_job_card(wa_number: str, job_code: str, db: Session) -> No
     from app.services.ad_lifecycle import ensure_ad_active
     vacancy = db.query(JobVacancy).filter_by(job_code=job_code).first()
     if not vacancy or not ensure_ad_active(vacancy, db):
-        await wa_client.send_buttons(
-            to=wa_number,
-            header_text="Position No Longer Available",
-            body_text=(
-                "Sorry, this position is no longer accepting applications.\n"
-                "The role may have been filled, or the ad has been removed.\n\n"
-                "Browse latest open roles on the JobInfo channel for fresh opportunities!"
-            ),
-            buttons=[
-                {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
-            ],
-        )
+        await send_position_closed_message(wa_number)
         return
 
     _set_state(wa_number, "seeker_viewing_job", {"job_code": job_code, "pending_job_code": job_code}, db)

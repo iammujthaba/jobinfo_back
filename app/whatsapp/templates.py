@@ -370,7 +370,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
         f"👉 _Click *\"Start chatting\"* or use the link to Apply_: {link}\n\n"
-        f"👥 Join WhatsApp Groups: https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR \n\n"
+        f"👥 Join jobinfo WhatsApp Groups: https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR \n\n"
         f"_jobinfo - Kerala's First WhatsApp powered Career Portal_"
     )
 
@@ -519,6 +519,15 @@ def application_confirmation_body(
         f"{cv_status_line}\n\n"
         f"{coaching_note}\n\n"
         "Good luck! 🍀"
+    )
+
+
+def position_closed_body() -> str:
+    """Standard message text when a vacancy is no longer accepting applications."""
+    return (
+        "Sorry, this position is no longer accepting applications.\n"
+        "The role may have been filled, or the ad has been removed.\n\n"
+        "Browse latest open roles on the JobInfo channel for fresh opportunities!"
     )
 
 

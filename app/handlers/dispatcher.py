@@ -823,19 +823,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         vacancy = db.query(JobVacancy).filter_by(id=vacancy_id).first()
         from app.services.ad_lifecycle import ensure_ad_active
         if not vacancy or not ensure_ad_active(vacancy, db):
-            await wa_client.send_buttons(
-                to=wa_number,
-                header_text="Position No Longer Available",
-                body_text=(
-                    "Sorry, this position is no longer accepting applications.\n"
-                    "The role may have been filled, or the ad has been removed.\n\n"
-                    "Browse latest open roles on the JobInfo channel for fresh opportunities!"
-                ),
-                buttons=[
-                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                    {"id": "ACTION_EXPLORE_JOBS", "title": "Explore Channel"},
-                ],
-            )
+            await seeker_handler.send_position_closed_message(wa_number)
             return
 
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()

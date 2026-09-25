@@ -562,39 +562,14 @@ async def api_share_vacancy_to_channel(
     Checks if the channel phone number has interacted within the last 24 hours.
     """
     from app.whatsapp.client import wa_client
-    from app.whatsapp.templates import _label, SALARY_LABELS
+    from app.whatsapp.templates import job_alert_text_body
 
     vacancy = db.query(JobVacancy).filter_by(id=vacancy_id, status="approved").first()
     if not vacancy:
         raise HTTPException(status_code=404, detail="Approved vacancy not found")
 
     apply_link = f"https://wa.me/{settings.business_wa_number}?text=Apply%20{vacancy.job_code}"
-
-    salary = _label(SALARY_LABELS, vacancy.salary_range)
-    job_mode = vacancy.job_mode or "—"
-    experience = vacancy.experience_required or "—"
-    description = vacancy.job_description[:400] + ("…" if len(vacancy.job_description) > 400 else "") if vacancy.job_description else "—"
-    
-    lines = [
-        f"🚀 *New Job Alert*",
-        f"",
-        f"🏷️ Position: *{vacancy.job_title.strip()}*",
-        f"🏢 Company: {vacancy.recruiter.company_name if vacancy.recruiter and vacancy.recruiter.company_name else '—'}",
-        f"📍 Location: {vacancy.exact_location or '—'}, {vacancy.district_region or '—'}",
-        f"💰 Salary: {salary}",
-        f"💼 Mode: {job_mode}",
-        f"🎓 Experience: {experience}",
-        f"🔖 Job Code: {vacancy.job_code}",
-        f"",
-        f"📋 *About the Role:*",
-        description,
-        f"",
-        f"📲 Apply now: {apply_link}",
-        f"",
-        f"_jobinfo - Kerala's First WhatsApp powered Career Portal_"
-    ]
-
-    body_text = "\n".join(lines)
+    body_text = job_alert_text_body(vacancy, apply_url=apply_link, is_admin=True)
 
     from app.db.models import AdminNotificationQueue
 

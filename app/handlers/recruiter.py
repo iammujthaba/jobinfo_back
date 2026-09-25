@@ -438,7 +438,7 @@ async def notify_recruiter_approval(vacancy_id: int, db: Session) -> None:
     private_body = (
         f"🎉 *Congratulations!*\n"
         f" *Your vacancy is now live.*\n\n"
-        f"_Your job vacancy for *{vacancy.job_title.strip()}* (Code: *{vacancy.job_code}*) is now active on JobInfo Kerala!_ \n\n"
+        f"_Your job vacancy for *{vacancy.job_title.strip()}* (Code: *{vacancy.job_code}*) is now active on JobInfo network!_ \n\n"
         f"📊 *Recruiter Dashboard:*\n"
         f"Tap the button below to manage your hiring:\n"
         f"• 📥 View incoming applicants & download CVs.\n"
@@ -528,7 +528,7 @@ async def notify_recruiter_rejection(
                 body_text=body,
                 button_text="Fix & Resubmit",
                 url=url,
-                footer_text="🔒 Safe & private • Valid 72h",
+                footer_text="⏳ Button expires in 72h",
             )
         except Exception as e:
             logger.warning("Rejection CTA send failed for %s, falling back to text: %s", recruiter.wa_number, e)
