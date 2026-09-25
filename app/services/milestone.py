@@ -82,13 +82,31 @@ def _milestone_body(vacancy: JobVacancy, count: int) -> str:
         )
 
 
-def _fire_cta_send(wa_number, header, body):
+def _get_recruiter_magic_url(wa_number: str, db: Session, expires_hours: int = 72) -> str:
+    """Generate an authenticated single-sign-on magic link URL for the recruiter dashboard."""
+    try:
+        from app.handlers.dispatcher import _generate_magic_url
+        return _generate_magic_url(
+            wa_number=wa_number,
+            role="recruiter",
+            path="recruiter-dashboard.html",
+            db=db,
+            expires_hours=expires_hours,
+        )
+    except Exception as exc:
+        logger.warning("Failed to generate magic URL for %s: %s", wa_number, exc)
+        return DASHBOARD_URL
+
+
+def _fire_cta_send(wa_number: str, header: str, body: str, url: str | None = None):
     """
     Schedule a CTA URL interactive message on the running asyncio event loop.
-    Renders as a tappable 'Review Applicants' button — no naked URL in the text.
+    Renders as a tappable 'Review Applicants' button with automatic magic link authentication.
     Safe to call from both async handlers and sync def endpoints.
     """
     from app.whatsapp.client import wa_client
+
+    target_url = url or DASHBOARD_URL
 
     async def _send():
         try:
@@ -97,10 +115,18 @@ def _fire_cta_send(wa_number, header, body):
                 header_text=header,
                 body_text=body,
                 button_text="Review Applicants",
-                url=DASHBOARD_URL,
+                url=target_url,
+                footer_text="🔒 Safe & private • Valid 72h",
             )
         except Exception as exc:
             logger.warning("Milestone CTA send failed to %s: %s", wa_number, exc)
+            try:
+                await wa_client.send_text(
+                    to=wa_number,
+                    body=f"{body}\n\n👉 Review Applicants: {target_url}",
+                )
+            except Exception as e2:
+                logger.warning("Milestone fallback text send failed to %s: %s", wa_number, e2)
 
     try:
         loop = asyncio.get_running_loop()          # inside async context (uvicorn/FastAPI)
@@ -131,7 +157,8 @@ def dispatch_milestone_notification(vacancy, app_count, db):
     if not _is_within_24h_window(state):
         logger.info("Milestone %d for %s outside 24h window - deferred", app_count, vacancy.job_code)
         return
-    _fire_cta_send(recruiter_wa, _milestone_header(app_count), _milestone_body(vacancy, app_count))
+    url = _get_recruiter_magic_url(recruiter_wa, db)
+    _fire_cta_send(recruiter_wa, _milestone_header(app_count), _milestone_body(vacancy, app_count), url=url)
     vacancy.milestone_notified_count = app_count
     db.commit()
     logger.info("Milestone %d sent for %s to %s", app_count, vacancy.job_code, recruiter_wa)
@@ -149,10 +176,12 @@ def check_and_send_catchup(wa_number, db):
         )
         .all()
     )
+    if not pending_vacancies:
+        return
+    url = _get_recruiter_magic_url(wa_number, db)
     for vacancy in pending_vacancies:
         count = vacancy.milestone_pending_count
-        _fire_cta_send(wa_number, _milestone_header(count), _milestone_body(vacancy, count))
+        _fire_cta_send(wa_number, _milestone_header(count), _milestone_body(vacancy, count), url=url)
         vacancy.milestone_notified_count = count
-    if pending_vacancies:
-        db.commit()
-        logger.info("Catch-up: sent %d milestone notification(s) to %s", len(pending_vacancies), wa_number)
+    db.commit()
+    logger.info("Catch-up: sent %d milestone notification(s) to %s", len(pending_vacancies), wa_number)

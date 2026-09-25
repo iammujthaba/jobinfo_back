@@ -1306,9 +1306,10 @@ async def send_delayed_session_menu(wa_number: str) -> None:
         if time_since_msg < 300 or time_since_msg >= 86400:
             return
 
-        # ── Check for Recruiter with Pending Vacancies ──────────────────
+        # ── Check for Recruiter with Pending or Recently Approved Vacancies ──
         is_recruiter = db1.query(Recruiter).filter_by(wa_number=wa_number).first()
         if is_recruiter:
+            # 1. Any vacancy still pending review?
             has_pending = (
                 db1.query(JobVacancy)
                 .filter_by(recruiter_id=is_recruiter.id, status="pending")
@@ -1318,6 +1319,23 @@ async def send_delayed_session_menu(wa_number: str) -> None:
             if has_pending:
                 # Recruiter is waiting for admin verification – do not send session closing menu!
                 return
+
+            # 2. Was any vacancy approved during this interaction session?
+            # If a vacancy was approved at or after the user's message timestamp,
+            # send_post_approval_session_menu is ALREADY handling the 5-min post-approval follow-up.
+            latest_approved = (
+                db1.query(JobVacancy)
+                .filter_by(recruiter_id=is_recruiter.id, status="approved")
+                .order_by(JobVacancy.approved_at.desc())
+                .first()
+            )
+            if latest_approved and latest_approved.approved_at:
+                appr_at = latest_approved.approved_at
+                if appr_at.tzinfo is None:
+                    appr_at = appr_at.replace(tzinfo=timezone.utc)
+                if appr_at >= last_msg:
+                    # Approved during this session: post-approval task handles it -> exit cleanly!
+                    return
 
         # ── Fix 4: CV Upload In Progress Check (Unified 5+5 Min Pipeline) ──
         if state.state in ("seeker_uploading_cv", "seeker_no_cv"):

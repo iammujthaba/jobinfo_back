@@ -428,11 +428,32 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
 
 # ─── Job seeker templates ────────────────────────────────────────────────────
 
+def _candidate_first_name(candidate: Candidate | None) -> str:
+    if not candidate or not candidate.name:
+        return "there"
+    return candidate.name.strip().split()[0].title()
+
+
+def _resume_display_name(resume: Any) -> str:
+    if not resume:
+        return "Your Saved CV"
+    fn = getattr(resume, "file_name", None)
+    if fn and fn.strip():
+        return fn.strip()
+    media_id = getattr(resume, "media_id", "") or ""
+    if "/" in media_id or "\\" in media_id:
+        return media_id.replace("\\", "/").split("/")[-1]
+    tag = getattr(resume, "category_tag", "") or "General"
+    tag_label = CATEGORY_DISPLAY_NAMES.get(tag.lower(), tag.replace("_", " ").title())
+    return f"{tag_label}_CV.pdf"
+
+
 def application_confirmation_body(
     candidate: Candidate,
     vacancy: JobVacancy,
     scenario: str = "standard",  # "no_cv", "standard", "switched", "new_cv"
     cv_category: str | None = None,
+    cv_name: str | None = None,
 ) -> str:
     name = _candidate_first_name(candidate)
     company = (
@@ -447,45 +468,43 @@ def application_confirmation_body(
         if len(loc_str) <= 28:
             loc = loc_str
 
-    # Auto-detect scenario if standard but candidate has 0 CVs
-    if scenario == "standard" and not cv_category:
-        has_cv = bool(candidate.cv_path)
+    resolved_cv_name = cv_name or cv_category
+
+    # Auto-detect scenario & CV name if not provided
+    if scenario == "standard" and not resolved_cv_name:
+        default_res = None
         if hasattr(candidate, "resumes") and candidate.resumes:
-            has_cv = True
             default_res = next(
                 (r for r in candidate.resumes if getattr(r, "is_default", False)),
                 candidate.resumes[0],
             )
-            if getattr(default_res, "category_tag", None):
-                cv_category = CATEGORY_DISPLAY_NAMES.get(
-                    default_res.category_tag.lower(),
-                    default_res.category_tag.replace("_", " ").title(),
-                )
-        if not has_cv:
+        if default_res:
+            resolved_cv_name = _resume_display_name(default_res)
+        elif candidate.cv_path:
+            raw_path = candidate.cv_path.replace("\\", "/")
+            resolved_cv_name = raw_path.split("/")[-1] if "/" in raw_path else "Your Saved CV"
+        else:
             scenario = "no_cv"
 
     # Format CV attachment line & coaching note based on scenario
     if scenario == "no_cv":
-        cv_status_line = "📄 *Attachment:* No CV attached, Profile Only."
+        cv_status_line = "📄 *Attachment:* No CV attached"
         coaching_note = (
             "_Recruiters will review your profile directly. Adding a tailored CV in future can boost callbacks by 5X._"
         )
     elif scenario == "switched":
-        cat = (cv_category or "Tailored").strip()
-        cat_display = cat if cat.endswith("CV") else f"{cat} CV"
-        cv_status_line = f"📄 *Attachment:* {cat_display}"
+        name_display = (resolved_cv_name or "Tailored CV").strip()
+        cv_status_line = f"📄 *Attachment:* {name_display}"
         coaching_note = "_Great choice! Submitting this tailored CV gives you higher interview callbacks._"
     elif scenario == "new_cv":
-        cat = (cv_category or "Tailored").strip()
-        cat_display = cat if cat.endswith("CV") else f"{cat} CV"
-        cv_status_line = f"📄 *Attachment:* {cat_display}"
+        name_display = (resolved_cv_name or "Tailored CV").strip()
+        cv_status_line = f"📄 *Attachment:* {name_display}"
         coaching_note = (
             "_Your new CV is safely stored in your profile and was delivered directly to the recruiter!_"
         )
     else:  # standard
-        cat = (cv_category or "Tailored").strip()
-        cat_display = cat if cat.endswith("CV") else f"{cat} CV"
-        cv_status_line = f"📄 *Attachment:* {cat_display}"
+        name_display = (resolved_cv_name or "Your Saved CV").strip()
+        cv_status_line = f"📄 *Attachment:* {name_display}"
         coaching_note = (
             "_The recruiter will review your tailored CV and contact you directly if shortlisted._"
         )
@@ -499,8 +518,7 @@ def application_confirmation_body(
         f"🔖 *Job Code:* {vacancy.job_code}\n"
         f"{cv_status_line}\n\n"
         f"{coaching_note}\n\n"
-        "Good luck! 🍀\n"
-        "_JobInfo – Kerala's Trusted Career Network_"
+        "Good luck! 🍀"
     )
 
 
@@ -600,26 +618,6 @@ def cv_update_confirmation_body(candidate: Candidate) -> str:
 
 
 # ─── Dynamic Seeker Application Prompt Builders ─────────────────────────────
-
-def _candidate_first_name(candidate: Candidate | None) -> str:
-    if not candidate or not candidate.name:
-        return "there"
-    return candidate.name.strip().split()[0].title()
-
-
-def _resume_display_name(resume: Any) -> str:
-    if not resume:
-        return "Your Saved CV"
-    fn = getattr(resume, "file_name", None)
-    if fn and fn.strip():
-        return fn.strip()
-    media_id = getattr(resume, "media_id", "") or ""
-    if "/" in media_id or "\\" in media_id:
-        return media_id.replace("\\", "/").split("/")[-1]
-    tag = getattr(resume, "category_tag", "") or "General"
-    tag_label = CATEGORY_DISPLAY_NAMES.get(tag.lower(), tag.replace("_", " ").title())
-    return f"{tag_label}_CV.pdf"
-
 
 def job_application_anchor_block(vacancy: JobVacancy) -> str:
     """Standardized 4-line job anchor block across all apply templates."""

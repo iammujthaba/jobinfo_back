@@ -22,6 +22,7 @@ from app.services.storage import save_cv_from_whatsapp
 from app.whatsapp.client import wa_client
 from app.whatsapp.templates import (
     application_confirmation_body,
+    _resume_display_name,
     cv_update_confirmation_body,
     plan_renewal_body,
     registration_confirmation_body,
@@ -943,28 +944,27 @@ async def handle_apply_now_button(
             .first()
         )
 
-    if default_resume and default_resume.category_tag:
-        cv_category = CATEGORY_DISPLAY_NAMES.get(
-            default_resume.category_tag.lower(),
-            default_resume.category_tag.replace("_", " ").title(),
-        )
+    if default_resume:
+        cv_name = _resume_display_name(default_resume)
         scenario = "standard"
     elif candidate.cv_path:
-        cv_category = "Saved"
+        raw_p = candidate.cv_path.replace("\\", "/")
+        cv_name = raw_p.split("/")[-1] if "/" in raw_p else "Your Saved CV"
         scenario = "standard"
     else:
-        cv_category = None
+        cv_name = None
         scenario = "no_cv"
 
     await wa_client.send_buttons(
         to=wa_number,
         body_text=application_confirmation_body(
-            candidate, vacancy, scenario=scenario, cv_category=cv_category
+            candidate, vacancy, scenario=scenario, cv_name=cv_name
         ),
         buttons=[
             {"id": "btn_view_applications", "title": "📑 My Applications"},
             {"id": "btn_suggest_more_jobs", "title": "🎯 Suggest Jobs"},
         ],
+        footer_text="JobInfo • Kerala's Trusted Career Network",
     )
     _set_state(wa_number, "idle", {}, db)
 
@@ -1071,6 +1071,7 @@ async def handle_apply_no_cv(wa_number: str, job_code: str, db: Session) -> None
             {"id": "btn_view_applications", "title": "📑 My Applications"},
             {"id": "btn_suggest_more_jobs", "title": "🎯 Suggest Jobs"},
         ],
+        footer_text="JobInfo • Kerala's Trusted Career Network",
     )
     _set_state(wa_number, "idle", {}, db)
 
@@ -1207,20 +1208,22 @@ async def handle_select_cv(
     candidate.applications_used = (candidate.applications_used or 0) + 1
     db.commit()
 
-    tag_label = CATEGORY_DISPLAY_NAMES.get(
-        (resume.category_tag or "").lower(),
-        (resume.category_tag or "General").replace("_", " ").title(),
-    )
+    # Smart milestone notification (non-blocking; 24h window checked inside)
+    app_count = db.query(CandidateApplication).filter_by(vacancy_id=vacancy.id).count()
+    dispatch_milestone_notification(vacancy, app_count, db)
+
+    cv_name = _resume_display_name(resume)
 
     await wa_client.send_buttons(
         to=wa_number,
         body_text=application_confirmation_body(
-            candidate, vacancy, scenario="switched", cv_category=tag_label
+            candidate, vacancy, scenario="switched", cv_name=cv_name
         ),
         buttons=[
             {"id": "btn_view_applications", "title": "📑 My Applications"},
             {"id": "btn_suggest_more_jobs", "title": "🎯 Suggest Jobs"},
         ],
+        footer_text="JobInfo • Kerala's Trusted Career Network",
     )
     _set_state(wa_number, "idle", {}, db)
 
