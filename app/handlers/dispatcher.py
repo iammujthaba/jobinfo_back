@@ -939,7 +939,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         from app.db.models import Recruiter
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
         if candidate and candidate.registration_complete:
-            await seeker_handler.handle_my_profile_button(wa_number, candidate)
+            await seeker_handler.handle_my_profile_button(wa_number, candidate, db)
         else:
             recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
             if recruiter:
@@ -950,7 +950,22 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         return
 
     if button_id == "btn_create_profile":
-        await seeker_handler.handle_create_general_profile(wa_number, db)
+        candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
+        if candidate and candidate.registration_complete:
+            url = _generate_magic_url(wa_number, "seeker", "dashboard.html", db)
+            await wa_client.send_cta_url(
+                to=wa_number,
+                header_text="👤 Update Your Profile",
+                body_text=(
+                    "You can update your personal details, preferred job role, district, and upload a new CV directly on your web dashboard.\n\n"
+                    "Tap below to open dashboard 👇"
+                ),
+                button_text="Open Dashboard ↗",
+                url=url,
+                footer_text="JobInfo.pro • Made for Kerala",
+            )
+        else:
+            await seeker_handler.handle_create_general_profile(wa_number, db)
         return
 
     logger.warning("Unhandled button_id '%s' from %s", button_id, wa_number)

@@ -2259,25 +2259,78 @@ async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
     )
 
 
-async def handle_my_profile_button(wa_number: str, candidate: Candidate) -> None:
-    """Shows current profile information with option to edit."""
-    cat_name = CATEGORY_DISPLAY_NAMES.get(candidate.category, candidate.category or "—")
-    dist_name = candidate.district or "—"
+async def handle_my_profile_button(wa_number: str, candidate: Candidate, db: Session | None = None) -> None:
+    """Shows rich digital profile card with option to edit on web dashboard."""
+    cat_name = CATEGORY_DISPLAY_NAMES.get(
+        (candidate.category or "").lower(),
+        (candidate.category or "General").replace("_", " ").title(),
+    )
+
+    if candidate.exact_location and candidate.district:
+        loc_str = f"{candidate.exact_location.strip().title()}, {candidate.district.strip().title()}"
+    elif candidate.district:
+        loc_str = candidate.district.strip().title()
+    elif candidate.exact_location:
+        loc_str = candidate.exact_location.strip().title()
+    else:
+        loc_str = "Kerala"
+
+    cleaned_wa = (candidate.wa_number or "").replace("+", "").replace(" ", "").strip()
+    if cleaned_wa.startswith("91") and len(cleaned_wa) == 12:
+        wa_disp = cleaned_wa[2:]
+    elif cleaned_wa:
+        wa_disp = cleaned_wa
+    else:
+        wa_disp = "—"
+    contact_no = (candidate.alt_phone or "").strip() or wa_disp
+
+    resumes = []
+    if db:
+        resumes = (
+            db.query(CandidateResume)
+            .filter_by(candidate_id=candidate.id)
+            .order_by(CandidateResume.uploaded_at.desc())
+            .all()
+        )
+    elif hasattr(candidate, "resumes") and candidate.resumes:
+        resumes = candidate.resumes
+
+    if resumes:
+        cv_lines = []
+        for r in resumes:
+            fn = (r.file_name or "").strip()
+            if not fn:
+                tag = (r.category_tag or "").replace("_", " ").title()
+                fn = f"{tag} CV" if tag else "Resume.pdf"
+            cv_lines.append(f"• 📎 {fn}")
+        cv_block = "\n".join(cv_lines)
+    elif candidate.cv_path:
+        cv_block = "• 📎 Uploaded CV"
+    else:
+        cv_block = "• _No CV uploaded (Optional)_"
+
+    body_text = (
+        "👤 *Your JobInfo Profile*\n"
+        "_Your personal career hub & job assistant 🌴_\n\n"
+        "📋 *Profile Overview:*\n"
+        f"• 🎯 Preferred Field: {cat_name}\n"
+        f"• 📍 Location: {loc_str}\n"
+        f"• 📱 Contact: {contact_no}\n"
+        "• 🛡️ Status: Candidate ✅\n\n"
+        "📄 *Resume / CV:*\n"
+        f"{cv_block}\n\n"
+        "To update your profile details or upload a new CV, tap below 👇"
+    )
+
     await wa_client.send_buttons(
         to=wa_number,
-        body_text=(
-            f"👤 *Your Profile Details:*\n\n"
-            f"• *Name:* {candidate.name or '—'}\n"
-            f"• *District:* {dist_name}\n"
-            f"• *Preferred Job:* {cat_name}\n"
-            f"• *Location:* {candidate.exact_location or '—'}\n\n"
-            "Want to update your district or preferred job area? Tap below 👇"
-        ),
+        body_text=body_text,
         buttons=[
-            {"id": "btn_create_profile", "title": "Update Profile"},
-            {"id": "ACTION_SUGGEST_JOBS", "title": "🎯 Suggest Jobs"},
-            {"id": "btn_explore_website", "title": "🌐 More on Website"},
+            {"id": "btn_create_profile", "title": "✏️ Update Profile"},
+            {"id": "btn_fresh_openings", "title": "🎯 Fresh Openings"},
+            {"id": "btn_explore_website", "title": "🌐 Explore all Jobs"},
         ],
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
