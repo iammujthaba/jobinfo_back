@@ -136,11 +136,7 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
         from app.db.models import Candidate, CandidateApplication
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
         if candidate and candidate.registration_complete:
-            has_applied = db.query(CandidateApplication).filter_by(candidate_id=candidate.id).first() is not None
-            if not has_applied:
-                await seeker_handler.send_seeker_nudge_with_jobs(wa_number, candidate, db)
-            else:
-                await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
+            await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
         else:
             await seeker_handler.handle_create_general_profile(wa_number, db)
         return True
@@ -200,12 +196,7 @@ async def route_unrecognized_message(wa_number: str, db: Session) -> None:
     elif is_seeker and not is_recruiter:
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
         if candidate and candidate.registration_complete:
-            from app.db.models import CandidateApplication
-            has_applied = db.query(CandidateApplication).filter_by(candidate_id=candidate.id).first() is not None
-            if not has_applied:
-                await seeker_handler.send_seeker_nudge_with_jobs(wa_number, candidate, db)
-            else:
-                await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
+            await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
         else:
             await seeker_handler.handle_create_general_profile(wa_number, db)
     else:

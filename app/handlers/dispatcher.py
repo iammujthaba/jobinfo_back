@@ -530,13 +530,8 @@ async def _handle_text(wa_number: str, text: str, db: Session) -> None:
         # Route to Fix 3: Smart Seeker Hub / Career Dashboard
         is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first() is not None
         if not is_recruiter:
-            has_applied = db.query(CandidateApplication).filter_by(candidate_id=candidate.id).first() is not None
-            if not has_applied:
-                await seeker_handler.send_seeker_nudge_with_jobs(wa_number, candidate, db)
-                return
-            else:
-                await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
-                return
+            await seeker_handler.send_applied_seeker_dashboard(wa_number, candidate, db)
+            return
 
     # 2. Unregistered Seeker Flow Dropout Interceptor (Fix 1)
     if conv_state and conv_state.state == "seeker_registering":
@@ -933,7 +928,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
     if button_id == "btn_fresh_openings":
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
         if candidate:
-            await seeker_handler.handle_fresh_openings(wa_number, candidate, db)
+            await seeker_handler.handle_suggest_weighted_jobs(wa_number, db)
         return
 
     if button_id == "btn_my_profile":

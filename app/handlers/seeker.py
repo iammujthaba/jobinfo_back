@@ -765,7 +765,8 @@ async def handle_registration_flow_completion(
 
         body_text = (
             f"🎉 *Congratulations, {name}!*\n\n"
-            "_Your profile is officially active — \nyou can now apply to any job across Kerala with just 1 tap!_\n\n"
+            f"_Your Job Seeker profile is active —_\n"
+            f"_you can now apply to any job across Kerala with just 1 tap!_\n\n"
             "📋 *Your Job Preferences:*\n"
             f"• 📍 {loc_str}\n"
             f"• 💼 {cat_str}\n"
@@ -1720,11 +1721,11 @@ async def handle_registered_quick_apply(wa_number: str, candidate: Candidate, va
         body_text=(
             f"👋 *Welcome back, {candidate.name}!* \n\n"
             "You were applying for:\n"
-            f"📋 *Role:* {vacancy.job_title.strip()} ({vacancy.job_code})\n"
-            f"🏢 *Company:* {company_name}\n"
-            f"📍 *Location:* {location_str} • 💰 {salary}\n"
-            f"🔖 *Job Code:* {vacancy.job_code}\n\n"
-            "Your profile is already set up. Tap below to submit your application instantly 👇"
+            f"• 📋 *Role:* {vacancy.job_title.strip()}\n"
+            f"• 🏢 *Company:* {company_name}\n"
+            f"• 📍 *Location:* {location_str}\n"
+            f"• 🔖 *Job Code:* {vacancy.job_code}\n\n"
+            "If you are still interested in this posion, submit your application now 👇"
         ),
         buttons=[
             {"id": f"btn_apply_instantly_{vacancy.job_code}", "title": "⚡ Apply Now"},
@@ -1830,38 +1831,93 @@ async def send_seeker_empty_nudge(wa_number: str, candidate: Candidate) -> None:
 
 
 async def send_applied_seeker_dashboard(wa_number: str, candidate: Candidate, db: Session) -> None:
-    """Personalized Career Dashboard for seekers who have already submitted applications."""
-    name = candidate.name.split()[0] if candidate.name else "there"
+    """Personalized Career Hub for registered job seekers."""
+    name = candidate.name.split()[0].title() if candidate.name else "there"
+    preferred_field = CATEGORY_DISPLAY_NAMES.get(candidate.category, candidate.category or "General")
+    loc_str = (candidate.district or "Kerala").strip().title()
+
+    cleaned_wa = (candidate.wa_number or "").replace("+", "").replace(" ", "").strip()
+    if cleaned_wa.startswith("91") and len(cleaned_wa) == 12:
+        wa_disp = cleaned_wa[2:]
+    elif cleaned_wa:
+        wa_disp = cleaned_wa
+    else:
+        wa_disp = "—"
+    contact_no = (candidate.alt_phone or "").strip() or wa_disp
+
     apps = (
         db.query(CandidateApplication)
         .filter_by(candidate_id=candidate.id)
         .order_by(CandidateApplication.applied_at.desc())
         .all()
     )
-    app_count = len(apps)
-    latest_info = "—"
+
     if apps:
         latest = apps[0]
         vac = db.query(JobVacancy).filter_by(id=latest.vacancy_id).first()
-        status_val = str(getattr(latest.status, 'value', latest.status)).title()
-        role_name = vac.job_title.strip() if vac else "Position"
-        jc = f"({vac.job_code})" if vac and vac.job_code else ""
-        latest_info = f"{role_name} {jc} — {status_val} ⏳"
+        role_name = vac.job_title.strip() if vac and vac.job_title else "Position"
+        jc = f" ({vac.job_code})" if vac and vac.job_code else ""
+        company_name = vac.recruiter.company_name.strip() if vac and vac.recruiter and vac.recruiter.company_name else "Verified Employer"
+
+        loc_parts = []
+        if vac:
+            if vac.exact_location and vac.exact_location.strip():
+                loc_parts.append(vac.exact_location.strip().title())
+            if vac.district_region and vac.district_region.strip():
+                loc_parts.append(vac.district_region.strip().title())
+        job_loc = ", ".join(loc_parts) if loc_parts else "Kerala"
+
+        raw_status = str(getattr(latest.status, 'value', latest.status)).lower()
+        status_map = {
+            "applied": "🟡 Under Review",
+            "viewed": "👀 Viewed by Employer",
+            "shortlisted": "⭐ Shortlisted",
+            "interview_scheduled": "📅 Interview Scheduled",
+            "rejected": "⏸️ Position Closed",
+            "hired": "🎉 Hired",
+        }
+        status_display = status_map.get(raw_status, "🟡 Under Review")
+
+        status_block = (
+            f"📊 *Latest Application Status:*\n"
+            f"• 💼 Role: *{role_name}*{jc}\n"
+            f"• 🏢 Company: {company_name}\n"
+            f"• 📍 Location: {job_loc}\n"
+            f"• ⏳ Status: {status_display}"
+        )
+        buttons = [
+            {"id": "btn_fresh_openings", "title": "🎯 Fresh Openings"},
+            {"id": "ACTION_MY_APPLICATIONS", "title": "📋 My Applications"},
+            {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
+        ]
+    else:
+        status_block = (
+            "🎯 *Start Your Job Search:*\n"
+            "You haven’t applied to any vacancies yet! Tap *Fresh Openings* below to discover jobs tailored for you and apply in seconds."
+        )
+        buttons = [
+            {"id": "btn_fresh_openings", "title": "🎯 Fresh Openings"},
+            {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
+            {"id": "help_support", "title": "ℹ️ Help & More"},
+        ]
+
+    body_text = (
+        f"👋 *Welcome Back, {name}!*\n\n"
+        f"_Your Personal Career Hub & Job Assistant 🌴_\n\n"
+        f"📋 *Your Profile:*\n"
+        f"• 🎯 Field: {preferred_field}\n"
+        f"• 📍 Location: {loc_str}\n"
+        f"• 🛡️ Status: Candidate ✅\n"
+        f"• 📱 Contact: {contact_no}\n\n"
+        f"{status_block}\n\n"
+        f"✨ _Fresh vacancies matching your profile are updated daily — choose an option below to get started 👇_"
+    )
 
     await wa_client.send_buttons(
         to=wa_number,
-        body_text=(
-            f"👋 Welcome back, {name}!\n\n"
-            "📊 *Your Career Dashboard:*\n"
-            f"• Total Applications: {app_count} submitted\n"
-            f"• Latest: {latest_info}\n\n"
-            "Looking for new opportunities? Discover fresh openings or manage your profile below:"
-        ),
-        buttons=[
-            {"id": "ACTION_MY_APPLICATIONS", "title": "📑 My Applications"},
-            {"id": "btn_fresh_openings", "title": "🎯 Fresh Openings"},
-            {"id": "btn_explore_website", "title": "🌐 More on Website"},
-        ],
+        body_text=body_text,
+        buttons=buttons,
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
@@ -1883,53 +1939,8 @@ async def handle_explore_website_cta(wa_number: str) -> None:
 
 
 async def handle_fresh_openings(wa_number: str, candidate: Candidate, db: Session) -> None:
-    """Finds matching jobs that candidate hasn't applied to yet."""
-    from sqlalchemy import func, or_
-    applied_vacancy_ids = [
-        a.vacancy_id for a in db.query(CandidateApplication.vacancy_id)
-        .filter_by(candidate_id=candidate.id).all()
-    ]
-    fresh_query = db.query(JobVacancy).filter(
-        JobVacancy.is_active == True,
-        JobVacancy.status == "approved",
-        JobVacancy.id.notin_(applied_vacancy_ids) if applied_vacancy_ids else True,
-    )
-    filters = []
-    if candidate.category:
-        filters.append(JobVacancy.job_category == candidate.category)
-    if candidate.district:
-        filters.append(func.lower(JobVacancy.district_region) == candidate.district.lower())
-
-    if filters:
-        fresh_query = fresh_query.filter(or_(*filters))
-
-    fresh_jobs = fresh_query.order_by(JobVacancy.created_at.desc()).limit(2).all()
-
-    if not fresh_jobs:
-        await send_seeker_empty_nudge(wa_number, candidate)
-        return
-
-    name = candidate.name.split()[0] if candidate.name else "there"
-    job_lines = []
-    buttons = []
-    for i, j in enumerate(fresh_jobs):
-        num_emoji = "1️⃣" if i == 0 else "2️⃣"
-        dist = j.district_region.strip().title() if j.district_region else "Kerala"
-        job_lines.append(f"{num_emoji} 🏷️ {j.job_title.strip()} — {dist} ({j.job_code})")
-        buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"})
-
-    buttons.append({"id": "btn_explore_website", "title": "🌐 More on Website"})
-
-    await wa_client.send_buttons(
-        to=wa_number,
-        body_text=(
-            f"🎯 *Fresh Openings For You, {name}:*\n\n"
-            + "\n".join(job_lines)
-            + "\n\nTap a job below for details, or explore our full web board 👇"
-        ),
-        buttons=buttons,
-        footer_text="Showing top 2 picks • 50+ more roles on website" if len(fresh_jobs) >= 2 else "Showing top pick • 50+ more roles on website",
-    )
+    """Finds matching jobs using the smart weighted recommendation algorithm for rich presentation."""
+    await handle_suggest_weighted_jobs(wa_number, db)
 
 
 async def handle_suggest_jobs_no_cv(wa_number: str, db: Session) -> None:
@@ -2158,8 +2169,7 @@ async def handle_suggest_weighted_jobs(
     if latest_app:
         context_sub = f"_{name}, based on your recent applications and profile, here are top opportunities you can apply for right now._"
     else:
-        dist_display = candidate.district.strip().title() if candidate.district else "Kerala"
-        context_sub = f"_{name}, based on your preferences in {dist_display}, here are top opportunities you can apply for right now._"
+        context_sub = f"_{name}, based on your profile and preferences, here are top opportunities you can apply for right now._"
 
     body_text = (
         "🎯 *Recommended Jobs for You:*\n\n"
@@ -2172,7 +2182,7 @@ async def handle_suggest_weighted_jobs(
         to=wa_number,
         body_text=body_text,
         buttons=buttons,
-        footer_text="Explore 50+ more on website",
+        footer_text="JobInfo.pro • Made for Kerala",
     )
 
 
@@ -2181,7 +2191,7 @@ async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
     candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
     if not candidate or not candidate.district:
         if candidate:
-            await handle_fresh_openings(wa_number, candidate, db)
+            await handle_suggest_weighted_jobs(wa_number, db)
         else:
             await handle_create_general_profile(wa_number, db)
         return
