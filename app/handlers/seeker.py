@@ -1819,7 +1819,7 @@ async def send_seeker_empty_nudge(wa_number: str, candidate: Candidate) -> None:
         to=wa_number,
         body_text=(
             f"👋 Welcome back, {name}!\n\n"
-            "We don't have open positions in your specific field today, but fresh vacancies are added daily! 🎯\n\n"
+            "We don't have open positions in your prefferd field today, but fresh vacancies are added daily! 🎯\n\n"
             "You can search all live Kerala openings on our web portal or get instant alerts on WhatsApp:"
         ),
         buttons=[
@@ -1983,7 +1983,7 @@ async def handle_suggest_jobs_no_cv(wa_number: str, db: Session) -> None:
                 "Uploading a CV takes less than a minute and unlocks 100% of open positions!"
             ),
             buttons=[
-                {"id": "btn_explore_jobs", "title": "🌐 View Other Jobs"},
+                {"id": "btn_explore_website", "title": "🌐 View Other Jobs"},
             ],
         )
         return
@@ -2013,7 +2013,7 @@ async def handle_suggest_jobs_no_cv(wa_number: str, db: Session) -> None:
         job_blocks.append("\n".join(lines))
         buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"[:20]})
 
-    buttons.append({"id": "btn_explore_jobs", "title": "🌐 View all Jobs"})
+    buttons.append({"id": "btn_explore_website", "title": "🌐 View all Jobs"})
 
     body_text = (
         "🎯 *Jobs Without CV Required:*\n\n"
@@ -2133,7 +2133,7 @@ async def handle_suggest_weighted_jobs(
                 "Fresh vacancies are posted daily. Check out the latest roles on our website 👇"
             ),
             buttons=[
-                {"id": "btn_explore_jobs", "title": "🌐 View all Jobs"},
+                {"id": "btn_explore_website", "title": "🌐 View all Jobs"},
             ],
             footer_text="JobInfo.pro • Made for Kerala",
         )
@@ -2164,7 +2164,7 @@ async def handle_suggest_weighted_jobs(
         job_blocks.append("\n".join(lines))
         buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"[:20]})
 
-    buttons.append({"id": "btn_explore_jobs", "title": "🌐 View all Jobs"})
+    buttons.append({"id": "btn_explore_website", "title": "🌐 View all Jobs"})
 
     if latest_app:
         context_sub = f"_{name}, based on your recent applications and profile, here are top opportunities you can apply for right now._"
@@ -2231,7 +2231,7 @@ async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
                 "Check out all active openings across Kerala on our website!"
             ),
             buttons=[
-                {"id": "btn_explore_jobs", "title": "🌐 View Other Jobs"},
+                {"id": "btn_explore_website", "title": "🌐 View Other Jobs"},
             ],
         )
         return
@@ -2245,7 +2245,7 @@ async def handle_suggest_jobs_near_me(wa_number: str, db: Session) -> None:
         job_lines.append(f"{num_emoji} 🏷️ {j.job_title.strip()} — {dist} ({j.job_code})")
         buttons.append({"id": f"view_job_{j.job_code}", "title": f"📋 View {j.job_code}"[:20]})
 
-    buttons.append({"id": "btn_explore_jobs", "title": "🌐 View Other Jobs"})
+    buttons.append({"id": "btn_explore_website", "title": "🌐 View Other Jobs"})
 
     await wa_client.send_buttons(
         to=wa_number,

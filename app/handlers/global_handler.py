@@ -1,6 +1,6 @@
 """
 Global interrupt handler.
-Handles messages that don't match any specific flow (help menu, "how it works", etc.)
+Handles messages that don't match any specific flow (help menu, help & resources, etc.)
 """
 import logging
 from sqlalchemy.orm import Session
@@ -27,24 +27,6 @@ HELP_MENU_TEXT = (
 )
 
 
-HOW_IT_WORKS_TEXT = (
-    "ℹ️ *How JobInfo Works* 🚀\n\n"
-    "_Kerala's automated career & hiring network 🌴_\n\n"
-    "🎓 *For Job Seekers:*\n"
-    "1️⃣ Tap *Looking for Job* (1-minute setup)\n"
-    "2️⃣ Smart matches in your home district\n"
-    "3️⃣ 1-Tap apply (CV optional & 100% free)\n"
-    "4️⃣ Direct interview calls from employers\n\n"
-    "🏢 *For Employers & Recruiters:*\n"
-    "1️⃣ Tap *I am Hiring* (1-minute setup)\n"
-    "2️⃣ Post vacancies free in 1 minute\n"
-    "3️⃣ Broadcast across all 14 districts\n"
-    "4️⃣ Zero call clutter — review & hire fast\n\n"
-    "🌐 *Explore live vacancies on web:*\n"
-    "https://jobinfo.pro/jobs.html"
-)
-
-
 async def send_help_menu(wa_number: str) -> None:
     """Send the main help / menu message with 3 quick-reply buttons."""
     await wa_client.send_buttons(
@@ -54,20 +36,6 @@ async def send_help_menu(wa_number: str) -> None:
             {"id": "menu_seeker", "title": "🔍 Looking for Job"},
             {"id": "menu_recruiter", "title": "📢 I am Hiring"},
             {"id": "help_support", "title": "ℹ️ Help & More"},
-        ],
-        footer_text="JobInfo.pro • Made for Kerala",
-    )
-
-
-async def send_how_it_works(wa_number: str) -> None:
-    """Send the interactive How It Works guide with quick role & menu navigation."""
-    await wa_client.send_buttons(
-        to=wa_number,
-        body_text=HOW_IT_WORKS_TEXT,
-        buttons=[
-            {"id": "menu_seeker", "title": "🔍 Looking for Job"},
-            {"id": "menu_recruiter", "title": "📢 I am Hiring"},
-            {"id": "btn_main_menu", "title": "🏠 Main Menu"},
         ],
         footer_text="JobInfo.pro • Made for Kerala",
     )
@@ -98,7 +66,7 @@ async def send_help_support_menu(wa_number: str) -> None:
         to=wa_number,
         body_text=HELP_RESOURCES_TEXT,
         buttons=[
-            {"id": "menu_how_it_works", "title": "📖 How it Works"},
+            {"id": "btn_my_profile", "title": "👤 My Profile"},
             {"id": "btn_gethelp", "title": "📩 Request Help"},
             {"id": "btn_main_menu", "title": "🏠 Main Menu"},
         ],
@@ -116,7 +84,7 @@ async def handle_global_button(wa_number: str, button_id: str, db: Session) -> b
         return True
 
     if button_id == "menu_how_it_works":
-        await send_how_it_works(wa_number)
+        await send_help_support_menu(wa_number)
         _reset_state(wa_number, db)
         return True
 

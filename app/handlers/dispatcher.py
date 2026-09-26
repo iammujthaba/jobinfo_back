@@ -786,7 +786,11 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await seeker_handler.handle_suggest_jobs(wa_number, db)
         return
 
-    if button_id in ("ACTION_EXPLORE_JOBS", "btn_whatsapp_channel", "btn_channel", "btn_explore_jobs"):
+    if button_id in ("btn_explore_website", "btn_explore_jobs"):
+        await seeker_handler.handle_explore_website_cta(wa_number)
+        return
+
+    if button_id in ("ACTION_EXPLORE_JOBS", "btn_whatsapp_channel", "btn_channel"):
         await seeker_handler.handle_explore_jobs(wa_number)
         return
 
@@ -932,9 +936,17 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         return
 
     if button_id == "btn_my_profile":
+        from app.db.models import Recruiter
         candidate = db.query(Candidate).filter_by(wa_number=wa_number).first()
-        if candidate:
+        if candidate and candidate.registration_complete:
             await seeker_handler.handle_my_profile_button(wa_number, candidate)
+        else:
+            recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
+            if recruiter:
+                from app.handlers import recruiter as recruiter_handler
+                await recruiter_handler.send_recruiter_dashboard(wa_number, recruiter, db)
+            else:
+                await seeker_handler.handle_create_general_profile(wa_number, db)
         return
 
     if button_id == "btn_create_profile":
