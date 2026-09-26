@@ -672,15 +672,15 @@ async def _handle_login_otp(wa_number: str, otp_code: str, db: Session) -> None:
         else:
             if role == "recruiter":
                 buttons = [
-                    {"id": "btn_post_vacancy", "title": "Post Vacancy"},
-                    {"id": "btn_my_vacancies", "title": "My Vacancies"},
-                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                    {"id": "btn_post_vacancy", "title": "📢 Post Vacancy"},
+                    {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
+                    {"id": "help_support", "title": "ℹ️ Help & More"},
                 ]
             else:
                 buttons = [
-                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                    {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
-                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "💡 Suggest Jobs"},
+                    {"id": "ACTION_MY_APPLICATIONS", "title": "📋 My Applications"},
+                    {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
                 ]
 
             await wa_client.send_buttons(
@@ -739,7 +739,7 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await recruiter_handler.start(wa_number, db)
         return
 
-    if button_id == "btn_my_dashboard":
+    if button_id in ("btn_my_dashboard", "btn_my_vacancies"):
         from app.db.models import Recruiter
         is_recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first() is not None
         role = "recruiter" if is_recruiter else "seeker"
@@ -785,9 +785,6 @@ async def _handle_button(wa_number: str, button_id: str, db: Session) -> None:
         await recruiter_handler.handle_post_vacancy_button(wa_number, db, from_workspace=True)
         return
 
-    if button_id == "btn_my_vacancies":
-        await recruiter_handler.handle_my_vacancies_button(wa_number, db)
-        return
 
     # ── Seeker main menu buttons ──────────────────────────────────────────────
     if button_id == "ACTION_SUGGEST_JOBS":

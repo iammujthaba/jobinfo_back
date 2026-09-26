@@ -25,7 +25,6 @@ from app.services.job_code import generate_job_code
 from app.whatsapp.client import wa_client
 from app.whatsapp.templates import (
     admin_vacancy_alert_body,
-    recruiter_vacancies_overview_body,
     recruiter_welcome_components,
     recruiter_workspace_body,
     vacancy_confirmation_body,
@@ -107,8 +106,8 @@ async def start(wa_number: str, db: Session) -> None:
         body_text = recruiter_workspace_body(recruiter, db)
         buttons = [
             {"id": "btn_post_vacancy", "title": "📢 Post Vacancy"},
-            {"id": "btn_my_vacancies", "title": "📋 My Vacancies"},
             {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
+            {"id": "help_support", "title": "ℹ️ Help & More"},
         ]
         await wa_client.send_buttons(
             to=wa_number,
@@ -353,27 +352,6 @@ async def handle_post_vacancy_flow_completion(
     db.commit()
 
     _set_state(wa_number, "recruiter_idle", {}, db)
-
-
-async def handle_my_vacancies_button(wa_number: str, db: Session) -> None:
-    """
-    Show the recruiter a mini dashboard summary of their recent vacancies via WhatsApp.
-    """
-    recruiter = db.query(Recruiter).filter_by(wa_number=wa_number).first()
-    if not recruiter:
-        await wa_client.send_text(to=wa_number, body="⚠️ You are not registered as a recruiter.")
-        return
-
-    summary_text = recruiter_vacancies_overview_body(recruiter, db)
-    magic_url = _generate_magic_dashboard_url(recruiter, db)
-
-    await wa_client.send_interactive_cta_url(
-        to=wa_number,
-        body_text=summary_text,
-        button_display_text="Access Dashboard",
-        button_url=magic_url,
-        footer_text="⏳ Button expires in 24h",
-    )
 
 
 async def handle_post_vacancy_button(

@@ -145,6 +145,7 @@ def recruiter_workspace_body(
     recruiter: Recruiter,
     db: Any = None,
     active_vacancies: int | None = None,
+    pending_vacancies: int | None = None,
     paused_vacancies: int | None = None,
     total_applicants: int | None = None,
 ) -> str:
@@ -172,6 +173,12 @@ def recruiter_workspace_body(
                 .filter_by(recruiter_id=recruiter.id, status="approved", is_active=True)
                 .count()
             )
+        if pending_vacancies is None:
+            pending_vacancies = (
+                db.query(JobVacancy)
+                .filter_by(recruiter_id=recruiter.id, status="pending")
+                .count()
+            )
         if paused_vacancies is None:
             paused_vacancies = (
                 db.query(JobVacancy)
@@ -190,8 +197,26 @@ def recruiter_workspace_body(
             )
     else:
         active_vacancies = active_vacancies or 0
+        pending_vacancies = pending_vacancies or 0
         paused_vacancies = paused_vacancies or 0
         total_applicants = total_applicants or 0
+
+    has_vacancies = (active_vacancies + pending_vacancies + paused_vacancies) > 0
+
+    if has_vacancies:
+        status_section = (
+            f"📊 *Live Dashboard Status:*\n"
+            f"• 🟢 Active Vacancies: {active_vacancies}\n"
+            f"• ⏳ Pending Review: {pending_vacancies}\n"
+            f"• ⏸️ Paused / Closed: {paused_vacancies}\n"
+            f"• 📥 Total Applicants: {total_applicants}\n\n"
+            f"How can I assist you today? Tap an option below 👇"
+        )
+    else:
+        status_section = (
+            "✨ *Ready to Hire?*\n"
+            "You haven’t posted any vacancies yet! Tap *Post Vacancy* below to post your very first vacancy, it only take just 60 seconds."
+        )
 
     return (
         f"👋 *Welcome Back, {company}!* \n\n"
@@ -201,85 +226,9 @@ def recruiter_workspace_body(
         f"• 📍 Location: {location}\n"
         f"• 🛡️ Status: Employer\n"
         f"• 📱 Account ID : {wa_display}\n\n"
-
-        f"📊 *Live Dashboard Status:*\n"
-        f"• 🟢 Active Vacancies: {active_vacancies}\n"
-        f"• ⏸️ Paused / Closed: {paused_vacancies}\n"
-        f"• 📥 Total Applicants: {total_applicants}\n\n"
-        f"How can I assist you today? Tap an option below 👇"
+        f"{status_section}"
     )
 
-
-def recruiter_vacancies_overview_body(recruiter: Recruiter, db: Any) -> str:
-    """
-    Live vacancies overview card (Option 3 Spotlight).
-    Displays real-time hiring snapshot and spotlights the recruiter's latest vacancy.
-    """
-    company = recruiter.company_name.strip() if recruiter.company_name else "Employer"
-
-    all_vacancies = (
-        db.query(JobVacancy)
-        .filter(JobVacancy.recruiter_id == recruiter.id)
-        .order_by(JobVacancy.created_at.desc())
-        .all()
-    )
-
-    if not all_vacancies:
-        return (
-            f"📋 *Vacancies Overview — {company}*\n\n"
-            f"You haven’t posted any job vacancies yet!\n\n"
-            f"Post your vacancy in less than 1 minute to start receiving applications "
-            f"from verified candidates across Kerala.\n\n"
-            f"Tap the button below to view your dashboard 👇"
-        )
-
-    active_count = sum(1 for v in all_vacancies if v.status == "approved" and v.is_active)
-    pending_count = sum(1 for v in all_vacancies if v.status == "pending")
-    paused_count = sum(1 for v in all_vacancies if (not v.is_active and v.status == "approved") or v.status == "rejected")
-
-    total_apps = (
-        db.query(CandidateApplication)
-        .join(JobVacancy, CandidateApplication.vacancy_id == JobVacancy.id)
-        .filter(JobVacancy.recruiter_id == recruiter.id)
-        .count()
-    )
-
-    latest_job = all_vacancies[0]
-
-    if latest_job.status == "approved" and latest_job.is_active:
-        status_line = "🟢 Status: Active & Broadcasting"
-    elif latest_job.status == "approved" and not latest_job.is_active:
-        status_line = "⏸️ Status: Paused / Closed"
-    elif latest_job.status == "pending":
-        status_line = "⏳ Status: Under Review (Admin Verification)"
-    elif latest_job.status == "rejected":
-        status_line = "❌ Status: Rejected (Needs Revision)"
-    else:
-        status_line = f"📊 Status: {latest_job.status.capitalize()}"
-
-    loc_parts = [p.strip() for p in [latest_job.exact_location, latest_job.district_region] if p and p.strip()]
-    loc_str = ", ".join(loc_parts) if loc_parts else "Kerala"
-
-    latest_apps = (
-        db.query(CandidateApplication)
-        .filter(CandidateApplication.vacancy_id == latest_job.id)
-        .count()
-    )
-
-    return (
-        f"📋 *Vacancies Overview — {company}*\n\n"
-        f"📊 *Hiring Snapshot:*\n"
-        f"• 🟢 Active Vacancy: {active_count}\n"
-        f"• ⏳ Pending Vacancy: {pending_count}\n"
-        f"• ⏸️ Paused Vacancy: {paused_count}\n"
-        f"• 📥 Total Applicants Received: {total_apps}\n\n"
-        f"📌 *Latest Posted Vacancy:*\n"
-        f"💼 *{latest_job.job_title.strip()}* ({latest_job.job_code})\n"
-        f"📍 {loc_str}\n"
-        f"{status_line}\n"
-        f"📥 Applications: {latest_apps} candidates\n\n"
-        f"Tap the button below to review all applicants details, their CVs and shortlist them for interview 👇"
-    )
 
 
 def recruiter_welcome_components(recruiter: Recruiter, token: str) -> list[dict]:
@@ -325,10 +274,11 @@ def vacancy_confirmation_body(vacancy: JobVacancy) -> str:
     )
 
 
-def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter) -> str:
+def admin_vacancy_alert_body(vacancy: JobVacancy, recruiter: Recruiter, is_edit: bool = False) -> str:
     role_str = f"*Role:* {_label(REGISTRANT_ROLE_LABELS, getattr(recruiter, 'registrant_role', 'other'))}\n"
+    title_prefix = "✏️ *Vacancy Edited & Resubmitted – Action Required*" if is_edit else "🔔 *New Vacancy Submitted – Action Required*"
     return (
-        f"🔔 *New Vacancy Submitted – Action Required*\n\n"
+        f"{title_prefix}\n\n"
         f"*Job Code:* {vacancy.job_code}\n"
         f"*Position:* {vacancy.job_title}\n"
         f"*Company:* {recruiter.company_name or '—'}\n"
@@ -393,7 +343,7 @@ def vacancy_rejected_body(vacancy: JobVacancy) -> str:
     )
 
 
-def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
+def vacancy_poster_preview_body(vacancy: JobVacancy, is_edit: bool = False) -> str:
     """
     Live Preview of the vacancy poster exactly as it will appear when published.
     Sent as a standard text message for full-width bubble rendering with
@@ -406,9 +356,16 @@ def vacancy_poster_preview_body(vacancy: JobVacancy) -> str:
     cv_note = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
     description = vacancy.job_description.strip() if vacancy.job_description else "—"
 
+    header = "✅ *Vacancy Updated Successfully!*" if is_edit else "✅ *Vacancy Submitted Successfully!*"
+    status_sub = (
+        "Your updated vacancy is *under review*. You'll be notified as soon as it is approved."
+        if is_edit
+        else "Your vacancy is *under review*. You'll be notified as soon as it is approved."
+    )
+
     return (
-        f"✅ *Vacancy Submitted Successfully!*\n\n"
-        f"Your vacancy is *under review*. You'll be notified as soon as it is approved.\n\n"
+        f"{header}\n\n"
+        f"{status_sub}\n\n"
         f"👀 *_Preview of Your Job Poster:_*\n"
         f"{'─' * 25}\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"

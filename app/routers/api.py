@@ -29,7 +29,7 @@ from app.whatsapp.templates import (
     vacancy_poster_preview_body,
     admin_vacancy_alert_body,
 )
-from app.handlers.recruiter import _generate_admin_magic_url
+from app.handlers.recruiter import _generate_admin_magic_url, _generate_magic_dashboard_url
 from app.services.milestone import dispatch_milestone_notification
 
 logger = logging.getLogger(__name__)
@@ -308,15 +308,15 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
         if not is_new_user:
             if body.role == "recruiter":
                 buttons = [
-                    {"id": "btn_post_vacancy", "title": "Post Vacancy"},
-                    {"id": "btn_my_vacancies", "title": "My Vacancies"},
-                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                    {"id": "btn_post_vacancy", "title": "📢 Post Vacancy"},
+                    {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
+                    {"id": "help_support", "title": "ℹ️ Help & More"},
                 ]
             else:
                 buttons = [
-                    {"id": "ACTION_SUGGEST_JOBS", "title": "Suggest Jobs"},
-                    {"id": "ACTION_MY_APPLICATIONS", "title": "My Applications"},
-                    {"id": "btn_my_dashboard", "title": "My Dashboard"},
+                    {"id": "ACTION_SUGGEST_JOBS", "title": "💡 Suggest Jobs"},
+                    {"id": "ACTION_MY_APPLICATIONS", "title": "📋 My Applications"},
+                    {"id": "btn_my_dashboard", "title": "🖥️ My Dashboard"},
                 ]
 
             await wa_client.send_buttons(
@@ -326,7 +326,7 @@ async def verify_otp(body: OTPVerifyRequest, db: Session = Depends(get_db)):
                     "You are now logged in on the website. 🎉"
                 ),
                 buttons=buttons,
-                footer_text="Powered by JobInfo.pro",
+                footer_text="JobInfo.pro - Made for Kerala",
             )
     except Exception as e:
         logger.warning(f"Could not send OTP verification confirmation to {body.wa_number}: {e}")
@@ -480,7 +480,7 @@ async def register_recruiter_verified(
                 "Welcome to JobInfo! 🎉 Your recruiter profile has been created. You can now post vacancies and hire talent."
             ),
             buttons=buttons,
-            footer_text="Powered by JobInfo.pro",
+            footer_text="JobInfo.pro - Made for Kerala",
         )
     except Exception as e:
         logger.warning(f"Could not send recruiter registration confirmation to {body.wa_number}: {e}")
@@ -581,7 +581,7 @@ async def register_seeker(body: RegisterSeekerRequest, db: Session = Depends(get
                 "Welcome to JobInfo! 🎉 Your candidate profile has been created. You can now explore vacancies and apply to jobs."
             ),
             buttons=buttons,
-            footer_text="Powered by JobInfo.pro",
+            footer_text="JobInfo.pro - Made for Kerala",
         )
     except Exception as e:
         logger.warning(f"Could not send seeker registration confirmation to {body.wa_number}: {e}")
@@ -653,7 +653,7 @@ async def register_seeker_verified(
                 "Welcome to JobInfo! 🎉 Your candidate profile has been created. You can now explore vacancies and apply to jobs."
             ),
             buttons=buttons,
-            footer_text="Powered by JobInfo.pro",
+            footer_text="JobInfo.pro - Made for Kerala",
         )
     except Exception as e:
         logger.warning(f"Could not send seeker registration confirmation to {body.wa_number}: {e}")
@@ -1289,6 +1289,7 @@ def recruiter_dashboard(
             "job_description": v.job_description or "",
             "salary_range": v.salary_range,
             "experience_required": v.experience_required,
+            "cv_required": bool(v.cv_required),
             "status": v.status,
             "rejection_reason": v.rejection_reason,
             "created_at": v.created_at.isoformat() if v.created_at else None,
@@ -1728,7 +1729,7 @@ class EditVacancyRequest(BaseModel):
 
 
 @router.post("/recruiters/vacancy/edit")
-def edit_rejected_vacancy(
+async def edit_rejected_vacancy(
     body: EditVacancyRequest,
     db: Session = Depends(get_db),
 ):
@@ -1738,6 +1739,7 @@ def edit_rejected_vacancy(
     - Approved vacancies are fully locked (returns 403)
     - Resets status to pending and marks is_edited=True
     - Admin will see an 'Edited' badge to distinguish re-submissions
+    - Sends WhatsApp poster preview & dashboard CTA to the recruiter
     """
     _require_session(body.wa_number, body.session_token)
 
@@ -1801,6 +1803,48 @@ def edit_rejected_vacancy(
 
     db.commit()
     db.refresh(vacancy)
+
+    # 1. Send live poster preview as full-width plain text to recruiter
+    try:
+        await wa_client.send_text(
+            to=body.wa_number,
+            body=vacancy_poster_preview_body(vacancy, is_edit=True),
+        )
+    except Exception as preview_err:
+        logger.warning("Recruiter WhatsApp edit preview send failed: %s", preview_err)
+
+    # 2. Send status confirmation with 'View Dashboard' interactive CTA button
+    try:
+        magic_url = _generate_magic_dashboard_url(recruiter, db)
+        await wa_client.send_interactive_cta_url(
+            to=body.wa_number,
+            body_text=vacancy_confirmation_body(vacancy),
+            button_display_text="View Dashboard",
+            button_url=magic_url,
+            footer_text="⏳ Button expires in 24h",
+        )
+    except Exception as cta_err:
+        logger.warning("Recruiter WhatsApp edit CTA send failed: %s", cta_err)
+
+    # 3. Notify admins about edited vacancy resubmission
+    if settings.admin_wa_number:
+        try:
+            admin_url = _generate_admin_magic_url(db)
+            await wa_client.send_interactive_cta_url(
+                to=settings.admin_wa_number,
+                body_text=admin_vacancy_alert_body(vacancy, recruiter, is_edit=True),
+                button_display_text="Review Vacancy",
+                button_url=admin_url,
+            )
+        except Exception as e:
+            logger.warning("Admin CTA alert failed for edited vacancy, falling back to text: %s", e)
+            try:
+                await wa_client.send_text(
+                    to=settings.admin_wa_number,
+                    body=admin_vacancy_alert_body(vacancy, recruiter, is_edit=True),
+                )
+            except Exception as e2:
+                logger.warning("Admin fallback text alert failed: %s", e2)
 
     return {
         "success": True,
