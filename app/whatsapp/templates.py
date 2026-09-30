@@ -313,7 +313,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         b_type = (vacancy.recruiter.business_type or "").strip().lower()
         if b_type in ("agency", "hr / recruitment / consultancy") or "agency" in b_type or "consultancy" in b_type or "recruitment" in b_type:
             agency_notice = (
-                "🤖 *JobInfo Bot:* Our system detected this post might be from a recruitment agency. "
+                "🤖 *JobInfo:* Bot detected this post might be from a recruitment agency. "
                 "JobInfo is 100% free — Agency terms may apply.\n\n"
             )
 
