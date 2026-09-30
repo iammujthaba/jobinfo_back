@@ -627,6 +627,7 @@ async def api_analytics(
     total_recruiters = db.query(Recruiter).count()
     total_candidates = db.query(Candidate).count()
     total_applications = db.query(CandidateApplication).count()
+    total_vacancies = db.query(JobVacancy).count()
 
     # Unregistered users: bot conversations not registered as Candidate or Recruiter
     seek_wa_q = db.query(Candidate.wa_number)
@@ -640,6 +641,7 @@ async def api_analytics(
     pending_count = db.query(JobVacancy).filter_by(status="pending").count()
     approved_count = db.query(JobVacancy).filter(JobVacancy.status == "approved", JobVacancy.is_active == True).count()
     stopped_count = db.query(JobVacancy).filter(JobVacancy.is_active == False, JobVacancy.status != "rejected").count()
+    rejected_count = db.query(JobVacancy).filter_by(status="rejected").count()
     total_vac_status = pending_count + approved_count + stopped_count
 
     # ── Date calculation for selected period ─────────────────────────────────
@@ -748,8 +750,61 @@ async def api_analytics(
         "seekers": sum(x["count"] for x in seekers_daily),
     }
 
+    # ── Vacancies per recruiter (top 15) ─────────────────────────────────────
+    recruiter_vac_rows = (
+        db.query(
+            Recruiter.company_name.label("recruiter"),
+            sqlfunc.count(JobVacancy.id).label("total"),
+            sqlfunc.count(sqlfunc.nullif(JobVacancy.status != "approved", True)).label("approved"),
+            sqlfunc.count(sqlfunc.nullif(JobVacancy.status != "pending", True)).label("pending"),
+            sqlfunc.count(sqlfunc.nullif(JobVacancy.status != "rejected", True)).label("rejected"),
+        )
+        .outerjoin(JobVacancy, JobVacancy.recruiter_id == Recruiter.id)
+        .group_by(Recruiter.id)
+        .order_by(sqlfunc.count(JobVacancy.id).desc())
+        .limit(15)
+        .all()
+    )
+    vacancies_per_recruiter = [
+        {
+            "recruiter": r.recruiter,
+            "total": r.total,
+            "approved": int(r.approved or 0),
+            "pending": int(r.pending or 0),
+            "rejected": int(r.rejected or 0),
+        }
+        for r in recruiter_vac_rows
+    ]
+
+    # ── Applications per vacancy (top 15 by apps) ────────────────────────────
+    top_jobs_rows = (
+        db.query(
+            JobVacancy.job_title.label("job_title"),
+            JobVacancy.job_code.label("job_code"),
+            JobVacancy.district_region.label("district_region"),
+            JobVacancy.status.label("status"),
+            sqlfunc.count(CandidateApplication.id).label("apps"),
+        )
+        .outerjoin(CandidateApplication, CandidateApplication.vacancy_id == JobVacancy.id)
+        .group_by(JobVacancy.id)
+        .order_by(sqlfunc.count(CandidateApplication.id).desc())
+        .limit(15)
+        .all()
+    )
+    top_jobs = [
+        {
+            "title": r.job_title,
+            "job_code": r.job_code,
+            "location": r.district_region,
+            "status": r.status if r.status else "",
+            "applications": r.apps,
+        }
+        for r in top_jobs_rows
+    ]
+
     return {
         "totals": {
+            "vacancies": total_vacancies,
             "recruiters": total_recruiters,
             "candidates": total_candidates,
             "unregistered": unregistered_users,
@@ -758,6 +813,7 @@ async def api_analytics(
         "vacancy_status": {
             "pending": pending_count,
             "approved": approved_count,
+            "rejected": rejected_count,
             "stopped": stopped_count,
             "total": total_vac_status,
         },
@@ -769,6 +825,8 @@ async def api_analytics(
         "recruiters_daily": recruiters_daily,
         "seekers_daily": seekers_daily,
         "period_totals": period_totals,
+        "vacancies_per_recruiter": vacancies_per_recruiter,
+        "top_jobs_by_applications": top_jobs,
     }
 
 
