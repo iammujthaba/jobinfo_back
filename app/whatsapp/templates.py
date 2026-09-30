@@ -308,6 +308,15 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
 
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
+    agency_notice = ""
+    if is_admin and vacancy.recruiter:
+        b_type = (vacancy.recruiter.business_type or "").strip().lower()
+        if b_type in ("agency", "hr / recruitment / consultancy") or "agency" in b_type or "consultancy" in b_type or "recruitment" in b_type:
+            agency_notice = (
+                "🤖 *JobInfo Bot:* Our system detected this post might be from a recruitment agency. "
+                "JobInfo is 100% free — Agency terms may apply.\n\n"
+            )
+
     return (
         f"🚀 *New Job Alert*\n\n"
         f"🏷️ Position: *{vacancy.job_title.strip()}*\n"
@@ -319,6 +328,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         f"📄 CV Required: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
+        f"{agency_notice}"
         f"👉 _Click *\"Start chatting\"* or use the link to Apply_: {link}\n\n"
         f"👥 Join jobinfo WhatsApp Groups: https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR \n\n"
         f"_jobinfo - Kerala's First WhatsApp powered Career Portal_"
