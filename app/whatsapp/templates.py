@@ -304,7 +304,7 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
     experience  = _label(EXPERIENCE_LABELS, vacancy.experience_required)
     job_mode    = _label(JOB_MODE_LABELS,   vacancy.job_mode)
     description = _truncate(vacancy.job_description, 600)
-    cv_note     = "Yes – CV required" if vacancy.cv_required else "No – CV optional"
+    cv_note     = "Required" if vacancy.cv_required else "Optional"
 
     link = apply_url or f"{settings.app_base_url}/api/apply/{vacancy.job_code}"
 
@@ -325,11 +325,11 @@ def job_alert_text_body(vacancy: JobVacancy, apply_url: str | None = None, is_ad
         f"💰 Salary: {salary}\n"
         f"💼 Mode: {job_mode}\n"
         f"🎓 Experience: {experience}\n"
-        f"📄 CV Required: {cv_note}\n"
+        f"📄 CV: {cv_note}\n"
         f"🔖 Job Code: {vacancy.job_code}\n\n"
         f"📋 *About the Role:*\n{description}\n\n"
         f"{agency_notice}"
-        f"👉 _Click *\"Start chatting\"* or use the link to Apply_: {link}\n\n"
+        f"👉 *Apply Now:* Tap *\"Start chatting\"* or visit link: {link}\n\n"
         f"👥 Join jobinfo WhatsApp Groups: https://chat.whatsapp.com/B55NA0tQ76Z0nP2tEoQtiR \n\n"
         f"_JobInfo — Kerala's First & 100% Free WhatsApp-powered Career Portal_"
     )
