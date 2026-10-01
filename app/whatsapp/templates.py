@@ -4,6 +4,7 @@ Each function returns the 'components' list (or full kwargs) for wa_client.send_
 or the arguments for wa_client.send_buttons().
 These are plain Python dicts – no WhatsApp API call is made here.
 """
+import re
 from typing import Any
 
 from app.db.models import Candidate, JobVacancy, Recruiter, CandidateApplication, CandidateResume
@@ -124,11 +125,21 @@ def _label(mapping: dict[str, str], raw_value: str | None, fallback: str = "—"
 def _truncate(text: str | None, max_len: int = 600) -> str:
     """Return *text* safely truncated to *max_len* characters.
 
-    Appends '...' when the text is cut.  Returns '—' for None/empty input.
+    Strips leading/trailing whitespace, normalizes line breaks, and collapses
+    excessive blank lines (3+ into 2).
+    Appends '...' when the text is cut. Returns '—' for None/empty input.
     """
     if not text:
         return "—"
-        
+
+    # Normalize line endings and strip leading/trailing spaces and blank lines
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return "—"
+
+    # Collapse 3 or more consecutive line breaks into standard double break (\n\n)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
     # Safety rail: Meta API restricts template parameters to 1024 characters.
     # We strictly enforce a ceiling of 1000 characters here to prevent API rejection.
     if max_len > 1000:
@@ -136,7 +147,7 @@ def _truncate(text: str | None, max_len: int = 600) -> str:
 
     if len(text) <= max_len:
         return text
-    return text[:max_len] + "..."
+    return text[:max_len].rstrip() + "..."
 
 
 # ─── Recruiter templates ─────────────────────────────────────────────────────
